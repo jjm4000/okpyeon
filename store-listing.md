@@ -76,3 +76,26 @@ The whole dictionary ships inside the extension: no network requests, no data co
 --  SOURCES  --
 
 Definitions and compounds: English Wiktionary via kaikki.org (CC BY-SA). Variant mappings: Wiktionary and Unicode Unihan. Decompositions: BabelStone IDS (public domain). School tiers: the Korean Wikipedia article 대한민국 중고등학교 기초한자 목록 (CC BY-SA 4.0). The Advanced and Rare levels are Okpyeon's own classification.
+
+## Privacy tab (dashboard form)
+
+Single purpose description:
+
+Looks up the Korean reading and meaning of Chinese characters (hanja, hanzi, kanji) and Korean words that are written with hanja, when the user selects them on a webpage.
+
+sidePanel justification:
+
+Clicking the toolbar icon opens the extension's dictionary in the side panel: a search box over the same offline dictionary that selection lookups use, plus the user's saved words and settings. The panel shows only the extension's own dictionary content, nothing from the page, and makes no network requests.
+
+storage justification:
+
+Users can star dictionary entries to save them into folders for later study and export, and adjust a few preferences such as the default folder and the Anki card layout. Saved entries and settings are kept in chrome.storage.local on the user's own device. Nothing is transmitted anywhere.
+
+Host permission justification:
+
+The content script needs to run on all pages so users can highlight hanja or Korean text on any website and see a definition popup. It does not read, modify, or transmit page content beyond the text the user selects, and makes no network requests.
+
+Remote code: No. Data usage: no categories collected; all three certifications checked.
+
+Privacy policy URL: https://jjm4000.github.io/okpyeon/privacy-policy.html
+Homepage: https://github.com/jjm4000/okpyeon
