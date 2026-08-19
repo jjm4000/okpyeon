@@ -19,62 +19,48 @@ A study tool for Korean learners. Highlight hanja, hanzi, or kanji to read them 
 
 <!-- The store renders this field as PLAIN TEXT: no markdown, no bold. The
      dash-wrapped uppercase lines are the section separators, pasted as-is.
-     The old opening line was dropped: it repeated the short description, and
-     the select-text paragraph below covers the same ground. -->
+     Kept deliberately short: one or two sentences per section, examples over
+     explanation. -->
 
-Okpyeon is a popup hanja dictionary and study tool for Korean learners. Much of Korean vocabulary is Sino-Korean, built from hanja roots much as English words are built from Latin and Greek, so once you know that 國 is 나라 국, the shared root in 국민, 국가, and 외국 becomes visible.
+Okpyeon is a popup hanja dictionary for Korean learners. Much of Korean vocabulary is built from hanja roots the way English words are built from Latin, so once you know that 國 is 나라 국, the shared root in 국민, 국가, and 외국 becomes visible.
 
-Select text on any page and a card appears with the reading, the meaning, and the vocabulary that character builds. Or click the toolbar icon to open a sidebar with the same dictionary behind a search box; the sidebar stays open while you switch tabs and follow links. Typing hj followed by your query in the address bar searches from anywhere.
+Select text on any page and a card appears. Or click the toolbar icon for a sidebar with a search box that stays open across tabs; typing hj in the address bar searches from anywhere.
 
 --  CHARACTERS INTO KOREAN  --
 
-Select a hanja to get its eumhun, the traditional pairing of a native Korean gloss with the sound, such as 나라 국 for 國. You also get the reading on its own, English definitions, and the most common compounds the character appears in, so 國 comes with 국민 (國民), 한국 (韓國), and 국가 (國家).
-
-Simplified Chinese forms and Japanese shinjitai map to their traditional hanja, so 国, 学, 気, and 図 resolve to the same entries. Chinese and Japanese pages work as well as Korean ones.
+Select a hanja to get its eumhun (나라 국 for 國), English definitions, and its most common compounds. Simplified Chinese and Japanese shinjitai resolve to the same entries, so those pages work too.
 
 --  KOREAN WORDS INTO HANJA  --
 
-Highlight a Sino-Korean word written in hangul and Okpyeon shows the hanja behind it with the meaning, so 국민 becomes 國民. Grammatical endings are handled, so 자본주의는 in a sentence still resolves to 자본주의.
-
-Words break into their parts. 자본주의 shows the component words 資本 and 主義, and beneath them each component character with its own eumhun and meaning. Component words are clickable, so you can drill from a long compound into its pieces and back out again.
+Highlight a Sino-Korean word in hangul to see the hanja behind it: 국민 becomes 國民, and 자본주의는 in a sentence still finds 자본주의. Words break into their component words and characters, all clickable.
 
 --  CHARACTERS SPLIT INTO PARTS  --
 
-A character's card shows what it is made of. 樂 opens into 幺, 白, 幺, and 木, each part with its own reading and each a full entry you can step into. The card also points the other way: 木 tells you it is a part of hundreds of characters and lists them, most productive first. Pictographs such as 心 stay whole instead of being cut into pen strokes.
+A character's card shows what it is made of (樂 opens into 幺, 白, 幺, and 木), each part a full entry of its own, and lists the characters it is itself a part of.
 
 --  EVERY CHARACTER IS GRADED  --
 
-Each character carries a level, so you always know where it sits relative to what Korean students are taught. Middle school and High school mark the two tiers of the Ministry of Education basic hanja list, the roughly 1,800 characters every Korean student learns. Advanced covers characters outside that list that still turn up in real vocabulary, and Rare covers the archaic, specialist and reading-only tail.
-
-This is there to help you spend your time well. The 1,800 school characters are a natural study list for learners too, and the level tells you at a glance whether a character is on it or a detour. In a list of characters sharing one sound, it separates the handful worth learning from the rest.
+Middle school and High school mark the roughly 1,800 characters of the Korean Ministry of Education list, a natural study list for learners. Advanced and Rare cover everything else, so a glance tells you whether a character is worth your time.
 
 --  NO KOREAN KEYBOARD NEEDED  --
 
-The sidebar search takes whatever you can type. Typing toddlf with your keyboard still in English is read back through the Korean 2-set layout and finds 생일. Typing gungmin or gukmin finds 국민: the common romanization conventions are all understood. A query that could be read either way shows both readings, most likely first.
+Typing toddlf with the keyboard still in English finds 생일, and gungmin or gukmin finds 국민. A query that reads both ways shows both.
 
 --  BROWSE BY SOUND  --
 
-Highlight a single hangul syllable to see every hanja read that way, ranked by how common each one is. 국 lists 國, 局, 菊 and the rest with their eumhun and definitions, and clicking one opens its full entry.
+Highlight a single syllable like 국 to list every hanja read that way, most common first.
 
 --  FOLLOW THE CONNECTIONS  --
 
-The dictionary is meant to be wandered through. Every compound listed on a character card is clickable, and the full list is there, not just the first few, so 國 opens onto its complete set of compounds a page at a time. Word cards work the other way as well: 학생 tells you how many larger words contain it and opens a ranked list of them, so you can climb from 학생 up to 대학생 and 중학생 as easily as you came down.
-
-A breadcrumb trail across the top records where you have been and takes you back to any earlier step with one click, so you can follow a thread several levels deep without losing your place.
-
-The popup can be resized by dragging its corner when a card has more in it than you want to scroll through.
+Compound lists are complete, a page at a time, and word cards climb upward too: 학생 opens a list of 대학생, 중학생, and the rest. A breadcrumb trail returns to any earlier step.
 
 --  SAVED WORDS AND ANKI EXPORT  --
 
-Every card carries a star. Starring an entry saves it and lets you file it into a folder on the spot. The Saved view in the sidebar manages the collection: folders can be created, renamed, collapsed, and cleared, and entries can be moved or deleted in batches.
-
-Saved words export as an Anki text file or as a CSV spreadsheet. The settings page picks which fields go on the front and back of the Anki cards, and folder names come along as Anki tags.
+Star any card to save it into a folder. Folders export as an Anki text file (settings picks the card fields, folder names become tags) or as a CSV.
 
 --  MULTIPLE SPELLINGS AND NATIVE WORDS  --
 
-When a Korean word has several hanja spellings, you get all of them. 사기 offers 詐欺, 沙器, 士氣, 史記 and more in a selector you can switch between.
-
-Native Korean words return nothing rather than a forced match, so 하늘 and 아름다움 produce no popup. When a common native word shares its sound with an obscure hanja spelling, the entry is labelled a rare homograph instead of being presented as that word's etymology.
+A word with several hanja spellings shows all of them (사기: 詐欺, 士氣, 沙器, and more). Native Korean words return nothing rather than a forced match, and an obscure hanja spelling of a common native word is labelled a rare homograph, not the word's origin.
 
 --  WHAT IS INSIDE  --
 
@@ -85,8 +71,8 @@ Native Korean words return nothing rather than a forced match, so 하늘 and 아
 
 --  PRIVATE AND OFFLINE  --
 
-The whole dictionary ships inside the extension. Okpyeon makes no network requests, collects no data, and works with no internet connection. Saved words live in the browser's local extension storage on your device.
+The whole dictionary ships inside the extension: no network requests, no data collection. Saved words stay on your device.
 
 --  SOURCES  --
 
-Readings, definitions and compounds come from English Wiktionary via the kaikki.org machine readable extracts, used under CC BY-SA. Variant mappings come from Wiktionary and the Unicode Unihan database. Character decompositions come from the BabelStone IDS database, which is in the public domain. The middle school and high school tiers of the Ministry of Education basic hanja list come from the Korean Wikipedia article 대한민국 중고등학교 기초한자 목록, used under CC BY-SA 4.0. The Advanced and Rare levels are Okpyeon's own classification.
+Definitions and compounds: English Wiktionary via kaikki.org (CC BY-SA). Variant mappings: Wiktionary and Unicode Unihan. Decompositions: BabelStone IDS (public domain). School tiers: the Korean Wikipedia article 대한민국 중고등학교 기초한자 목록 (CC BY-SA 4.0). The Advanced and Rare levels are Okpyeon's own classification.
