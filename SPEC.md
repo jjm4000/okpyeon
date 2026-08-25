@@ -392,6 +392,23 @@ Service worker behavior:
     under it. On fetch failure the control reappears as the retry path;
     if the fetched index exceeds the estimate, the control surfaces with
     the corrected count.
+  - Show-all drill (user-directed 2026-08-24): beside "Show 5 more (N)"
+    sits a second control, "Show all (T)" (T = the full index count,
+    from `cwCount` until the fetched index corrects it), which opens
+    the COMPLETE compound index as its own view. The view is the
+    used-in view verbatim — kind `usedin` with the char standing as the
+    word, title "T words contain 無", crumb label "Used in", every row
+    the shared entry-row builder's nav row — because a char's compound
+    index IS the set of words that contain it. The view key is
+    "cpds:<char>" (not "usedin:<char>", so a single-char word's own
+    used-in view can never collide). The control fetches through the
+    same cached `{type:"compounds"}` join, seq-guarded; on failure it
+    stays pressable as the retry, exactly like the used-in row. It
+    appears and disappears WITH "Show 5 more": present only when a
+    genuine second page exists, absent under the whole-card rule, and
+    removed once in-place reveal exhausts the index. The pushed view
+    always shows the full index, regardless of how many rows were
+    already revealed inline.
   - Applies to char cards everywhere they appear (top-level, nested
     component cards, drill-down views).
 - Wiktionary links (ADDENDUM): every word card and char card carries a small

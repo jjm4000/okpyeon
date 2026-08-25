@@ -2531,6 +2531,8 @@
       cpdRows().length === 3 &&
       (!api.query(".cpd-more") || api.query(".cpd-more").hidden === true),
       "rows=" + cpdRows().length);
+    check("no visible show-all under the whole-card rule either",
+      !api.query(".cpd-all") || api.query(".cpd-all").hidden === true);
     fake.__failCompounds = true;
     api.showAt(anchor, u);
     await wait(90);
@@ -2549,10 +2551,14 @@
     api.showAt(anchor, [hak]);
     var topMoreSize = getComputedStyle(api.query(".cpd-more")).fontSize;
     api.showAt(anchor, fake.__lookup("학생").matches);
-    var nestedMore = api.queryAll(".component-list > .card.component .cpd-more");
+    var nestedMore = api.queryAll(".component-list > .card.component .cpd-more:not(.cpd-all)");
     check("nested component char cards get the control too",
       nestedMore.length === 1 && nestedMore[0].textContent === "Show 5 more (13)",
       nestedMore.map(function (b) { return b.textContent; }).join("|"));
+    var nestedAll = api.queryAll(".component-list > .card.component .cpd-all");
+    check("nested component char cards get show-all too",
+      nestedAll.length === 1 && nestedAll[0].textContent === "Show all (17)",
+      nestedAll.map(function (b) { return b.textContent; }).join("|"));
     check("nested control keeps the smaller nested scale",
       parseFloat(getComputedStyle(nestedMore[0]).fontSize) < parseFloat(topMoreSize),
       topMoreSize + " → " + getComputedStyle(nestedMore[0]).fontSize);
@@ -2579,6 +2585,89 @@
     check("chars without a cw index render no control",
       !api.query(".cpd-more") && api.queryAll(".compounds > .compound-row").length === 5,
       "rows=" + api.queryAll(".compounds > .compound-row").length);
+
+    // --- ADDENDUM: "Show all (T)" opens the index as a used-in view ------
+    function allBtnText() {
+      var b = api.query(".cpd-all");
+      return b ? b.textContent : "none";
+    }
+    function allViewRows() { return api.queryAll(".usedin-list > .usedin-item"); }
+
+    api.showAt(anchor, [hak]);                 // fresh session: caches cleared
+    check("show-all renders beside show-more with the index total",
+      allBtnText() === "Show all (17)" &&
+      api.query(".cpd-all").previousSibling === api.query(".cpd-more"),
+      allBtnText());
+
+    var cpdCallsBeforeAll = fake.__compoundCalls;
+    var depthBeforeAll = api.viewDepth();
+    api.query(".cpd-all").click();
+    await wait(90);
+    check("show-all sends exactly ONE compounds request",
+      fake.__compoundCalls === cpdCallsBeforeAll + 1 && fake.__lastChar === "學",
+      "compoundCalls " + cpdCallsBeforeAll + " → " + fake.__compoundCalls);
+    check("show-all opens the full index as its own used-in view",
+      api.viewDepth() === depthBeforeAll + 1 && !!api.query(".card.usedin"),
+      "depth=" + api.viewDepth());
+    check("the view is titled with the full index count",
+      api.query(".card.usedin .reading-title").textContent === "17 words contain 學",
+      JSON.stringify(api.query(".card.usedin .reading-title") &&
+        api.query(".card.usedin .reading-title").textContent));
+    check("every index entry renders as a row, all of them nav rows",
+      allViewRows().length === 17 && allViewRows().every(function (r) {
+        return r.classList.contains("nav");
+      }), "rows=" + allViewRows().length);
+    check("the drill gets the cpds: key and the Used in crumb",
+      /,cpds:學$/.test(api.viewKeys().join(",")) &&
+      api.crumbLabels().join(" › ") === "學 › Used in",
+      api.viewKeys().join(",") + " | " + api.crumbLabels().join(" › "));
+
+    var allNavRow = allViewRows().filter(function (r) {
+      return /大學/.test(r.textContent) && !/大學生/.test(r.textContent);
+    })[0];
+    var callsBeforeAllNav = fake.__calls;
+    allNavRow.click();
+    await wait(90);
+    check("a show-all view row drills into that word's card",
+      api.viewDepth() === depthBeforeAll + 2 &&
+      api.query(".word-body .surface").textContent === "大學" &&
+      fake.__calls === callsBeforeAllNav + 1,
+      "depth=" + api.viewDepth() + " text=" + fake.__lastText);
+    check("the trail reads 學 › Used in › 大學",
+      api.crumbLabels().join(" › ") === "學 › Used in › 大學",
+      api.crumbLabels().join(" › "));
+    api.queryAll(".crumb")[0].click();
+    await wait(90);
+    check("crumb back from the show-all trail restores the char card",
+      api.viewDepth() === 1 && api.query(".surface").textContent === "學" &&
+      cpdRows().length === 5,
+      "depth=" + api.viewDepth() + " rows=" + cpdRows().length);
+    var cpdCallsAfterAllBack = fake.__compoundCalls;
+    api.query(".cpd-more").click();
+    await wait(90);
+    check("show-more after a show-all drill reuses the cached join",
+      cpdRows().length === 10 && fake.__compoundCalls === cpdCallsAfterAllBack,
+      "rows=" + cpdRows().length + " compoundCalls=" + fake.__compoundCalls);
+
+    // Failure: stay on the card, control stays pressable as the retry.
+    api.showAt(anchor, [hak]);                 // fresh session again
+    fake.__failCompounds = true;
+    var cpdCallsBeforeAllFail = fake.__compoundCalls;
+    var depthBeforeAllFail = api.viewDepth();
+    api.query(".cpd-all").click();
+    await wait(90);
+    check("failed show-all stays on the card, control pressable",
+      api.viewDepth() === depthBeforeAllFail && !api.query(".card.usedin") &&
+      api.query(".cpd-all").disabled === false &&
+      fake.__compoundCalls === cpdCallsBeforeAllFail + 1,
+      "depth=" + api.viewDepth());
+    fake.__failCompounds = false;
+    api.query(".cpd-all").click();
+    await wait(90);
+    check("show-all retry after a failure opens the view",
+      api.viewDepth() === depthBeforeAllFail + 1 && !!api.query(".card.usedin") &&
+      allViewRows().length === 17,
+      "depth=" + api.viewDepth() + " rows=" + allViewRows().length);
 
     // --- ADDENDUM: used-in disclosure (design option C) ------------------
     function usedInRows() { return api.queryAll(".usedin-list > .usedin-item"); }

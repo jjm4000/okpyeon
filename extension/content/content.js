@@ -483,6 +483,7 @@
     ".cpd-more:hover { background: var(--hover); }",
     ".cpd-more:disabled { opacity: 0.55; cursor: default; }",
     ".cpd-more:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }",
+    ".cpd-all { margin-left: 6px; }",
     // A step smaller inside a nested component card, like its Wiktionary link.
     ".card.component .cpd-more { font-size: 11px; padding: 2px 8px; }",
     /* ---- used-in: one collapsed disclosure row, then a dedicated view ---- */
@@ -2686,19 +2687,29 @@
     if (!remaining) return;
 
     var pending = null;   // full index minus everything already displayed
+    var indexTotal = total;   // cwCount estimate until the fetched index corrects it
     var button = el("button", "cpd-more");
     button.type = "button";
+    // "Show all (T)": the complete index as its own view (the used-in view,
+    // since a char's compound index is the set of words that contain it).
+    // Lives and dies with the show-more control: both exist only while a
+    // genuine second page does.
+    var allButton = el("button", "cpd-more cpd-all");
+    allButton.type = "button";
 
     function syncButton() {
       if (remaining <= 0) {
         if (button.parentNode) button.parentNode.removeChild(button);
+        if (allButton.parentNode) allButton.parentNode.removeChild(allButton);
         return;
       }
       button.textContent =
         "Show " + Math.min(COMPOUND_PAGE, remaining) + " more (" + remaining + ")";
+      allButton.textContent = "Show all (" + indexTotal + ")";
       // If the index turned out to hold more than the single-page estimate,
-      // the auto-reveal path must surface the control again.
+      // the auto-reveal path must surface the controls again.
       button.hidden = false;
+      allButton.hidden = false;
     }
 
     function revealNext() {
@@ -2740,6 +2751,7 @@
           var hanja = nonEmptyString(c.hanja);
           return !!hanja && !shown[hanja];
         });
+        indexTotal = list.length;
         remaining = pending.length;
         revealNext();
       });
@@ -2753,17 +2765,41 @@
       loadIndex();
     });
 
+    allButton.addEventListener("click", function (ev) {
+      ev.preventDefault();
+      ev.stopPropagation();     // never read as a click on a compound row
+      if (allButton.disabled) return;
+      var seq = requestSeq;     // dismissal or a new selection cancels this
+      allButton.disabled = true;
+      fetchCompounds(char).then(function (list) {
+        if (seq !== requestSeq) return;
+        allButton.disabled = false;
+        // Failure (or an empty index): stay on the card, keep the control
+        // pressable as the retry path, like the used-in row.
+        if (!list || !list.length) return;
+        indexTotal = list.length;
+        syncButton();
+        pushView({
+          key: "cpds:" + char,
+          label: "Used in",
+          matches: [{ kind: "usedin", word: char, rows: list }]
+        });
+      });
+    });
+
     syncButton();
     card.appendChild(button);
+    card.appendChild(allButton);
 
     if (rowCount + remaining <= MAX_COMPOUNDS) {
       // The whole index fits in what a card normally displays inline: render
       // it whole. MAX_COMPOUNDS deliberately, not COMPOUND_PAGE — the rule is
       // "no smaller than a normal card", and it must follow the inline cap if
-      // that cap ever changes. The button stays in the DOM but hidden, so a
+      // that cap ever changes. The buttons stay in the DOM but hidden, so a
       // failed fetch can fall back to the press-to-retry path.
       button.hidden = true;
-      loadIndex(function () { button.hidden = false; });
+      allButton.hidden = true;
+      loadIndex(function () { button.hidden = false; allButton.hidden = false; });
     }
   }
 

@@ -1650,6 +1650,23 @@
     check("show-more reveals 5 more rows in embed",
       cpdRows().length === 10, "rows=" + cpdRows().length);
 
+    check("show-all renders beside show-more in embed",
+      !!api.query(".cpd-all") &&
+      api.query(".cpd-all").textContent === "Show all (17)",
+      api.query(".cpd-all") && api.query(".cpd-all").textContent);
+    var cpdCallsBeforeAll = fake.__compoundCalls;
+    api.query(".cpd-all").click();
+    await wait(TAIL);
+    check("show-all opens the full index as a used-in view in embed",
+      !!api.query(".card.usedin") && api.viewDepth() === 2 &&
+      api.queryAll(".usedin-list > .usedin-item").length === 17 &&
+      fake.__compoundCalls === cpdCallsBeforeAll,
+      "depth=" + api.viewDepth() + " rows=" +
+      api.queryAll(".usedin-list > .usedin-item").length);
+    check("the show-all drill carries the Used in crumb in embed",
+      api.crumbLabels()[api.crumbLabels().length - 1] === "Used in",
+      api.crumbLabels().join(" › "));
+
     // --- whole-card rule: an index no larger than the inline cap ----------
     var cpdCallsBeforeU = fake.__compoundCalls;
     await embed.searchFor("又");

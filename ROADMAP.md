@@ -51,6 +51,12 @@ the 1.0 review clears anyway.
   within what a card shows inline, it renders whole; the Show-more
   control only appears when there is a genuine second page. Curated-empty
   cards (又) no longer show a header with nothing under it.
+- **Compound index as a view.** Beside "Show 5 more (N)" on char cards,
+  a "Show all (T)" control opens the complete compound index as its own
+  view: the used-in view with the char standing as the word ("161 words
+  contain 無"), crumb "Used in", every row a drill-down. In-place reveal
+  stays for small steps; the view serves the long tail. Both controls
+  appear and disappear together.
 - **Character level taxonomy.** Every character carries exactly one `lvl` of
   m/h/a/r, rendered as one of four level chips on char cards and reading-list
   rows: Middle school and High school (MOE curriculum tiers, from the CC BY-SA
