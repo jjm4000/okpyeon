@@ -1102,6 +1102,27 @@ def write_json(name, obj):
     return os.path.getsize(path)
 
 
+# Curated not-rare overrides (SPEC addendum, user-directed 2026-08-25):
+# everyday Sino-Korean words whose hangul collides with a common native or
+# grammatical word, so the rare predicate's native-contested branch cannot
+# credit them with hangul-keyed evidence and alt_inbound is too sparse to
+# rescue them. Hand-reviewed from the complete [rare & f<=5] slice (~115
+# senses). Review rule: unflag what an intermediate learner meets and should
+# see confidently; literary, specialist, and folk-spelling flags stay
+# (生覺 梅雨 亞洲 滋味 保持 among them). Grows only by review; every pair
+# must fire during the build (see the dead-override SystemExit) and every
+# pair is anchored not-rare in verify(), so the list can neither rot nor
+# drift silently.
+NOT_RARE_OVERRIDES = {
+    ("距離", "거리"), ("無理", "무리"), ("大路", "대로"), ("以來", "이래"),
+    ("但只", "단지"), ("未安", "미안"), ("大臣", "대신"), ("大韓", "대한"),
+    ("記者", "기자"), ("無視", "무시"), ("普通", "보통"), ("時節", "시절"),
+    ("有利", "유리"), ("要塞", "요새"), ("支持", "지지"), ("被害", "피해"),
+    ("傳統", "전통"), ("彫刻", "조각"), ("組閣", "조각"), ("拋棄", "포기"),
+    ("死因", "사인"), ("驛舍", "역사"), ("自主", "자주"),
+}
+
+
 def verify(hanja_obj, words_obj, variants_obj, rr_obj=None, decomp_obj=None):
     chars_out = hanja_obj["chars"]
     words_out = words_obj["words"]
@@ -1293,7 +1314,13 @@ def verify(hanja_obj, words_obj, variants_obj, rr_obj=None, decomp_obj=None):
                 # real words with no Wiktionary attestation, rescued by the
                 # external corpus
                 ("意中", "의중"), ("正史", "정사"), ("療養院", "요양원")]
-    rare_anchors = [("舍廊", "사랑"), ("牛李", "우리")]
+    # The overrides are anchored not-rare here so verify_only() catches a
+    # stale words.json too; the did-it-fire half lives in the build pass.
+    not_rare += sorted(NOT_RARE_OVERRIDES)
+    rare_anchors = [("舍廊", "사랑"), ("牛李", "우리"),
+                    # correctly-flagged homographs of common hangul that the
+                    # override review deliberately KEPT rare
+                    ("假裝", "가장"), ("丁抹", "정말"), ("生覺", "생각")]
     bad = []
     for sp, hg in not_rare:
         s = sense_of(sp, hg)
@@ -1306,7 +1333,30 @@ def verify(hanja_obj, words_obj, variants_obj, rr_obj=None, decomp_obj=None):
     add("rare-flag anchors", not bad,
         "; ".join(bad) if bad else
         "not rare: 國民 學校 資本主義 感謝 士氣 史記 監査 修道 意中 正史 療養院"
-        " | rare: 舍廊 牛李")
+        " + %d overrides | rare: 舍廊 牛李 假裝 丁抹 生覺"
+        % len(NOT_RARE_OVERRIDES))
+    # Curated compounds carry the rare flag under the runtime join's rule
+    # (every sense of the spelling rare): emitted and joined surfaces must
+    # be incapable of disagreeing. 丁抹 sits in 丁's inline list flagged;
+    # 無理 sits in 無's inline list unflagged (via the override).
+    def inline_cpd(char, sp):
+        e = chars_out.get(char)
+        for x in (e["compounds"] if e else []):
+            if x["hanja"] == sp:
+                return x
+        return None
+    jeongmal = inline_cpd("丁", "丁抹")
+    muri = inline_cpd("無", "無理")
+    add("inline compound rare matches the join rule",
+        jeongmal is not None and jeongmal.get("rare") is True
+        and muri is not None and "rare" not in muri
+        and all(bool(x.get("rare"))
+                == (x["hanja"] in words_out
+                    and all(s.get("rare") for s in words_out[x["hanja"]]))
+                for e in chars_out.values() for x in e["compounds"]
+                if x.get("hanja")),
+        "丁抹=%s 無理=%s" % (json.dumps(jeongmal, ensure_ascii=False),
+                            json.dumps(muri, ensure_ascii=False)))
     add("byHangul puts non-rare first",
         all(not any(all(x.get("rare") for x in words_out[a])
                     and not all(x.get("rare") for x in words_out[b])
@@ -1867,11 +1917,22 @@ def main(argv):
                 and ext_freq.get(hangul, 0) == 0)
 
     n_rare = 0
+    override_fired = set()
     for sp, lst in words_out.items():
         for sense in lst:
             if is_rare(sp, sense["hangul"]):
+                if (sp, sense["hangul"]) in NOT_RARE_OVERRIDES:
+                    override_fired.add((sp, sense["hangul"]))
+                    continue
                 sense["rare"] = True
                 n_rare += 1
+    dead = NOT_RARE_OVERRIDES - override_fired
+    if dead:
+        # A dead override means the heuristic or data moved under the list:
+        # either the pair vanished from words.json or the predicate stopped
+        # flagging it. Both deserve a human look, not a silent pass.
+        raise SystemExit("dead not-rare override(s): "
+                         + ", ".join(sorted("%s(%s)" % p for p in dead)))
     # ---- frequency bucket (SPEC romanized-search addendum) -----------
     # `f` is derived from the hangul, so every sense-set sharing a reading
     # gets the same bucket; see freq_bucket() above for the boundaries.
@@ -2004,7 +2065,16 @@ def main(argv):
             if v[0] in seen_hangul:
                 continue
             seen_hangul.add(v[0])
-            compounds.append({"hangul": v[0], "hanja": k, "gloss": v[1]})
+            row = {"hangul": v[0], "hanja": k, "gloss": v[1]}
+            # SPEC drift fix: carry rare under EXACTLY the runtime join's
+            # rule (joinSpellings in lookup.js: every sense of the spelling
+            # rare), so the inline five and the show-all/used-in views are
+            # incapable of disagreeing. A curated spelling with no
+            # words.json record gets no flag - no join view renders it.
+            senses = words_out.get(k)
+            if senses and all(s.get("rare") for s in senses):
+                row["rare"] = True
+            compounds.append(row)
             if len(compounds) == 8:
                 break
         eumhun = list(e["eumhun"].values())

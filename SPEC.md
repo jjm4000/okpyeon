@@ -75,6 +75,14 @@ exists in hanja.json. Self-mappings omitted.
 - `glosses`: short English definitions, deduped, max ~6.
 - `compounds`: top compounds containing this character, ranked most-common first,
   max 8. `gloss` is a single short English gloss.
+  Rare on curated entries (ADDENDUM — drift fix, user-directed 2026-08-25):
+  an entry carries `"rare": true` under EXACTLY the runtime join's rule —
+  when every words.json sense of its spelling is rare-flagged (omitted
+  otherwise, and omitted when the spelling has no words.json record at
+  all, in which case no join view can ever disagree with it). Before this
+  the inline five rendered unmarked while the same word carried the muted
+  rare treatment in the show-all/used-in views and revealed rows; the two
+  surfaces must agree, and the joins were the SPEC-correct side.
 - `lvl` (ADDENDUM — character level taxonomy, REPLACES the earlier edu/eduT
   fields; nothing shipped them, migrate cleanly): EVERY char entry carries
   exactly one of `"m" | "h" | "a" | "r"`:
@@ -156,6 +164,26 @@ Sanity anchors: 국민/학교/자본주의 NOT rare; 舍廊 (사랑) and 牛李 
 Purpose: hangul reverse lookups that hit only obscure homographs of common
 native words must not present as confident matches. The flag is omitted when
 false.
+
+Curated not-rare overrides (ADDENDUM — user-directed 2026-08-25): the
+native-contested branch of the predicate refuses all hangul-keyed evidence
+(correct: it is what keeps 舍廊 and 假裝 flagged) but thereby also flags
+everyday Sino-Korean words whose hangul collides with a common native or
+grammatical word — 距離 (거리) and 無理 (무리) rendered the full hedge
+banner. No automatic signal in the current inputs separates the two
+classes: containment attestation ("appears inside non-rare larger words")
+rescues 無理 via 無理數 but equally rescues 舍廊 via the genuinely common
+사랑방, breaking the anchor. So build.py carries a hand-reviewed NOT_RARE
+override set (seeded from the complete [rare & f≤5] slice, ~115 senses;
+review rule: unflag words an intermediate learner meets and should see
+confidently — 記者 普通 支持 被害 傳統 拋棄 無視 距離 無理 大路 以來 —
+keep literary/specialist/folk-spelling flags — 生覺 梅雨 亞洲 滋味 保持).
+Every override must FIRE (the predicate would have flagged it); a dead
+override fails the build's verify step, so the list cannot silently rot as
+the heuristic or data moves. The anchors pin both directions: overridden
+words not rare, 舍廊/牛李/假裝/丁抹/生覺 still rare. A future
+spelling-keyed evidence source (derived-form etymologies: 무리하다 citing
+無理) may shrink this list; it must never grow except by review.
 
 `byHangul` (ADDENDUM — reverse lookup): hangul spelling → array of hanja spellings
 that appear as keys in `words`. One entry per sino-Korean word; multiple hanja

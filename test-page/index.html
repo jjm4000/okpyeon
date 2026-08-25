@@ -2480,8 +2480,21 @@
     api.showAt(anchor, [{ kind: "char", surface: "長", canonical: "長",
       eumhun: [{ hun: "긴", eum: "장" }], readings: ["장"], glosses: [],
       compounds: [{ hangul: "장문", hanja: "長文",
-        gloss: "an extremely long piece of writing that will certainly not fit on a single line of this popup" }] }]);
+        gloss: "an extremely long piece of writing that will certainly not fit on a single line of this popup" },
+      // SPEC drift fix: curated inline entries carry `rare` straight from
+      // the build (join rule), so the inline five and the show-all view
+      // can never disagree. This row pins the inline rendering path.
+      { hangul: "장죽", hanja: "長竹",
+        gloss: "long-stemmed bamboo tobacco pipe", rare: true }] }]);
     check("that compound row is navigable", cpdRows()[0].classList.contains("nav"));
+    check("an INLINE rare compound renders the muted rare treatment",
+      cpdRows()[1].classList.contains("rare") &&
+      !!cpdRows()[1].querySelector(".cpd-rare") &&
+      getComputedStyle(cpdRows()[1].querySelector(".cpd-hangul")).color !==
+      getComputedStyle(cpdRows()[0].querySelector(".cpd-hangul")).color,
+      getComputedStyle(cpdRows()[1].querySelector(".cpd-hangul")).color);
+    check("an inline rare compound still navigates",
+      cpdRows()[1].classList.contains("nav"));
     var cpdMore = api.query(".compounds .more");
     check("overlong compound row still gets its expander", !!cpdMore);
     var depthBeforeCpdMore = api.viewDepth();
