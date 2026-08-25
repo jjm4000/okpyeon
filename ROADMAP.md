@@ -4,11 +4,37 @@ Working list of planned changes. Ordering within a release is not priority
 order. The next store upload ships whatever is merged and verified when the
 current review clears.
 
-## 1.1: ready, awaiting 1.0 store review
+## 1.1.1: open, collecting fixes
 
-Everything below is merged on `main` and verified. It is one release: 1.0.1
-was folded in rather than shipped separately, since nothing goes out until
-the 1.0 review clears anyway.
+Everything after the v1.1.0 tag lands here. The manifest is bumped to
+1.1.1 and the zip builds as okpyeon-1.1.1.zip; more fixes may join
+before this goes to the store.
+
+- **Compound index as a view.** Beside "Show 5 more (N)" on char cards,
+  a "Show all (T)" control opens the complete compound index as its own
+  view: the used-in view with the char standing as the word ("161 words
+  contain 無"), crumb "Used in", every row a drill-down. In-place reveal
+  stays for small steps; the view serves the long tail. Both controls
+  appear and disappear together.
+- **Rare flag corrections.** Two fixes the show-all view surfaced.
+  Curated inline compounds now carry the same rare flag the drill views
+  join at runtime (the two surfaces could disagree on the same word; the
+  joins were the SPEC-correct side, verified by a build anchor that makes
+  disagreement impossible). And a hand-reviewed not-rare override list
+  fixes the rare heuristic's worst misfires on native-contested hangul:
+  거리(距離), 무리(無理), 대로(大路), 이래(以來) no longer render the
+  "likely native Korean" hedge banner, and everyday words like 기자(記者),
+  보통(普通), 지지(支持), 피해(被害), 전통(傳統), 포기(拋棄) lose their
+  wrong RARE markers. 23 overrides, each verified to fire during the
+  build (a dead override aborts it) and anchored not-rare in verify;
+  舍廊, 假裝, 丁抹, and 生覺 are anchored still-rare so the hedge keeps
+  doing its real job. Character levels were unaffected.
+
+## 1.1: frozen at the v1.1.0 tag
+
+Everything below is merged on `main` and verified; the v1.1.0 tag marks
+it. It is one release: 1.0.1 was folded in rather than shipped
+separately, since nothing went out until the 1.0 review cleared anyway.
 
 - **Typed search in a sidebar.** Clicking the toolbar icon toggles a
   persistent side panel: a search box over the same cards, drill-downs and
@@ -51,25 +77,6 @@ the 1.0 review clears anyway.
   within what a card shows inline, it renders whole; the Show-more
   control only appears when there is a genuine second page. Curated-empty
   cards (又) no longer show a header with nothing under it.
-- **Compound index as a view.** Beside "Show 5 more (N)" on char cards,
-  a "Show all (T)" control opens the complete compound index as its own
-  view: the used-in view with the char standing as the word ("161 words
-  contain 無"), crumb "Used in", every row a drill-down. In-place reveal
-  stays for small steps; the view serves the long tail. Both controls
-  appear and disappear together.
-- **Rare flag corrections.** Two fixes the show-all view surfaced.
-  Curated inline compounds now carry the same rare flag the drill views
-  join at runtime (the two surfaces could disagree on the same word; the
-  joins were the SPEC-correct side, verified by a build anchor that makes
-  disagreement impossible). And a hand-reviewed not-rare override list
-  fixes the rare heuristic's worst misfires on native-contested hangul:
-  거리(距離), 무리(無理), 대로(大路), 이래(以來) no longer render the
-  "likely native Korean" hedge banner, and everyday words like 기자(記者),
-  보통(普通), 지지(支持), 피해(被害), 전통(傳統), 포기(拋棄) lose their
-  wrong RARE markers. 23 overrides, each verified to fire during the
-  build (a dead override aborts it) and anchored not-rare in verify;
-  舍廊, 假裝, 丁抹, and 生覺 are anchored still-rare so the hedge keeps
-  doing its real job. Character levels were unaffected.
 - **Character level taxonomy.** Every character carries exactly one `lvl` of
   m/h/a/r, rendered as one of four level chips on char cards and reading-list
   rows: Middle school and High school (MOE curriculum tiers, from the CC BY-SA
