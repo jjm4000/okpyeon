@@ -3507,5 +3507,130 @@ await testAsync("smoke: the real found-in index holds 人 ⊃ 依, 辶 ⊃ 道, 
   );
 });
 
+// ---------------------------------------------------------------------------
+// rr.js — forward romanization port (SPEC "Romanized search v2")
+// ---------------------------------------------------------------------------
+
+console.log("\nrr.js");
+
+const { naive, official, translit, forms } = await import("../extension/rr.js");
+
+// The SPEC v2 anchor pairs. `officialForm` is the binding official reading;
+// `naiveForm` is what rr.py's naive() actually emits, which must differ from
+// the official form exactly where the sound changes fire.
+const RR_ANCHORS = [
+  { hangul: "국민", officialForm: "gungmin", naiveForm: "gukmin" },
+  { hangul: "종로", officialForm: "jongno", naiveForm: "jongro" },
+  { hangul: "같이", officialForm: "gachi", naiveForm: "gati" },
+  { hangul: "좋고", officialForm: "joko", naiveForm: "jotgo" },
+  { hangul: "신라", officialForm: "silla", naiveForm: "sinra" },
+  { hangul: "한라산", officialForm: "hallasan", naiveForm: "hanrasan" },
+  { hangul: "학여울", officialForm: "hangnyeoul", naiveForm: "hakyeoul" },
+  { hangul: "좋아", officialForm: "joa", naiveForm: "jota" },
+];
+
+test("rr anchors: official readings match the SPEC pairs", () => {
+  for (const { hangul, officialForm } of RR_ANCHORS) {
+    assert.equal(official(hangul), officialForm, hangul);
+    assert.ok(forms(hangul).includes(officialForm), `${hangul} forms lack ${officialForm}`);
+  }
+});
+
+test("rr anchors: the naive form differs where sound changes fire", () => {
+  for (const { hangul, officialForm, naiveForm } of RR_ANCHORS) {
+    assert.equal(naive(hangul), naiveForm, hangul);
+    assert.notEqual(naiveForm, officialForm, hangul);
+    // forms() leads with the naive form, per rr.py's ordering.
+    assert.equal(forms(hangul)[0], naiveForm, hangul);
+  }
+});
+
+test("rr ambiguity readings: ㄴ+ㄹ and ㄴ-insertion index both sides", () => {
+  assert.deepEqual(forms("신라"), ["sinra", "sinla", "silla", "sinna"]);
+  assert.deepEqual(forms("한라산"), ["hanrasan", "hanlasan", "hallasan", "hannasan"]);
+  assert.deepEqual(forms("학여울"), ["hakyeoul", "hagyeoul", "hangnyeoul"]);
+});
+
+test("rr edge shapes: non-hangul behaves like rr.py", () => {
+  assert.equal(naive("abc"), null);
+  assert.equal(official("한a"), null);
+  assert.equal(translit("漢字"), null);
+  assert.deepEqual(forms("abc"), []);
+  assert.deepEqual(forms("국민 학교"), []);
+});
+
+// --- cross-implementation sweep against pipeline/rr.py -------------------
+
+await testAsync("sweep: JS forms() matches pipeline/rr.py over the shipped word lists", async () => {
+  const { spawnSync } = await import("node:child_process");
+  const { tmpdir } = await import("node:os");
+  const { mkdtemp, writeFile, rm } = await import("node:fs/promises");
+
+  const probe = spawnSync("python", ["--version"], { encoding: "utf8" });
+  if (probe.error || probe.status !== 0) {
+    console.log("      SKIPPED — python not on PATH; rr.py equivalence NOT verified");
+    return;
+  }
+
+  let wordSet;
+  try {
+    const [w, n] = await Promise.all([
+      readFile(join(dataDir, "words.json"), "utf8"),
+      readFile(join(dataDir, "native.json"), "utf8"),
+    ]);
+    wordSet = new Set([
+      ...Object.keys(JSON.parse(w).byHangul),
+      ...Object.keys(JSON.parse(n).words),
+    ]);
+  } catch (err) {
+    console.log(`      SKIPPED — data files unreadable (${err.code || err.name}); rr.py equivalence NOT verified`);
+    return;
+  }
+  for (const { hangul } of RR_ANCHORS) wordSet.add(hangul);
+  const wordList = [...wordSet];
+
+  const pyScript = [
+    "import sys, json, io",
+    "sys.path.insert(0, sys.argv[1])",
+    "import rr",
+    "words = json.load(open(sys.argv[2], encoding='utf-8'))",
+    "out = {w: rr.forms(w) for w in words}",
+    "json.dump(out, open(sys.argv[3], 'w', encoding='utf-8'), ensure_ascii=False)",
+  ].join("\n");
+
+  const workDir = await mkdtemp(join(tmpdir(), "rr-sweep-"));
+  try {
+    const inFile = join(workDir, "words.json");
+    const outFile = join(workDir, "forms.json");
+    await writeFile(inFile, JSON.stringify(wordList), "utf8");
+    const pipelineDir = join(dirname(fileURLToPath(import.meta.url)), "..", "pipeline");
+    const started = Date.now();
+    const run = spawnSync("python", ["-c", pyScript, pipelineDir, inFile, outFile], {
+      encoding: "utf8",
+      env: { ...process.env, PYTHONIOENCODING: "utf-8" },
+      timeout: 120000,
+    });
+    assert.equal(run.status, 0, `python failed: ${(run.stderr || "").slice(0, 500)}`);
+    const pyForms = JSON.parse(await readFile(outFile, "utf8"));
+
+    let mismatches = 0;
+    let firstDiff = null;
+    for (const w of wordList) {
+      const js = forms(w);
+      const py = pyForms[w];
+      if (JSON.stringify(js) !== JSON.stringify(py)) {
+        mismatches += 1;
+        if (!firstDiff) firstDiff = `${w}: js ${JSON.stringify(js)} py ${JSON.stringify(py)}`;
+      }
+    }
+    assert.equal(mismatches, 0, `${mismatches} mismatches, first: ${firstDiff}`);
+    console.log(
+      `      (${wordList.length} words, python ${Date.now() - started}ms, all forms identical)`
+    );
+  } finally {
+    await rm(workDir, { recursive: true, force: true });
+  }
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed === 0 ? 0 : 1);
