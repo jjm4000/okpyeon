@@ -334,6 +334,20 @@ rel_pairs = {}
 # credited to a sino-Korean homograph like 舍廊 / 牛李.
 native_hangul = set()
 
+# native.json candidates (SPEC "Native Korean words" addendum): hangul
+# headword -> {pos: [glosses]}. One entry per (headword, POS); POS homonyms
+# merge senses within their entry. Proper nouns (`name`) are outside the
+# whitelist by design.
+native_entries = {}
+NATIVE_POS = {"noun", "verb", "adj", "adv", "intj", "det", "pron", "num",
+              "classifier"}
+# Senses below the quality bar. alt-of/form-of are soft redirects, not
+# definitions. obsolete/archaic/dated matters for correctness, not just
+# quality: 서울 has a dated common-noun sense ("capital; large city"), and
+# without this skip the proper-noun exclusion would not keep 서울 out.
+NATIVE_SKIP_SENSE = {"alt-of", "form-of", "no-gloss",
+                     "obsolete", "archaic", "dated"}
+
 stats = {"lines": 0, "parsed": 0, "char_senses": 0, "alt_senses": 0,
          "examples": 0, "hanja_headwords": 0}
 
@@ -624,6 +638,7 @@ def handle_word_entry(o):
         # no hanja at all: a native word competing for this hangul reading
         if any(s.get("glosses") for s in (o.get("senses") or [])):
             native_hangul.add(hangul)
+        collect_native(o, hangul)
         return
 
     glosses = []
@@ -647,6 +662,37 @@ def handle_word_entry(o):
     score = word_score(o)
     for sp in spellings:
         add_word(sp, hangul, glosses, score)
+
+
+def collect_native(o, hangul):
+    """native.json candidates, gathered on the same kaikki stream. The bar
+    is quality, NOT frequency (SPEC: a cutoff was measured and rejected).
+    A hanja spelling means sino-Korean, words.json territory; the test is
+    the "hanja" form tag, not the presence of han characters, because a
+    native word may carry a rare untagged transcription (사랑's 思郞,
+    tagged "sometimes") that must not disqualify it."""
+    pos = o.get("pos") or ""
+    if pos not in NATIVE_POS:
+        return
+    for f in o.get("forms") or []:
+        if "hanja" in (f.get("tags") or []):
+            return
+    for h in o.get("head_templates") or []:
+        if (h.get("args") or {}).get("hanja"):
+            return
+    # Entries whose senses all fail the bar leave an empty gloss list here;
+    # the emit step drops those rather than shipping glossless rows.
+    glosses = native_entries.setdefault(hangul, {}).setdefault(pos, [])
+    for s in o.get("senses") or []:
+        tags = set(s.get("tags") or [])
+        if tags & NATIVE_SKIP_SENSE or s.get("alt_of") or s.get("form_of"):
+            continue
+        gl = s.get("glosses") or []
+        # gl[-1] is the most specific level of a nested gloss, as in
+        # handle_word_entry above.
+        if not gl or RE_SKIP_GLOSS.match(gl[-1] or ""):
+            continue
+        push_gloss(glosses, clean_gloss(gl[-1]), 3)
 
 
 def add_word(sp, hangul, glosses, score, hanja_page=False):
@@ -1123,7 +1169,8 @@ NOT_RARE_OVERRIDES = {
 }
 
 
-def verify(hanja_obj, words_obj, variants_obj, rr_obj=None, decomp_obj=None):
+def verify(hanja_obj, words_obj, variants_obj, rr_obj=None, decomp_obj=None,
+           native_obj=None):
     chars_out = hanja_obj["chars"]
     words_out = words_obj["words"]
     by_hangul = words_obj["byHangul"]
@@ -1597,6 +1644,35 @@ def verify(hanja_obj, words_obj, variants_obj, rr_obj=None, decomp_obj=None):
         "時間=%s 學校=%s 國民=%s 翌月=%s (unranked)"
         % (f_sigan, f_hakgyo, f_guk, f_igwol))
 
+    # --- native.json (SPEC "Native Korean words" addendum) -------------
+    if native_obj is not None:
+        nw = native_obj["words"]
+
+        def ngloss(h):
+            return [g for e in nw.get(h) or [] for g in e["glosses"]]
+
+        add("native: 하늘 present with a sky gloss",
+            any(re.search(r"\bsky\b", g, re.I) for g in ngloss("하늘")),
+            json.dumps(nw.get("하늘"), ensure_ascii=False))
+        add("native: 사랑 present with a love gloss",
+            any(re.search(r"\blove\b", g, re.I) for g in ngloss("사랑")),
+            json.dumps(nw.get("사랑"), ensure_ascii=False))
+        add("native: 먹다 present as a verb",
+            any(e["pos"] == "verb" for e in nw.get("먹다") or []),
+            json.dumps(nw.get("먹다"), ensure_ascii=False))
+        add("native: 국민 absent (sino)", "국민" not in nw,
+            json.dumps(nw.get("국민"), ensure_ascii=False))
+        add("native: 서울 absent (proper noun)", "서울" not in nw,
+            json.dumps(nw.get("서울"), ensure_ascii=False))
+        add("native: count sane (16,331 measured 2026-08-31)",
+            12000 <= len(nw) <= 22000,
+            "%s headwords" % format(len(nw), ","))
+        add("native: maxLen matches the longest key",
+            native_obj["maxLen"] == max((len(h) for h in nw), default=0),
+            "maxLen %s, longest key %s syllables"
+            % (native_obj["maxLen"],
+               max((len(h) for h in nw), default=0)))
+
     failed = 0
     log("=============== SPOT CHECKS ================")
     for name, ok, detail in checks:
@@ -1619,11 +1695,17 @@ def verify_only():
         d = rd("decomp.json")
     except (OSError, ValueError):
         d = None
-    log("chars %s | words %s | byHangul %s | variants %s | decomp %s" % (
-        format(len(h["chars"]), ","), format(len(w["words"]), ","),
-        format(len(w["byHangul"]), ","), format(len(v["map"]), ","),
-        format(len(d["parts"]), ",") if d else "-"))
-    return verify(h, w, v, r, d)
+    try:
+        n = rd("native.json")
+    except (OSError, ValueError):
+        n = None
+    log("chars %s | words %s | byHangul %s | variants %s | decomp %s | "
+        "native %s" % (
+            format(len(h["chars"]), ","), format(len(w["words"]), ","),
+            format(len(w["byHangul"]), ","), format(len(v["map"]), ","),
+            format(len(d["parts"]), ",") if d else "-",
+            format(len(n["words"]), ",") if n else "-"))
+    return verify(h, w, v, r, d, n)
 
 
 # ---------------------------------------------------------------- main
@@ -2231,11 +2313,24 @@ def main(argv):
     words_obj = {"version": 1, "words": words_out, "byHangul": by_hangul,
                  "maxWordLen": max_word_len, "maxHangulLen": max_hangul_len}
     variants_obj = {"version": 1, "map": variant_map}
+    # native.json (SPEC ADDENDUM 2026-08-31): its own file, NOT merged into
+    # words.json, so the sino lookup path never pays for it. Entry arrays are
+    # sorted by POS because sort_keys never reorders arrays.
+    native_words = {}
+    for hangul, by_pos in native_entries.items():
+        rows = [{"pos": p, "glosses": g}
+                for p, g in sorted(by_pos.items()) if g]
+        if rows:
+            native_words[hangul] = rows
+    native_obj = {"version": 1,
+                  "maxLen": max((len(h) for h in native_words), default=0),
+                  "words": native_words}
     s_h = write_json("hanja.json", hanja_obj)
     s_w = write_json("words.json", words_obj)
     s_v = write_json("variants.json", variants_obj)
     s_r = write_json("rr.json", rr_obj)
     s_d = write_json("decomp.json", decomp_obj)
+    s_n = write_json("native.json", native_obj)
 
     # ---- report -------------------------------------------------------
     log("\n================= COUNTS ===================")
@@ -2243,6 +2338,8 @@ def main(argv):
     log("words      : %-9s (expect >= 20000)" % format(len(words_out), ","))
     log("byHangul   : %-9s" % format(len(by_hangul), ","))
     log("variants   : %-9s (expect >= 1000)" % format(len(variant_map), ","))
+    log("native     : %-9s (expect ~ 16000; maxLen %d)"
+        % (format(len(native_words), ","), native_obj["maxLen"]))
     log("  variant sources: " + ", ".join(
         "%s=%d" % (PRIO_NAMES[k], v) for k, v in sorted(src_counts.items())))
     zones = collections.Counter(e["lvl"] for e in chars_out.values())
@@ -2263,9 +2360,11 @@ def main(argv):
     log("variants.json : %s" % mb(s_v))
     log("rr.json       : %s" % mb(s_r))
     log("decomp.json   : %s" % mb(s_d))
-    log("total         : %s" % mb(s_h + s_w + s_v + s_r + s_d))
+    log("native.json   : %s" % mb(s_n))
+    log("total         : %s" % mb(s_h + s_w + s_v + s_r + s_d + s_n))
 
-    failed = verify(hanja_obj, words_obj, variants_obj, rr_obj, decomp_obj)
+    failed = verify(hanja_obj, words_obj, variants_obj, rr_obj, decomp_obj,
+                    native_obj)
     log("============================================")
     log("done in %.1fs; %d failed check(s)" % (time.time() - t0, failed))
     raise SystemExit(1 if failed else 0)

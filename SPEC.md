@@ -1656,16 +1656,24 @@ rendering site below sits behind one settings predicate
 - Build filters (the bar is quality, NOT frequency — a cutoff was
   measured and rejected): kaikki Korean extract, `lang_code` ko; POS
   whitelist noun/verb/adj/adv/intj/det/pron/num/classifier; headword is
-  hangul-only; NO hanja form anywhere in `forms` (a hanja form means
-  Sino-Korean, words.json territory); at least one gloss that is not an
-  alt-of/form-of redirect; max 3 glosses per entry, full strings, never
-  cut (the no-truncation rule applies). Proper nouns (`name`) excluded.
+  hangul-only; no form TAGGED `hanja` and no `hanja` head-template arg
+  (a hanja form means Sino-Korean, words.json territory). The Sino
+  test is the tag, NOT the presence of Han characters: a native word
+  may carry a rare untagged transcription (사랑's 思郞, tagged
+  "sometimes") that must not disqualify it. Senses tagged
+  alt-of/form-of/no-gloss are redirects, not definitions; senses
+  tagged obsolete/archaic/dated are skipped too, which is correctness
+  as well as quality (서울 has a dated common-noun sense "capital",
+  and without the skip the proper-noun exclusion would not keep 서울
+  out). Max 3 glosses per entry, full strings, never cut (the
+  no-truncation rule applies). Proper nouns (`name`) excluded.
 - Deterministic emit (sort_keys), own file, NOT merged into words.json:
   the Sino lookup path must never pay for it.
 - Verify anchors: 하늘 present with a sky gloss; 사랑 present with a
   love gloss; 먹다 present (verb); 국민 ABSENT (Sino); 서울 ABSENT
-  (proper noun); count logged and sane (expect ≈ 16,000, from the
-  2026-08-31 measurement of 16,331); size logged (expect ≈ 1.6 MB).
+  (proper noun); count logged and sane (shipped: 15,527 headwords /
+  1.19 MB; the looser 2026-08-31 prototype measured 16,331, and the
+  verify band is 12,000..22,000); maxLen matches the longest key.
 - DATA-LICENSE.md: same source (English Wiktionary via kaikki.org,
   CC BY-SA); one line, no new licensing.
 
