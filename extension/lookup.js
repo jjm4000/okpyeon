@@ -9,6 +9,7 @@
  */
 
 import { qwertyToHangul } from "./dubeolsik.js";
+import { deromanize } from "./deromanize.js";
 
 /** Rule 1: cap the input at 20 relevant (Han + Hangul) characters. */
 export const MAX_RELEVANT_CHARS = 20;
@@ -861,89 +862,6 @@ export function isInterpretableQuery(text) {
   return typeof text === "string" && INTERPRETABLE_QUERY.test(text);
 }
 
-/** Variant rule (b): a leading tense/aspirate spelling for a lax initial. */
-const DEVOICE_LEADING = { k: "g", t: "d", p: "b" };
-
-/** Variant expansion is deliberately bounded; v1 caps the set at 8. */
-export const MAX_RR_VARIANTS = 8;
-
-/**
- * Romanization normalization: case, and the punctuation romanizations use to
- * mark syllable boundaries (`guk-min`, `han'gul`), are all noise against an
- * index built from unpunctuated forms.
- */
-export function normalizeRomanization(text) {
-  return typeof text === "string"
-    ? text.toLowerCase().replace(/[-'’\s]/g, "")
-    : "";
-}
-
-/**
- * The bounded variant set for a romanized query: the normalized form, plus
- * the three v1 spelling rules applied in combination. Rules are applied to
- * everything produced so far, so `kooksu` reaches `guksu`, and the total is
- * capped at MAX_RR_VARIANTS (three binary rules cannot exceed it, but the cap
- * is enforced anyway so no future rule can make this unbounded).
- *
- * @param {string} text raw (or already normalized) query
- * @returns {string[]} variants, normalized form first, deduped
- */
-export function romanizationVariants(text) {
-  const base = normalizeRomanization(text);
-  if (base === "") return [];
-  const out = [base];
-  const rules = [
-    // (b) a leading k/t/p is often the lax initial the index spells g/d/b.
-    (s) => (hasOwn(DEVOICE_LEADING, s[0]) ? DEVOICE_LEADING[s[0]] + s.slice(1) : null),
-    // (c) McCune-style `oo` for RR's `u`.
-    (s) => (s.includes("oo") ? s.replace(/oo/g, "u") : null),
-    // (d) `sh` before a vowel is RR's plain `s`.
-    (s) => (/sh[aeiou]/.test(s) ? s.replace(/sh(?=[aeiou])/g, "s") : null),
-  ];
-  for (const rule of rules) {
-    for (const seed of out.slice()) {
-      if (out.length >= MAX_RR_VARIANTS) break;
-      const next = rule(seed);
-      if (typeof next === "string" && next !== "" && !out.includes(next)) out.push(next);
-    }
-  }
-  return out;
-}
-
-/**
- * Every hangul string the rr index offers for a variant set: words first, then
- * single syllables, in rr.json's own order (which is frequency-sorted for
- * words). Deduped across variants.
- *
- * Native words ADDENDUM: rr.json is forward-generated from words.json alone,
- * so no native headword can ever come out of it. A flagged call passes
- * native.json's own `rr` map, and each variant consults it too: Sino words
- * first (frequency order), then native headwords (lexicographic order), then
- * syllables. Merging here, per variant, is what lets the query-side variant
- * expansion reach the native map as well.
- */
-function rrCandidates(variants, rr, nativeRr) {
-  const words = (rr && rr.words) || {};
-  const syllables = (rr && rr.syllables) || {};
-  const nativeWords = nativeRr || {};
-  const out = [];
-  const seen = new Set();
-  const take = (list) => {
-    if (!Array.isArray(list)) return;
-    for (const hangul of list) {
-      if (typeof hangul !== "string" || hangul === "" || seen.has(hangul)) continue;
-      seen.add(hangul);
-      out.push(hangul);
-    }
-  };
-  for (const variant of variants) {
-    if (hasOwn(words, variant)) take(words[variant]);
-    if (hasOwn(nativeWords, variant)) take(nativeWords[variant]);
-    if (hasOwn(syllables, variant)) take(syllables[variant]);
-  }
-  return out;
-}
-
 /** Identity of a match for dedupe purposes, per kind. */
 function matchKey(match) {
   if (match.kind === "word") return `w|${match.canonical}|${match.hangul}|${match.surface}`;
@@ -972,47 +890,155 @@ function dubeolsikInterpretation(raw, data, native) {
   return interp;
 }
 
+/** Coverage classes for the candidate collapse (SPEC v2 policy). */
+const CLASS_WHOLE = 0;    // the whole candidate is one dictionary unit
+const CLASS_COVERED = 1;  // covered end to end by word/native entries
+const CLASS_PARTIAL = 2;  // dictionary explains only part of the candidate
+
 /**
- * Interpretation 2: the romanization reading. Every candidate hangul the rr
- * index offers runs the NORMAL lookup — a word candidate takes the word path,
- * a single syllable takes the reading path — and the results merge in
- * candidate order (i.e. rr.json's frequency order), deduped.
+ * How many syllables of one hangul candidate the dictionary explains,
+ * mirroring the lookup itself: rule 3b spans first, then (flagged only) the
+ * native pass over the stretches the Sino resolver left, same floor and cap.
+ */
+function coveredSyllables(hangul, data, native) {
+  const bundle = data || {};
+  const byHangul = (bundle.words && bundle.words.byHangul) || {};
+  const chars = [...hangul];
+  const spans = segmentHangulRun(chars, byHangul, maxHangulLenOf(bundle.words));
+  let covered = 0;
+  for (const span of spans) covered += span.length;
+  if (!native) return covered;
+
+  const nativeWords = (bundle.native && bundle.native.words) || {};
+  const nativeMaxLen = nativeMaxLenOf(bundle.native);
+  const isNativeWord = (key) => {
+    if (!hasOwn(nativeWords, key)) return false;
+    const raw = nativeWords[key];
+    return (Array.isArray(raw) ? raw : []).some(
+      (e) => e && typeof e === "object" && typeof e.pos === "string"
+    );
+  };
+  const stretch = (slice) => {
+    for (const seg of greedySegment(asItems(slice), isNativeWord, MIN_HANGUL_WORD_LEN, nativeMaxLen)) {
+      if (seg.kind === "word") covered += seg.length;
+    }
+  };
+  let cursor = 0;
+  for (const span of spans) {
+    stretch(chars.slice(cursor, span.start));
+    cursor = span.start + span.length;
+  }
+  stretch(chars.slice(cursor));
+  return covered;
+}
+
+/**
+ * Interpretation 2: the romanization reading (SPEC "Romanized search v2").
+ * deromanize() generates ranked hangul candidate strings, tier 0 (the typed
+ * form is one of the candidate's own exact romanizations) before tier 1 (the
+ * habit-loosened rest), and EVERY candidate runs the NORMAL lookup, exactly
+ * as if the user had typed that hangul: a word candidate takes the word path,
+ * a single syllable takes the reading path, and the dictionary is the only
+ * gate (the parity rule).
+ *
+ * Surviving candidates collapse under the SPEC v2 coverage policy: each is
+ * classed by how much of it the dictionary explains, and ONLY the best class
+ * present contributes matches (whole-entry beats fully-covered beats
+ * partial). Within the partial class only the candidates with the maximal
+ * covered-syllable count merge, so a fragment can never add matches a better
+ * candidate lacks (mushihada must not surface 아다 beside 하다). Inside the
+ * winning pool, candidates order by tier, then by best frequency among
+ * whole-word readings (gungmin leads with 국민, not the rare surface reading
+ * 궁민), then word-bearing before native-only; the sort is stable, so
+ * remaining ties keep deromanize's order (fewest deviations first). `to` is
+ * the pool's best candidate, EXCEPT for a partial-class win, where `to` is
+ * the typed text itself: srcText derives from `to`, and no single hangul
+ * spelling is canonical for a partial parse (the multi-match-root rule
+ * generalized), so mushihaesseo roots as typed while class A/B root as the
+ * hangul.
  */
 function rrInterpretation(raw, data, native) {
-  // Only a flagged call may read native.json's rr map: the unflagged
-  // candidate space (and everything downstream of it) stays byte-identical.
-  const nativeRr = native ? (data && data.native && data.native.rr) || null : null;
-  const candidates = rrCandidates(romanizationVariants(raw), data && data.rr, nativeRr);
+  const wordTable = (data && data.words && data.words.words) || {};
+  const byHangul = (data && data.words && data.words.byHangul) || {};
+
+  // Pass 1: resolve every candidate; only survivors matter.
+  const survivors = [];
+  for (const { hangul, tier } of deromanize(raw)) {
+    const matches = buildMatches(hangul, data);
+    // Native words ADDENDUM: flagged calls consult the native table for every
+    // candidate too, and a native-only candidate still counts as explained.
+    const nativeMatches = native ? buildNativeMatches(hangul, data) : [];
+    if (matches.length === 0 && nativeMatches.length === 0) continue;
+    survivors.push({ hangul, tier, matches, nativeMatches });
+  }
+  if (survivors.length === 0) return null;
+
+  // Pass 2: classify by coverage. Whole is read off the resolved matches
+  // (a word match spanning the entire candidate, a reading list, which only
+  // ever fires for a whole single syllable, or a native entry for the whole
+  // string); the rest measure their covered syllables.
+  for (const s of survivors) {
+    const len = [...s.hangul].length;
+    const whole =
+      s.matches.some(
+        (m) => (m.kind === "word" && m.surface === s.hangul) || m.kind === "reading"
+      ) || s.nativeMatches.some((m) => m.word === s.hangul);
+    if (whole) {
+      s.cls = CLASS_WHOLE;
+      s.covered = len;
+    } else {
+      s.covered = coveredSyllables(s.hangul, data, native);
+      s.cls = s.covered === len ? CLASS_COVERED : CLASS_PARTIAL;
+    }
+  }
+  const bestClass = Math.min(...survivors.map((s) => s.cls));
+  let pool = survivors.filter((s) => s.cls === bestClass);
+  if (bestClass === CLASS_PARTIAL) {
+    const maxCovered = Math.max(...pool.map((s) => s.covered));
+    pool = pool.filter((s) => s.covered === maxCovered);
+  }
+
+  // Pass 3: rank the pool. The frequency comparison applies between
+  // WHOLE-WORD readings of the query only (the v1 index ranked exactly
+  // those); a partial candidate's best f describes a fragment, not the
+  // query, so it keeps generation order.
+  for (const s of pool) {
+    s.f = hasOwn(byHangul, s.hangul) ? bestFrequency(s, wordTable) : Infinity;
+    // Last tie key: a candidate with word matches outranks one the flagged
+    // native pass alone kept alive.
+    s.wordless = s.matches.some((m) => m.kind === "word") ? 0 : 1;
+  }
+  // Two Infinity ranks compare equal (Infinity minus Infinity is NaN, which
+  // would poison the comparator).
+  pool.sort(
+    (a, b) =>
+      (a.tier - b.tier) ||
+      (a.f === b.f ? 0 : a.f - b.f) ||
+      (a.wordless - b.wordless)
+  );
+
+  // Pass 4: merge the pool, deduped, in rank order.
   const matches = [];
   const nativeMatches = [];
   const seen = new Set();
   const seenNative = new Set();
-  let to = "";
-  for (const candidate of candidates) {
-    let contributed = false;
-    for (const match of buildMatches(candidate, data)) {
+  for (const survivor of pool) {
+    for (const match of survivor.matches) {
       const key = matchKey(match);
       if (seen.has(key)) continue;
       seen.add(key);
       matches.push(match);
-      contributed = true;
     }
-    // Native words ADDENDUM: flagged calls consult the native table for every
-    // candidate too, and a native-only candidate still counts as explained.
-    if (native) {
-      for (const match of buildNativeMatches(candidate, data)) {
-        const key = `${match.word}|${match.pos}`;
-        if (seenNative.has(key)) continue;
-        seenNative.add(key);
-        nativeMatches.push(match);
-        contributed = true;
-      }
+    for (const match of survivor.nativeMatches) {
+      const key = `${match.word}|${match.pos}`;
+      if (seenNative.has(key)) continue;
+      seenNative.add(key);
+      nativeMatches.push(match);
     }
-    // `to` names the mapping the UI shows ("su → 수"), so it is the first
-    // candidate that actually explained something, not merely the first key.
-    if (contributed && to === "") to = candidate;
   }
-  if (matches.length === 0 && nativeMatches.length === 0) return null;
+  // `to` names the mapping the UI shows and roots the view: the pool's best
+  // candidate, or the typed text itself for a partial-class win.
+  const to = bestClass === CLASS_PARTIAL ? raw : pool[0].hangul;
   const interp = { kind: "rr", from: raw, to, matches };
   if (nativeMatches.length > 0) interp.nativeMatches = nativeMatches;
   return interp;
@@ -1088,7 +1114,7 @@ function orderPair(dubeolsik, rr, data) {
  * Run both interpreters over a query, dropping the ones that found nothing.
  *
  * @param {string} text raw query (trimming/NFC handled here)
- * @param {object} data parsed data bundle, including `rr`
+ * @param {object} data parsed data bundle
  * @param {{native?:boolean}} [options] `native: true` (native words ADDENDUM)
  *        makes each interpretation consult the native table too
  * @returns {Array<{kind:string, from:string, to:string, matches:object[]}>}
@@ -1266,7 +1292,7 @@ function charSuggestion(char, hun, eum, gloss, lvl) {
  * Never throws: junk data yields [].
  *
  * @param {string} text raw omnibox input
- * @param {{hanja?:object, words?:object, variants?:object, rr?:object, native?:object}} data parsed data files
+ * @param {{hanja?:object, words?:object, variants?:object, native?:object}} data parsed data files
  * @param {{interpret?:boolean, native?:boolean}} [options] same input-channel
  *        rule as lookup(); the omnibox IS a typed channel, so background.js
  *        passes `interpret`. `native: true` (native words ADDENDUM) draws the

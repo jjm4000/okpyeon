@@ -27,17 +27,25 @@ import {
   lookup,
   nativeMaxLenOf,
   MAX_NATIVE_WORD_LEN,
-  normalizeRomanization,
-  romanizationVariants,
   extractRuns,
   segmentRun,
   maxWordLenOf,
   maxHangulLenOf,
   MAX_OMNIBOX_SUGGESTIONS,
-  MAX_RR_VARIANTS,
 } from "../extension/lookup.js";
 
 import { qwertyToHangul, isLatinQuery } from "../extension/dubeolsik.js";
+
+import {
+  deromanize,
+  normalizeRomanization,
+  romanizationVariants,
+  candidateBudget,
+  BRANCH_CAP,
+  CANDIDATE_CAP_PER_SYLLABLE,
+  MAX_LATIN,
+  MAX_RR_VARIANTS,
+} from "../extension/deromanize.js";
 
 import {
   buildAnkiTsv,
@@ -209,6 +217,51 @@ const hanja = {
       glosses: ["net; to spread out"],
       compounds: [],
     },
+    // --- romanized search v2 fixtures: chars whose eums collide with the
+    // Dubeolsik reading of the same Latin query, so the merge and preference
+    // rules can be driven through the real generator (no rr map exists).
+    // "cheon" reads 천 romanized and types 초대ㅜ on the keyboard; "go" reads
+    // 고 and types 해; "do" reads 도 and types 애; "an" reads 안 and types 무.
+    天: {
+      eumhun: [{ hun: "하늘", eum: "천" }],
+      readings: ["천"],
+      glosses: ["sky; heaven"],
+      compounds: [],
+    },
+    海: {
+      eumhun: [{ hun: "바다", eum: "해" }],
+      readings: ["해"],
+      glosses: ["sea; ocean"],
+      compounds: [],
+      // One-entry cw index: 해's best compound count must beat 고's zero.
+      cw: ["海女"],
+    },
+    道: {
+      eumhun: [{ hun: "길", eum: "도" }],
+      readings: ["도"],
+      glosses: ["road; way"],
+      compounds: [],
+      // Two entries: 도's best compound count must beat 애's zero.
+      cw: ["道路", "道德"],
+    },
+    愛: {
+      eumhun: [{ hun: "사랑", eum: "애" }],
+      readings: ["애"],
+      glosses: ["to love"],
+      compounds: [],
+    },
+    安: {
+      eumhun: [{ hun: "편안할", eum: "안" }],
+      readings: ["안"],
+      glosses: ["peaceful; safe"],
+      compounds: [],
+    },
+    無: {
+      eumhun: [{ hun: "없을", eum: "무" }],
+      readings: ["무"],
+      glosses: ["not have; without"],
+      compounds: [],
+    },
     // --- all-rare fixtures: 우리 (牛李 and 隅籬, both rare) ---
     牛: {
       eumhun: [{ hun: "소", eum: "우" }],
@@ -301,6 +354,16 @@ const words = {
     // description escaping is actually exercised. No chars entry on purpose —
     // adding 特/殊 to `hanja` would perturb the reading-index ordering tests.
     特殊: [{ hangul: "특수", glosses: ['R&D <special> "quoted" \'odd\''] }],
+    // --- romanized search v2: word pairs whose Latin queries collide across
+    // the two interpreters (see the 天/海/道/愛/安/無 chars above).
+    // "godo": 고도 romanized (f 1) vs 해애 on the keyboard (f 5); rr wins.
+    古都: [{ hangul: "고도", glosses: ["an ancient capital"], f: 1 }],
+    海愛: [{ hangul: "해애", glosses: ["love of the sea"], f: 5 }],
+    // "sogo": 소고 romanized (unranked) vs 내해 typed (f 1); ranked wins.
+    小鼓: [{ hangul: "소고", glosses: ["a small hand drum"] }],
+    內海: [{ hangul: "내해", glosses: ["an inland sea"], f: 1 }],
+    // "cheon": 초대 typed (a word) vs 천 romanized (a reading list only).
+    招待: [{ hangul: "초대", glosses: ["invitation"] }],
   },
   byHangul: {
     국민: ["國民"],
@@ -316,42 +379,21 @@ const words = {
     안전: ["安全"],
     중화인민공화국: ["中華人民共和國"],
     특수: ["特殊"],
+    고도: ["古都"],
+    해애: ["海愛"],
+    소고: ["小鼓"],
+    내해: ["內海"],
+    초대: ["招待"],
   },
   // Length metadata addendum: the real caps for rules 3 / 3b.
   maxWordLen: 7,
   maxHangulLen: 7,
 };
 
-/**
- * Romanized search ADDENDUM: a schema-exact rr.json fixture
- * ({v, words:{rr:[hangul]}, syllables:{rr:[syllable]}}).
- *
- * The first keys are honest romanizations. The ones below them are Dubeolsik
- * strings on purpose — a key like `gkrtod` is what a typist produces reaching
- * for 학생 — so one query can drive BOTH generators and the merge/preference
- * rules can be tested without the real corpus.
- */
-const rr = {
-  v: 1,
-  words: {
-    gukmin: ["국민"],   // naive RR
-    gungmin: ["국민"],  // official RR (nasalization)
-    gugmin: ["국민"],   // Article 8 transliteration
-    haksaeng: ["학생"],
-    gkrtod: ["국민"],   // vs dubeolsik 학생 (f 5) — rr wins on f 1
-    rnrals: ["학생"],   // vs dubeolsik 국민 (f 1) — dubeolsik wins on f
-    rnr: ["학생"],      // vs dubeolsik 국, a reading list — word wins
-    tkrl: ["국민"],     // vs dubeolsik 사기, unranked — ranked wins
-  },
-  syllables: {
-    guk: ["국"],
-    sa: ["사"],
-    gkr: ["국"],        // vs dubeolsik 학: best cw 4 (國) beats 3 (學)
-    tk: ["기"],         // vs dubeolsik 사: neither side has cw — a tie
-  },
-};
-
-const data = { hanja, words, variants, rr };
+// Romanized search v2: there is no rr map any more. The romanization
+// interpreter generates its candidates (extension/deromanize.js), so the
+// bundle holds only the three real data files.
+const data = { hanja, words, variants };
 
 // ---------------------------------------------------------------------------
 // Tiny test harness
@@ -2264,10 +2306,11 @@ test("only pure-Latin queries are read as mistyped hangul", () => {
   assert.equal(isLatinQuery(null), false);
 });
 
-// --- romanized search ADDENDUM: the two interpreters -----------------------
+// --- romanized search v2: the generator and the two interpreters -----------
 
 const interpreted = (text) => lookup(text, data, { interpret: true });
 const kinds = (response) => (response.interpretations || []).map((i) => i.kind);
+const hangulsOf = (candidates) => candidates.map((c) => c.hangul);
 
 test("the input-channel rule: interpretation only happens when asked", () => {
   // A literal lookup of Latin text finds nothing, exactly as it did before the
@@ -2364,8 +2407,118 @@ test("variant expansion is bounded and applies each rule", () => {
   assert.equal(romanizationVariants(null).length, 0);
 });
 
-test("the rr map drives the romanization interpreter", () => {
-  // All three RR forms of 국민 are index keys and all three land on 국민.
+test("deromanize: letter segmentation branches on every ambiguity", () => {
+  const all = (q) => hangulsOf(deromanize(q));
+  // Vowel digraphs read whole and split.
+  for (const h of ["하늘", "한을", "하네울"]) {
+    assert.ok(all("haneul").includes(h), `haneul should offer ${h}`);
+  }
+  // ng as one coda versus ㄴ + ㄱ across the boundary.
+  for (const h of ["강이", "간기"]) {
+    assert.ok(all("gangi").includes(h), `gangi should offer ${h}`);
+  }
+  // Doubled consonants as a tense onset versus a coda/onset pair.
+  for (const h of ["하꾜", "학쿄"]) {
+    assert.ok(all("hakkyo").includes(h), `hakkyo should offer ${h}`);
+  }
+  // Article 8 codas parse beside the transcription codas.
+  assert.ok(all("gabs").includes("값"), "gabs should offer 값");
+  assert.ok(all("johda").includes("좋다"), "johda should offer 좋다");
+  // Unparseable letters yield no candidates at all: Dubeolsik strings stay
+  // the other interpreter's business.
+  for (const q of ["toddlf", "gksmf", "tkrl", "zzz", "", "guk1min"]) {
+    assert.deepEqual(deromanize(q), [], JSON.stringify(q));
+  }
+  assert.deepEqual(deromanize(null), []);
+  // Separators and case normalize away before parsing.
+  assert.deepEqual(deromanize("Guk-Min"), deromanize("gukmin"));
+});
+
+test("deromanize: sound-change preimages invert each forward rule", () => {
+  const anchors = [
+    ["gungmin", "국민"],      // nasalization
+    ["jongno", "종로"],       // ㄹ onset nasalized after ㅇ
+    ["wangsimni", "왕십리"],  // ㅂ + ㄹ, both sides changed
+    ["silla", "신라"],        // ㄴ+ㄹ read as ll
+    ["sinmunno", "신문로"],   // ㄴ+ㄹ read as nn
+    ["hallasan", "한라산"],
+    ["byeollae", "별내"],     // ㄹ+ㄴ as ll
+    ["hangnyeoul", "학여울"], // ㄴ-insertion plus nasalization
+    ["allyak", "알약"],       // ㄴ-insertion plus 유음화
+    ["gachi", "같이"],        // palatalized liaison
+    ["haedoji", "해돋이"],
+    ["joko", "좋고"],         // ㅎ coda hardening the onset
+    ["nota", "놓다"],
+    ["japyeo", "잡혀"],       // ㅎ onset hardening the coda
+    ["chuka", "축하"],
+    ["anchida", "앉히다"],    // cluster + ㅎ onset
+    ["joa", "좋아"],          // ㅎ dropped before a vowel
+    ["mana", "많아"],         // ㄶ shedding its ㅎ
+    ["gapsi", "값이"],        // cluster liaison
+    ["ilgeo", "읽어"],
+    ["osi", "옷이"],          // lone-coda liaison
+    ["bueok", "부엌"],        // word-final neutralization
+    ["jota", "좋다"],         // non-final neutralization (naive coda t)
+  ];
+  for (const [q, w] of anchors) {
+    assert.ok(hangulsOf(deromanize(q)).includes(w), `${q} should reach ${w}`);
+  }
+});
+
+test("deromanize: tier 0 is an exact forward form, tier 1 the loosened rest", () => {
+  // The honest spelling leads, tier 0, before any of its generous siblings.
+  assert.deepEqual(deromanize("gukmin")[0], { hangul: "국민", tier: 0 });
+  assert.deepEqual(deromanize("haneul")[0], { hangul: "하늘", tier: 0 });
+  // A habit-loosened spelling still reaches the word, but at tier 1, while
+  // the honest forms of the same word stay tier 0.
+  assert.equal(deromanize("kukmin").find((c) => c.hangul === "국민").tier, 1);
+  assert.equal(deromanize("gungmin").find((c) => c.hangul === "국민").tier, 0);
+  assert.equal(deromanize("gugmin").find((c) => c.hangul === "국민").tier, 0);
+  // Tiers are contiguous: every tier 0 candidate precedes every tier 1.
+  for (const q of ["gukmin", "kukmin", "haneul", "mushihaesseo"]) {
+    const tiers = deromanize(q).map((c) => c.tier);
+    assert.deepEqual(tiers, [...tiers].sort((a, b) => a - b), q);
+  }
+  // The habit variants feed the same branching: oo → u and sh → s chain.
+  assert.ok(hangulsOf(deromanize("mooshi")).includes("무시"));
+  // The v2 QA case, generator-level: the inflected form is a candidate.
+  assert.ok(hangulsOf(deromanize("mushihaesseo")).includes("무시했어"));
+  assert.ok(hangulsOf(deromanize("musihada")).includes("무시하다"));
+});
+
+test("deromanize: the pinned caps, and a 20-letter worst case under 50ms", () => {
+  // The SPEC v2 bounds. Changing any of these is a SPEC change.
+  assert.equal(BRANCH_CAP, 256);
+  assert.equal(CANDIDATE_CAP_PER_SYLLABLE, 640);
+  assert.equal(MAX_LATIN, 48);
+  // The budget formula: one unit through 3 syllables, one more per syllable
+  // beyond, growth capped at 8 units.
+  assert.equal(candidateBudget(1), CANDIDATE_CAP_PER_SYLLABLE);
+  assert.equal(candidateBudget(3), CANDIDATE_CAP_PER_SYLLABLE);
+  assert.equal(candidateBudget(4), 2 * CANDIDATE_CAP_PER_SYLLABLE);
+  assert.equal(candidateBudget(8), 6 * CANDIDATE_CAP_PER_SYLLABLE);
+  assert.equal(candidateBudget(20), 8 * CANDIDATE_CAP_PER_SYLLABLE);
+  // Worst garbage: 20 letters of pure vowel soup degrades by truncation.
+  // One unmeasured warmup run first: the bound is on the generator, not on
+  // v8's first-call JIT cost.
+  deromanize("a".repeat(20));
+  const started = performance.now();
+  const soup = deromanize("a".repeat(20));
+  const elapsed = performance.now() - started;
+  assert.ok(soup.length > 0 && soup.length <= candidateBudget(20));
+  assert.ok(elapsed < 50, `20-char worst case took ${elapsed.toFixed(1)}ms`);
+  // Input beyond MAX_LATIN letters is truncated, never hung.
+  const t2 = performance.now();
+  const over = deromanize("a".repeat(500));
+  assert.ok(performance.now() - t2 < 250, "over-long input must truncate");
+  assert.deepEqual(over, deromanize("a".repeat(MAX_LATIN)));
+  // Candidates are deduped.
+  const cands = hangulsOf(deromanize("haneul"));
+  assert.equal(cands.length, new Set(cands).size);
+});
+
+test("the generator drives the romanization interpreter", () => {
+  // All three RR forms of 국민 land on 국민, no map anywhere.
   for (const form of ["gukmin", "gungmin", "gugmin"]) {
     const r = interpreted(form);
     assert.deepEqual(kinds(r), ["rr"], form);
@@ -2375,10 +2528,11 @@ test("the rr map drives the romanization interpreter", () => {
       to: "국민",
       start: 0,
     });
-    // The candidate ran the NORMAL lookup, so it is the ordinary word answer.
+    // The candidate ran the NORMAL lookup, so it is the ordinary word answer:
+    // the parity rule, byte for byte.
     assert.deepEqual(r.matches, lookup("국민", data).matches);
   }
-  // Case and the syllable-boundary punctuation all normalize into one key.
+  // Case and the syllable-boundary punctuation normalize away.
   assert.deepEqual(interpreted("GukMin").matches, interpreted("gukmin").matches);
   for (const written of ["guk-min", "guk min", "Guk-Min", "guk'min", "GUK MIN"]) {
     assert.deepEqual(
@@ -2391,22 +2545,59 @@ test("the rr map drives the romanization interpreter", () => {
   }
   // Trailing separators are trimmed away before the gate sees them.
   assert.deepEqual(interpreted("  gukmin  ").matches, interpreted("gukmin").matches);
-  // A variant reaches the index: kukmin → gukmin → 국민.
+  // A habit variant reaches the word: kukmin → 국민.
   const k = interpreted("kukmin");
   assert.deepEqual(kinds(k), ["rr"]);
+  assert.equal(k.interpretations[0].to, "국민");
   assert.deepEqual(k.matches, lookup("국민", data).matches);
-  // A syllable key takes the reading path, not the word path.
+  // A single-syllable candidate takes the reading path, not the word path.
   const syllable = interpreted("guk");
   assert.deepEqual(kinds(syllable), ["rr"]);
   assert.equal(syllable.matches[0].kind, "reading");
   assert.equal(syllable.matches[0].eum, "국");
   assert.deepEqual(syllable.matches, lookup("국", data).matches);
-  // An rr map with nothing to say (or no rr map at all) simply drops out.
-  assert.equal("interpretations" in lookup("gukmin", { hanja, words, variants }, { interpret: true }), false);
+  // PARITY: an inflected romanization resolves its dictionary prefix exactly
+  // the way the typed hangul does (the QA case that motivated v2).
+  const inflected = interpreted("gukminieoteo");
+  assert.deepEqual(kinds(inflected), ["rr"]);
+  assert.deepEqual(
+    inflected.matches.filter((m) => m.kind === "word").map((m) => m.canonical),
+    ["國民"]
+  );
+  // Candidates the dictionary rejects leave no trace: garbage romanizations
+  // with no dictionary hit drop the whole interpretation.
+  assert.deepEqual(interpreted("pyulk"), { ok: true, matches: [] });
+});
+
+test("candidate collapse: coverage classes gate matches and name the root", () => {
+  // Class A, the whole candidate is one dictionary entry: `to` (and so the
+  // srcText the renderer roots in) is the candidate hangul.
+  assert.equal(interpreted("gukmin").interpretations[0].to, "국민");
+  assert.equal(interpreted("guk").interpretations[0].to, "국");
+  // Class B, covered end to end by more than one entry: still roots as the
+  // candidate hangul, and resolves exactly like the typed hangul (parity).
+  const b = interpreted("gukminsarang");
+  assert.deepEqual(kinds(b), ["rr"]);
+  assert.equal(b.interpretations[0].to, "국민사랑");
+  assert.deepEqual(b.matches, lookup("국민사랑", data).matches);
+  // The class-B win shuts partial candidates out: 국민살앙 (the liaison
+  // preimage, 국민 covered, 살앙 opaque) survives the dictionary but adds
+  // nothing, so the merge is byte for byte the typed-hangul answer above.
+  // Class C, a partial parse: `to` is the TYPED text itself, per the
+  // multi-match-root rule, because no single hangul spelling is canonical;
+  // the matches still come from the best partial candidates.
+  const c = interpreted("gukminieoteo");
+  assert.equal(c.interpretations[0].to, "gukminieoteo");
+  assert.deepEqual(
+    c.matches.filter((m) => m.kind === "word").map((m) => m.canonical),
+    ["國民"]
+  );
 });
 
 test("merge matrix: dubeolsik-only, rr-only, both, neither", () => {
-  // dubeolsik only — 사기전 is in the fixture, "tkrlwjs" is in no rr map.
+  // dubeolsik only: 사기전 is in the fixture; "tkrlwjs" has no vowel letter,
+  // so the romanization generator cannot even parse it.
+  assert.deepEqual(deromanize("tkrlwjs"), []);
   const d = interpreted("tkrlwjs");
   assert.deepEqual(kinds(d), ["dubeolsik"]);
   assert.deepEqual(d.interpretations[0], {
@@ -2417,23 +2608,20 @@ test("merge matrix: dubeolsik-only, rr-only, both, neither", () => {
   });
   assert.deepEqual(d.matches, lookup("사기전", data).matches);
 
-  // rr only — "gungmin" is jamo soup on the Dubeolsik side.
+  // rr only: "gungmin" is jamo soup on the Dubeolsik side.
   assert.deepEqual(kinds(interpreted("gungmin")), ["rr"]);
 
-  // both — one group after the other, `start` pointing at the seam.
-  const both = interpreted("gkrtod");
+  // both: "cheon" types 초대ㅜ (word 招待) and reads 천 (a reading list).
+  const both = interpreted("cheon");
   assert.equal(both.interpretations.length, 2);
   assert.equal(both.interpretations[0].start, 0);
   assert.equal(
-    both.interpretations[1].start,
-    both.interpretations[0].kind === "rr"
-      ? lookup("국민", data).matches.length
-      : lookup("학생", data).matches.length
+    both.matches.length,
+    both.interpretations[1].start +
+      (both.interpretations[1].kind === "rr"
+        ? lookup("천", data).matches.length
+        : lookup("초대", data).matches.length)
   );
-  assert.equal(both.matches.length, both.interpretations[1].start +
-    (both.interpretations[1].kind === "rr"
-      ? lookup("국민", data).matches.length
-      : lookup("학생", data).matches.length));
 
   // neither
   assert.deepEqual(interpreted("zzz"), { ok: true, matches: [] });
@@ -2441,69 +2629,74 @@ test("merge matrix: dubeolsik-only, rr-only, both, neither", () => {
 });
 
 test("preference: lowest f wins between two word interpretations", () => {
-  // gkrtod → 학생 (f 5) on the keyboard, 국민 (f 1) romanized.
-  const rrFirst = interpreted("gkrtod");
+  // godo → 해애 (f 5) on the keyboard, 고도 (f 1) romanized.
+  const rrFirst = interpreted("godo");
   assert.deepEqual(kinds(rrFirst), ["rr", "dubeolsik"]);
   assert.deepEqual(rrFirst.interpretations, [
-    { kind: "rr", from: "gkrtod", to: "국민", start: 0 },
+    { kind: "rr", from: "godo", to: "고도", start: 0 },
     {
       kind: "dubeolsik",
-      from: "gkrtod",
-      to: "학생",
-      start: lookup("국민", data).matches.length,
+      from: "godo",
+      to: "해애",
+      start: lookup("고도", data).matches.length,
     },
   ]);
   assert.deepEqual(rrFirst.matches, [
-    ...lookup("국민", data).matches,
-    ...lookup("학생", data).matches,
+    ...lookup("고도", data).matches,
+    ...lookup("해애", data).matches,
   ]);
 
-  // The mirror image: rnrals → 국민 on the keyboard, 학생 romanized.
-  const dubeolsikFirst = interpreted("rnrals");
+  // The mirror image, and the ranked-beats-unranked rule in one: sogo →
+  // 내해 (f 1) on the keyboard, 소고 (no f at all) romanized.
+  const dubeolsikFirst = interpreted("sogo");
   assert.deepEqual(kinds(dubeolsikFirst), ["dubeolsik", "rr"]);
   assert.deepEqual(dubeolsikFirst.matches, [
-    ...lookup("국민", data).matches,
-    ...lookup("학생", data).matches,
+    ...lookup("내해", data).matches,
+    ...lookup("소고", data).matches,
   ]);
-
-  // A ranked word beats an unranked one: tkrl → 사기 (no f) vs 국민 (f 1).
-  assert.deepEqual(kinds(interpreted("tkrl")), ["rr", "dubeolsik"]);
 });
 
 test("preference: a word interpretation beats a syllable-only one", () => {
-  // rnr → 국, a reading list, on the keyboard; 학생, a word, romanized.
-  const r = interpreted("rnr");
-  assert.deepEqual(kinds(r), ["rr", "dubeolsik"]);
+  // cheon → 초대 (via 초대ㅜ), a word, on the keyboard; 천, a reading list,
+  // romanized. The word side leads whichever interpreter found it.
+  const r = interpreted("cheon");
+  assert.deepEqual(kinds(r), ["dubeolsik", "rr"]);
   assert.equal(r.matches[0].kind, "word");
+  assert.equal(r.matches[0].canonical, "招待");
   assert.equal(r.matches[r.interpretations[1].start].kind, "reading");
+  assert.equal(r.matches[r.interpretations[1].start].eum, "천");
 });
 
 test("preference: reading vs reading compares compound counts", () => {
-  // gkr → 학 (學, cw 3) on the keyboard; 국 (國, cw 4) romanized.
-  const r = interpreted("gkr");
+  // go → 해 (海, cw 1) on the keyboard; 고 (故/考, no cw) romanized.
+  const d = interpreted("go");
+  assert.deepEqual(kinds(d), ["dubeolsik", "rr"]);
+  assert.deepEqual(d.matches, [...lookup("해", data).matches, ...lookup("고", data).matches]);
+  // do → 애 (愛, no cw) on the keyboard; 도 (道, cw 2) romanized.
+  const r = interpreted("do");
   assert.deepEqual(kinds(r), ["rr", "dubeolsik"]);
-  assert.deepEqual(r.matches, [...lookup("국", data).matches, ...lookup("학", data).matches]);
+  assert.deepEqual(r.matches, [...lookup("도", data).matches, ...lookup("애", data).matches]);
 });
 
 test("preference: a remaining tie goes to Dubeolsik", () => {
-  // tk → 사 on the keyboard, 기 romanized. Both are reading lists and neither
+  // an → 무 on the keyboard, 안 romanized. Both are reading lists and neither
   // side's candidates carry a cw index, so nothing separates them.
-  const r = interpreted("tk");
+  const r = interpreted("an");
   assert.deepEqual(kinds(r), ["dubeolsik", "rr"]);
-  assert.deepEqual(r.matches, [...lookup("사", data).matches, ...lookup("기", data).matches]);
+  assert.deepEqual(r.matches, [...lookup("무", data).matches, ...lookup("안", data).matches]);
 });
 
 test("buildInterpretations returns the groups the response is built from", () => {
   assert.deepEqual(buildInterpretations("國民", data), []);
   assert.deepEqual(buildInterpretations("", data), []);
-  const two = buildInterpretations("gkrtod", data);
-  assert.deepEqual(two.map((i) => [i.kind, i.to]), [["rr", "국민"], ["dubeolsik", "학생"]]);
+  const two = buildInterpretations("godo", data);
+  assert.deepEqual(two.map((i) => [i.kind, i.to]), [["rr", "고도"], ["dubeolsik", "해애"]]);
   // Trimming and NFC happen here, so surrounding whitespace is invisible.
   assert.deepEqual(
-    buildInterpretations("  gkrtod  ", data).map((i) => i.from),
-    ["gkrtod", "gkrtod"]
+    buildInterpretations("  godo  ", data).map((i) => i.from),
+    ["godo", "godo"]
   );
-  assert.deepEqual(interpreted("  gkrtod  ").matches, interpreted("gkrtod").matches);
+  assert.deepEqual(interpreted("  godo  ").matches, interpreted("godo").matches);
 });
 
 test("omnibox suggestions run the same generators, deduped and capped", () => {
@@ -2516,14 +2709,13 @@ test("omnibox suggestions run the same generators, deduped and capped", () => {
   assert.ok(rows.length > 0);
   assert.equal(rows[0].content, "國民");
   assert.ok(rows.every((r) => !/[A-Za-z]/.test(r.content)));
-  // Dual: the preferred group's rows come first, and the cap still holds.
-  const dual = omni("gkrtod");
-  assert.equal(dual[0].content, "國民");
-  assert.ok(dual.some((r) => r.content === "學生"));
+  // Dual: the preferred group's rows come first, dedupe by content holds,
+  // and the cap still holds.
+  const dual = omni("godo");
+  assert.equal(dual[0].content, "古都");
+  assert.ok(dual.some((r) => r.content === "海愛"));
   assert.ok(dual.length <= MAX_OMNIBOX_SUGGESTIONS);
-  // Dedupe by content: 국민 romanized and 국민 typed on the keyboard produce
-  // one row, not two. (rnr's rr side is 학생; tkrl's is 국민.)
-  const contents = omni("tkrl").map((r) => r.content);
+  const contents = dual.map((r) => r.content);
   assert.deepEqual(contents, [...new Set(contents)]);
   // The omnibox shares the widened gate.
   assert.deepEqual(omni("guk-min"), buildOmniboxSuggestions("국민", data));
@@ -2556,14 +2748,8 @@ const native = {
     // 3-syllable key: the longest the declared maxLen allows.
     하늘색: [{ pos: "noun", glosses: ["sky blue"] }],
   },
-  // The native rr map (QA fix): keys only the native table can explain.
-  // rr.json stays Sino-only, so the shared `rr` fixture is untouched and the
-  // unflagged tests exercise exactly the pre-addendum candidate space.
-  rr: {
-    haneul: ["하늘"],
-    sarang: ["사랑"],
-    gadeuk: ["가득"], // reached from `kadeuk` by the leading-devoice variant
-  },
+  // Romanized search v2: no `rr` map. The generator reaches native headwords
+  // by construction; wave 3 removes the map from the emit too.
 };
 
 const nativeData = { ...data, native };
@@ -2686,10 +2872,10 @@ test("hedge retirement preconditions ride the response", () => {
 });
 
 test("flagged interpretations consult both tables; native-only survives", () => {
-  // Romanized: `haneul` is a key only native.json's rr map carries (rr.json
-  // is forward-generated from words.json, so no native headword can come out
-  // of it). Flagged, the candidate 하늘 has no Sino entry and the
-  // interpretation lives on the native hit alone, with empty `matches`.
+  // Romanized: the generator offers 하늘 for `haneul` by construction; the
+  // QA gap that killed the map design is unrepresentable now. Flagged, the
+  // candidate 하늘 has no Sino entry and the interpretation lives on the
+  // native hit alone, with empty `matches`.
   const rrRes = lookup("haneul", nativeData, { interpret: true, native: true });
   assert.deepEqual(rrRes.interpretations, [
     { kind: "rr", from: "haneul", to: "하늘", start: 0 },
@@ -2711,35 +2897,37 @@ test("flagged interpretations consult both tables; native-only survives", () => 
   });
 });
 
-test("flagged: a key in both rr maps merges the candidate spaces", () => {
-  // `mixmap` offers 국민 from rr.json and 하늘 from the native map: one rr
-  // interpretation, Sino matches AND native matches, `to` named by the first
-  // candidate that explained something (rr.json is consulted first).
-  const merged = {
-    ...nativeData,
-    rr: { ...rr, words: { ...rr.words, mixmap: ["국민"] } },
-    native: { ...native, rr: { ...native.rr, mixmap: ["하늘"] } },
-  };
-  const res = lookup("mixmap", merged, { interpret: true, native: true });
+test("flagged: one rr interpretation carries Sino and native hits together", () => {
+  // sarang: the candidate 사랑 hits the Sino tables (舍廊/沙羅) AND the
+  // native table. One interpretation, both kinds of matches, `to` named by
+  // the first candidate that explained something.
+  const res = lookup("sarang", nativeData, { interpret: true, native: true });
   assert.deepEqual(res.interpretations, [
-    { kind: "rr", from: "mixmap", to: "국민", start: 0 },
+    { kind: "rr", from: "sarang", to: "사랑", start: 0 },
   ]);
-  assert.deepEqual(res.matches, lookup("국민", data).matches);
+  assert.deepEqual(res.matches, lookup("사랑", data).matches);
   assert.deepEqual(res.nativeMatches, [
-    { kind: "native", word: "하늘", pos: "noun", glosses: ["sky", "heaven"] },
+    { kind: "native", word: "사랑", pos: "noun", glosses: ["love"] },
   ]);
-  // The same hangul offered by both maps is one candidate, not two: the
-  // match set is exactly the single 국민 lookup's.
-  const dup = {
-    ...merged,
-    native: { ...native, rr: { mixmap: ["국민", "하늘"] } },
-  };
-  const dedup = lookup("mixmap", dup, { interpret: true, native: true });
-  assert.deepEqual(dedup.matches, lookup("국민", data).matches);
 });
 
-test("flagged: variant expansion reaches the native rr map", () => {
-  // kadeuk devoices to gadeuk, a key only the native map carries, so the
+test("flagged: a native entry completes a class-B parse and roots as hangul", () => {
+  // 사랑먹다: the Sino resolver covers 사랑, the native pass covers 먹다, so
+  // the candidate is covered end to end (class B) and `to` is the hangul.
+  // The liaison splinter 살앙먹다 (class C: only 먹다 covered) survives the
+  // dictionary but is shut out of the merge by the class rule.
+  const res = lookup("sarangmeokda", nativeData, { interpret: true, native: true });
+  assert.deepEqual(kinds(res), ["rr"]);
+  assert.equal(res.interpretations[0].to, "사랑먹다");
+  assert.deepEqual(res.matches, lookup("사랑먹다", data).matches);
+  assert.deepEqual(
+    (res.nativeMatches || []).map((m) => m.word),
+    ["사랑", "먹다"]
+  );
+});
+
+test("flagged: variant expansion reaches native headwords", () => {
+  // kadeuk devoices to gadeuk, which only the native table explains, so the
   // kukmin-style spelling habits work on native headwords too.
   const res = lookup("kadeuk", nativeData, { interpret: true, native: true });
   assert.deepEqual(res.interpretations, [
@@ -2752,10 +2940,11 @@ test("flagged: variant expansion reaches the native rr map", () => {
   ]);
 });
 
-test("unflagged interpretation never touches the native rr map", () => {
-  // The map is behind a throwing getter: an unflagged lookup that so much as
-  // reads it fails the test, and its response is byte-identical to a bundle
-  // with no native table at all.
+test("the native rr map is dead: no lookup reads it, flagged or not", () => {
+  // A leftover map (native.json still carries one until wave 3 re-emits) sits
+  // behind a throwing getter: any lookup that so much as reads it fails the
+  // test. Unflagged responses stay byte-identical to a bundle with no native
+  // table at all; flagged ones answer from the generator alone.
   const trapped = {
     ...data,
     native: {
@@ -2763,7 +2952,7 @@ test("unflagged interpretation never touches the native rr map", () => {
       maxLen: 3,
       words: native.words,
       get rr() {
-        throw new Error("native rr read on an unflagged lookup");
+        throw new Error("the retired native rr map was read");
       },
     },
   };
@@ -2778,6 +2967,9 @@ test("unflagged interpretation never touches the native rr map", () => {
       `query ${q}`
     );
   }
+  // Flagged lookups no longer need the map either: 하늘 still resolves.
+  const flagged = lookup("haneul", trapped, { interpret: true, native: true });
+  assert.deepEqual((flagged.nativeMatches || []).map((m) => m.word), ["하늘"]);
   assert.deepEqual(buildOmniboxSuggestions("haneul", trapped, { interpret: true }), []);
 });
 
@@ -2825,25 +3017,24 @@ test("flagged omnibox: native rows sit between non-rare and rare hanja", () => {
 
 await testAsync("native: guardNative shapes junk into an empty table", async () => {
   const { guardNative } = await import("../extension/background.js");
-  assert.deepEqual(guardNative(null), { version: 1, words: {}, rr: {} });
-  assert.deepEqual(guardNative("nonsense"), { version: 1, words: {}, rr: {} });
-  assert.deepEqual(guardNative({ words: null }), { version: 1, words: {}, rr: {} });
+  assert.deepEqual(guardNative(null), { version: 1, words: {} });
+  assert.deepEqual(guardNative("nonsense"), { version: 1, words: {} });
+  assert.deepEqual(guardNative({ words: null }), { version: 1, words: {} });
   // maxLen passes through as an integer only; lookup.js falls back otherwise.
   assert.deepEqual(guardNative({ maxLen: "5", words: {} }),
-    { version: 1, words: {}, rr: {} });
+    { version: 1, words: {} });
   assert.deepEqual(guardNative({ version: 1, maxLen: 5, words: { 하늘: [] } }), {
     version: 1,
     words: { 하늘: [] },
-    rr: {},
     maxLen: 5,
   });
 });
 
-await testAsync("native: guardNative preserves the rr map (the worker's path)", async () => {
-  // The guard once rebuilt the object without `rr`, which killed native
-  // romanization in the REAL worker alone: every other caller hands lookup
-  // the raw file, so tests and the staging page kept passing while haneul
-  // rendered "No entry" in Chrome. This drives the exact worker shape.
+await testAsync("native: guardNative drops the retired rr map (the worker's shape)", async () => {
+  // Romanized search v2: the emitted file still carries `rr` until wave 3
+  // re-emits, but the worker's shape no longer does, and the generator makes
+  // haneul resolve through the EXACT guarded bundle the worker builds, which
+  // is where the v1 map once died silently.
   const { guardNative } = await import("../extension/background.js");
   const guarded = guardNative({
     version: 1,
@@ -2851,7 +3042,7 @@ await testAsync("native: guardNative preserves the rr map (the worker's path)", 
     words: { 하늘: [{ pos: "noun", glosses: ["sky"] }] },
     rr: { haneul: ["하늘"] },
   });
-  assert.deepEqual(guarded.rr, { haneul: ["하늘"] });
+  assert.equal("rr" in guarded, false);
   const bundle = { ...data, native: guarded };
   const viaWorkerShape = lookup("haneul", bundle, { interpret: true, native: true });
   assert.equal(viaWorkerShape.ok, true);
@@ -2887,17 +3078,15 @@ const dataDir = join(dirname(fileURLToPath(import.meta.url)), "..", "extension",
 await testAsync("smoke: real extension/data corpus resolves 國民 / 国 / 국민", async () => {
   let real;
   try {
-    const [h, w, v, r] = await Promise.all([
+    const [h, w, v] = await Promise.all([
       readFile(join(dataDir, "hanja.json"), "utf8"),
       readFile(join(dataDir, "words.json"), "utf8"),
       readFile(join(dataDir, "variants.json"), "utf8"),
-      readFile(join(dataDir, "rr.json"), "utf8"),
     ]);
     real = {
       hanja: JSON.parse(h),
       words: JSON.parse(w),
       variants: JSON.parse(v),
-      rr: JSON.parse(r),
     };
   } catch (err) {
     // Absent, or Agent A is mid-rebuild (truncated/partial JSON). Neither is a
@@ -2958,68 +3147,92 @@ await testAsync("smoke: real extension/data corpus resolves 國民 / 国 / 국�
     `${kind} data: dhrvus should find 玉篇`
   );
 
-  // All three RR forms of 국민 are index keys, and the leading-devoice variant
-  // reaches the naive one.
-  let rrNote = "no rr index in corpus yet";
-  if (real.rr && real.rr.words && Object.keys(real.rr.words).length > 0) {
-    for (const form of ["gukmin", "gungmin", "gugmin", "kukmin"]) {
-      const r = say(form);
-      assert.deepEqual(
-        (r.interpretations || []).map((i) => i.kind),
-        ["rr"],
-        `${kind} data: ${form} should be read as romanization only`
-      );
-      assert.equal(r.interpretations[0].to, "국민", `${kind} data: ${form} → 국민`);
-      const w = r.matches.find((m) => m.kind === "word");
-      assert.ok(w, `${kind} data: ${form} should find a word match`);
-      assert.equal(w.canonical, "國民", `${kind} data: ${form} → 國民`);
-    }
-
-    // The widened gate on real data: the hyphenated spelling of the same
-    // query lands on 국민, while the literal channel still finds nothing.
-    for (const written of ["guk-min", "guk min", "Guk-Min"]) {
-      const r = say(written);
-      assert.deepEqual(
-        (r.interpretations || []).map((i) => i.kind),
-        ["rr"],
-        `${kind} data: ${written} should be read as romanization only`
-      );
-      assert.equal(r.interpretations[0].to, "국민", `${kind} data: ${written} → 국민`);
-      assert.deepEqual(r.matches, say("gukmin").matches, `${kind} data: ${written} = gukmin`);
-      assert.deepEqual(lookup(written, real), { ok: true, matches: [] }, written);
-    }
-
-    // su: both interpreters survive — 수 romanized, 녀 on the keyboard — and
-    // 수 comes first. Both are reading lists, so the compound-count rule
-    // decides it.
-    const su = say("su");
+  // Romanized search v2: the generator replaces the rr maps, so every one of
+  // these runs unconditionally against whatever corpus is shipped. All three
+  // RR forms of 국민 land, and the leading-devoice habit reaches it too.
+  for (const form of ["gukmin", "gungmin", "gugmin", "kukmin"]) {
+    const r = say(form);
     assert.deepEqual(
-      su.interpretations.map((i) => [i.kind, i.to]),
-      [["rr", "수"], ["dubeolsik", "녀"]],
-      `${kind} data: su should read 수 first, then 녀`
+      (r.interpretations || []).map((i) => i.kind),
+      ["rr"],
+      `${kind} data: ${form} should be read as romanization only`
     );
-    assert.equal(su.matches[0].kind, "reading");
-    assert.equal(su.matches[0].eum, "수");
-    assert.equal(su.matches[su.interpretations[1].start].eum, "녀");
-    assert.deepEqual(
-      su.matches,
-      [...lookup("수", real).matches, ...lookup("녀", real).matches],
-      `${kind} data: su's groups are the ordinary 수 and 녀 lookups`
-    );
-    // The channel rule on real data: a navigateTo-style literal lookup of the
-    // same string finds nothing at all.
-    assert.deepEqual(lookup("su", real), { ok: true, matches: [] });
-    assert.deepEqual(lookup("gukmin", real), { ok: true, matches: [] });
-
-    const cw = (ch) => ((real.hanja.chars[ch] || {}).cw || []).length;
-    const bestCw = (eum) =>
-      Math.max(...lookup(eum, real).matches[0].candidates.map((c) => cw(c.char)));
-    rrNote =
-      `rr ${Object.keys(real.rr.words).length} words + ` +
-      `${Object.keys(real.rr.syllables).length} syllables; ` +
-      `국민 f=${(real.words.words["國民"][0] || {}).f}; ` +
-      `su → 수 (best cw ${bestCw("수")}) over 녀 (best cw ${bestCw("녀")})`;
+    assert.equal(r.interpretations[0].to, "국민", `${kind} data: ${form} → 국민`);
+    const w = r.matches.find((m) => m.kind === "word");
+    assert.ok(w, `${kind} data: ${form} should find a word match`);
+    assert.equal(w.canonical, "國民", `${kind} data: ${form} → 國民`);
   }
+
+  // The widened gate on real data: the hyphenated spelling of the same
+  // query lands on 국민, while the literal channel still finds nothing.
+  for (const written of ["guk-min", "guk min", "Guk-Min"]) {
+    const r = say(written);
+    assert.deepEqual(
+      (r.interpretations || []).map((i) => i.kind),
+      ["rr"],
+      `${kind} data: ${written} should be read as romanization only`
+    );
+    assert.equal(r.interpretations[0].to, "국민", `${kind} data: ${written} → 국민`);
+    assert.deepEqual(r.matches, say("gukmin").matches, `${kind} data: ${written} = gukmin`);
+    assert.deepEqual(lookup(written, real), { ok: true, matches: [] }, written);
+  }
+
+  // su: both interpreters survive — 수 romanized, 녀 on the keyboard — and
+  // 수 comes first. Both are reading lists, so the compound-count rule
+  // decides it.
+  const su = say("su");
+  assert.deepEqual(
+    su.interpretations.map((i) => [i.kind, i.to]),
+    [["rr", "수"], ["dubeolsik", "녀"]],
+    `${kind} data: su should read 수 first, then 녀`
+  );
+  assert.equal(su.matches[0].kind, "reading");
+  assert.equal(su.matches[0].eum, "수");
+  assert.equal(su.matches[su.interpretations[1].start].eum, "녀");
+  assert.deepEqual(
+    su.matches,
+    [...lookup("수", real).matches, ...lookup("녀", real).matches],
+    `${kind} data: su's groups are the ordinary 수 and 녀 lookups`
+  );
+  // The channel rule on real data: a navigateTo-style literal lookup of the
+  // same string finds nothing at all.
+  assert.deepEqual(lookup("su", real), { ok: true, matches: [] });
+  assert.deepEqual(lookup("gukmin", real), { ok: true, matches: [] });
+
+  // PARITY, the v2 QA case: an inflected romanization resolves its
+  // dictionary prefix exactly the way the typed hangul does. Unflagged,
+  // nothing covers the suffix, so these are class-C parses and `to` (the
+  // srcText root) stays the typed text.
+  for (const [q, expectHangul] of [["mushihada", "무시"], ["mushihaesseo", "무시"]]) {
+    const r = say(q);
+    assert.deepEqual(
+      (r.interpretations || []).map((i) => i.kind),
+      ["rr"],
+      `${kind} data: ${q} should carry an rr interpretation`
+    );
+    assert.equal(r.interpretations[0].to, q, `${kind} data: ${q} roots as typed`);
+    assert.ok(
+      r.matches.some((m) => m.kind === "word" && m.hangul === expectHangul),
+      `${kind} data: ${q} should resolve a ${expectHangul} word`
+    );
+    assert.equal(r.matches[0].kind, "word", `${kind} data: ${q} leads with a word`);
+    assert.equal(r.matches[0].canonical, "無視", `${kind} data: ${q} leads with 無視`);
+  }
+  assert.ok(
+    say("musihaesseo").matches.some((m) => m.kind === "word" && m.hangul === "무시"),
+    `${kind} data: musihaesseo resolves 무시 like typed 무시했어`
+  );
+  assert.ok(
+    lookup("무시했어", real).matches.some((m) => m.kind === "word" && m.hangul === "무시"),
+    `${kind} data: typed 무시했어 resolves 무시 (the parity baseline)`
+  );
+
+  const cw = (ch) => ((real.hanja.chars[ch] || {}).cw || []).length;
+  const bestCw = (eum) =>
+    Math.max(...lookup(eum, real).matches[0].candidates.map((c) => cw(c.char)));
+  const rrNote =
+    `generator: 국민 f=${(real.words.words["國民"][0] || {}).f}; ` +
+    `su → 수 (best cw ${bestCw("수")}) over 녀 (best cw ${bestCw("녀")})`;
 
   // Rule 3c against the real corpus.
   const reading = lookup("국", real).matches[0];
@@ -3203,17 +3416,15 @@ await testAsync("smoke: real extension/data corpus resolves 國民 / 国 / 국�
 await testAsync("smoke: real native.json resolves 하늘 / 사랑 / 무리 / toggle-off", async () => {
   let real;
   try {
-    const [h, w, v, r] = await Promise.all([
+    const [h, w, v] = await Promise.all([
       readFile(join(dataDir, "hanja.json"), "utf8"),
       readFile(join(dataDir, "words.json"), "utf8"),
       readFile(join(dataDir, "variants.json"), "utf8"),
-      readFile(join(dataDir, "rr.json"), "utf8"),
     ]);
     real = {
       hanja: JSON.parse(h),
       words: JSON.parse(w),
       variants: JSON.parse(v),
-      rr: JSON.parse(r),
     };
   } catch (err) {
     console.log(`      (skipped: extension/data unreadable: ${err.code || err.name})`);
@@ -3279,13 +3490,19 @@ await testAsync("smoke: real native.json resolves 하늘 / 사랑 / 무리 / tog
     "먹다 should carry a native entry"
   );
 
-  // Romanized reach (the QA gap): flagged `haneul` finds 하늘 through the
-  // native rr map, where the Dubeolsik mistype `gksmf` always worked.
+  // Romanized reach (the QA gap v2 closed for good): flagged `haneul` finds
+  // 하늘 through the generator, where the Dubeolsik mistype `gksmf` always
+  // worked. No map is consulted anywhere.
   const sayAll = (t) => lookup(t, all, { interpret: true, native: true });
   const haneul = sayAll("haneul");
   assert.ok(
     (haneul.interpretations || []).some((i) => i.kind === "rr"),
     "haneul should carry a live rr interpretation"
+  );
+  assert.equal(
+    haneul.interpretations[0].to,
+    "하늘",
+    "haneul roots as 하늘 (class A: a whole native headword)"
   );
   assert.ok(
     (haneul.nativeMatches || []).some((m) => m.word === "하늘"),
@@ -3301,13 +3518,35 @@ await testAsync("smoke: real native.json resolves 하늘 / 사랑 / 무리 / tog
     (gksmf.nativeMatches || []).some((m) => m.word === "하늘"),
     "gksmf (the keyboard path) must still reach 하늘"
   );
+  // The QA case that motivated v2, flagged, under the collapse policy.
+  // mushihada is class B (무시 word + native 하다 cover it end to end): `to`
+  // and the srcText root are 무시하다, the native suffix 하다 rides along,
+  // and the cross-candidate splinter junk (아다, from 뭇이하다) is shut out.
+  const mushihada = sayAll("mushihada");
+  assert.deepEqual(mushihada.interpretations, [
+    { kind: "rr", from: "mushihada", to: "무시하다", start: 0 },
+  ]);
+  assert.equal(mushihada.matches[0].kind, "word");
+  assert.equal(mushihada.matches[0].canonical, "無視", "flagged mushihada leads with 無視");
+  const mushihadaNative = (mushihada.nativeMatches || []).map((m) => m.word);
+  assert.ok(mushihadaNative.includes("하다"), "the native suffix 하다 must ride");
+  assert.ok(!mushihadaNative.includes("아다"), "the splinter junk 아다 must not");
+  // mushihaesseo stays class C (nothing covers 했어): it roots as the TYPED
+  // text, still leads with 無視, and carries no splinter native matches.
+  const mushihaesseo = sayAll("mushihaesseo");
+  assert.deepEqual(
+    (mushihaesseo.interpretations || []).map((i) => [i.kind, i.to]),
+    [["rr", "mushihaesseo"]],
+    "flagged mushihaesseo roots as typed (class C)"
+  );
+  assert.equal(mushihaesseo.matches[0].kind, "word");
+  assert.equal(mushihaesseo.matches[0].canonical, "無視", "flagged mushihaesseo leads with 無視");
+  assert.ok(
+    !(mushihaesseo.nativeMatches || []).some((m) => m.word === "아다"),
+    "no splinter native matches on mushihaesseo"
+  );
   // Unflagged, the romanization stays Sino-only: no native rides along.
   assert.equal("nativeMatches" in lookup("haneul", all, { interpret: true }), false);
-  // The emitted map itself: present, and the headline key lands.
-  assert.ok(
-    Array.isArray((realNative.rr || {}).haneul) && realNative.rr.haneul.includes("하늘"),
-    "native.json's rr map should list 하늘 under haneul"
-  );
 
   // Toggle off: byte-identical to a lookup that never saw the file.
   assert.equal(JSON.stringify(lookup("사랑", all)), JSON.stringify(lookup("사랑", real)));
@@ -3630,6 +3869,54 @@ await testAsync("sweep: JS forms() matches pipeline/rr.py over the shipped word 
   } finally {
     await rm(workDir, { recursive: true, force: true });
   }
+});
+
+// --- round-trip completeness: the SPEC v2 safety story --------------------
+// Replaces map determinism: for EVERY words.json byHangul key and EVERY
+// native.json headword, deromanizing each of the word's own forms() must
+// find the word again. Runs over the FULL population (~59k forms, about 30
+// seconds in node); skipped, not failed, when the data files are absent.
+
+await testAsync("round trip: deromanize(f) contains w for every f in forms(w), FULL population", async () => {
+  let wordSet;
+  try {
+    const [w, n] = await Promise.all([
+      readFile(join(dataDir, "words.json"), "utf8"),
+      readFile(join(dataDir, "native.json"), "utf8"),
+    ]);
+    wordSet = new Set([
+      ...Object.keys(JSON.parse(w).byHangul),
+      ...Object.keys(JSON.parse(n).words),
+    ]);
+  } catch (err) {
+    console.log(`      SKIPPED: data files unreadable (${err.code || err.name}); round trip NOT verified`);
+    return;
+  }
+  // The behavior anchors ride along even if the corpus ever drops one.
+  for (const anchor of ["국민", "하늘", "사랑", "가득", "무시", "생일", "학여울"]) {
+    wordSet.add(anchor);
+  }
+  for (const { hangul } of RR_ANCHORS) wordSet.add(hangul);
+
+  const started = Date.now();
+  let checked = 0;
+  const failures = [];
+  for (const word of wordSet) {
+    for (const form of forms(word)) {
+      checked += 1;
+      if (!deromanize(form).some((c) => c.hangul === word)) {
+        failures.push(`${word} via ${form}`);
+      }
+    }
+  }
+  assert.deepEqual(
+    failures.slice(0, 10),
+    [],
+    `${failures.length} of ${checked} forms fail the round trip`
+  );
+  console.log(
+    `      (${wordSet.size} words, ${checked} forms, ${Date.now() - started}ms, all round-trip)`
+  );
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

@@ -1884,6 +1884,32 @@ would have computed. Decided with Jesse across this QA session.
   kind "rr" with from/to/start), the multi-interpretation rendering
   rules (su still shows 수 and 녀, 수 first), the Dubeolsik channel,
   the native flag semantics, and the input-channel rule.
+- CANDIDATE COLLAPSE (ADDENDUM 2026-08-31, QA follow-up: labels follow
+  the content, and fragments never pollute). Each surviving candidate
+  is classed by dictionary coverage. Class A: the whole candidate is
+  ONE dictionary unit (a byHangul key, a native headword on a flagged
+  request, or a single syllable with a reading list). Class B: covered
+  end to end by word/native entries (무시하다 flagged: 무시 word plus
+  native 하다). Class C: partial. The interpretation's matches come
+  ONLY from candidates of the best class present (A beats B beats C);
+  within that class candidates merge under the existing dedupe rules,
+  EXCEPT that class C merges only the candidates achieving the maximal
+  covered-syllable count, so a fragment can never add matches a better
+  candidate lacks (mushihada must never surface 아다, the splinter
+  뭇이하다's suffix read, beside the legitimate 하다). Ranking inside
+  the winning pool is unchanged: tier first, then best frequency among
+  whole-word readings of the query (gungmin leads with 국민, not the
+  rare surface reading 궁민), then word-bearing candidates before
+  native-only ones, stable on the generator's own order. `to` is the
+  pool's best candidate for classes A and B, and for class C it is the
+  TYPED text itself: srcText derives from `to`, and a partial parse
+  has no canonical hangul spelling (the multi-match-root rule
+  generalized), so mushihaesseo roots as what was typed while 무시하다
+  roots as the hangul. The response shape is untouched. Pinned
+  regressions (real data): flagged mushihada resolves to/srcText
+  무시하다 with 無視 leading and native 하다 but never 아다; flagged
+  mushihaesseo leads 無視 and roots as typed; haneul roots 하늘;
+  gukmin, gungmin and kukmin root 국민; su and toddlf unchanged.
 
 ## Verification expectations
 
