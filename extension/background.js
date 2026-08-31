@@ -35,11 +35,12 @@ const DATA_FILES = {
   hanja: "data/hanja.json",
   words: "data/words.json",
   variants: "data/variants.json",
-  // Romanized search ADDENDUM: the forward-generated RR index.
-  rr: "data/rr.json",
   // Decomposition ADDENDUM: display glyph + click target per character.
   decomp: "data/decomp.json",
 };
+// Romanized search v2 ADDENDUM: rr.json is gone from the load set. The
+// romanization interpreter is a generator (extension/deromanize.js) reached
+// through lookup.js; the worker fetches no index for it.
 
 /**
  * Native words ADDENDUM: native.json is NOT in DATA_FILES on purpose. It has
@@ -50,31 +51,18 @@ const DATA_FILES = {
 const NATIVE_DATA_FILE = "data/native.json";
 
 /**
- * Shape guard for native.json, in the guardRr spirit: a bundle without the
- * file must leave flagged lookups working, with the native table simply empty.
- * `maxLen` passes through only as an integer; lookup.js falls back otherwise.
- * `rr` MUST pass through: the guard once rebuilt the object without it, which
- * dropped native romanization in the worker alone, since every other caller
- * hands lookup the raw file (haneul dead, gksmf alive).
+ * Shape guard for native.json: a bundle without the file must leave flagged
+ * lookups working, with the native table simply empty. `maxLen` passes
+ * through only as an integer; lookup.js falls back otherwise. Romanized
+ * search v2: the file's `rr` map is dead weight (the generator replaced it;
+ * wave 3 removes it from the emit), so the guard no longer carries it.
  */
 export function guardNative(raw) {
   const n = raw !== null && typeof raw === "object" ? raw : {};
   const words = n.words !== null && typeof n.words === "object" ? n.words : {};
-  const rr = n.rr !== null && typeof n.rr === "object" ? n.rr : {};
-  const out = { version: 1, words, rr };
+  const out = { version: 1, words };
   if (Number.isInteger(n.maxLen)) out.maxLen = n.maxLen;
   return out;
-}
-
-/**
- * Shape guard for rr.json. A bundle mid-update (or one built before the
- * romanization addendum) must cost the interpreter nothing worse than finding
- * no candidates, so the tables are always objects.
- */
-function guardRr(raw) {
-  const rr = raw !== null && typeof raw === "object" ? raw : {};
-  const table = (v) => (v !== null && typeof v === "object" ? v : {});
-  return { v: 1, words: table(rr.words), syllables: table(rr.syllables) };
 }
 
 const hasOwn = (obj, key) =>
@@ -82,7 +70,7 @@ const hasOwn = (obj, key) =>
   Object.prototype.hasOwnProperty.call(obj, key);
 
 /**
- * Shape guard for decomp.json, in the guardRr spirit: a bundle without the
+ * Shape guard for decomp.json, in the guardNative spirit: a bundle without the
  * file (or with an older one) must leave lookups working, with the feature
  * simply absent.
  */
@@ -288,20 +276,19 @@ async function fetchJson(path) {
   return response.json();
 }
 
-/** Lazily load + cache the five data files. Failures clear the cache so a later lookup can retry. */
+/** Lazily load + cache the four data files. Failures clear the cache so a later lookup can retry. */
 function getData() {
   if (dataPromise === null) {
     dataPromise = (async () => {
-      const [hanja, words, variants, rr, decomp] = await Promise.all([
+      const [hanja, words, variants, decomp] = await Promise.all([
         fetchJson(DATA_FILES.hanja),
         fetchJson(DATA_FILES.words),
         fetchJson(DATA_FILES.variants),
-        fetchJson(DATA_FILES.rr),
         // Absent or malformed: guardDecomp yields an empty table and no card
         // shows a Made of row.
         fetchJson(DATA_FILES.decomp).catch(() => null),
       ]);
-      return { hanja, words, variants, rr: guardRr(rr), decomp: guardDecomp(decomp) };
+      return { hanja, words, variants, decomp: guardDecomp(decomp) };
     })();
     dataPromise.catch(() => {
       dataPromise = null;
