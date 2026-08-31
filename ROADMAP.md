@@ -179,6 +179,20 @@ one schema entry plus its feature code:
 
 ## Later / unscheduled
 
+- Romanized-search maps could shrink to code if size ever matters
+  (standing alternative, reasoned through 2026-08-31; record kept so it
+  is not relitigated from scratch). The rr maps (rr.json and
+  native.json's rr block) are the inverse romanization function
+  precomputed at build time. A runtime inverse is possible and even
+  provable complete by a round-trip property test (every dictionary
+  word is in inverse(forward(word))), but that test needs the forward
+  generation anyway, so the choice is storing bytes versus shipping
+  per-keystroke phonology code that generates 10 to 60 candidates at
+  ambiguous boundaries. The maps compress to a couple hundred KB in
+  the zip, so data won. If shipped size ever becomes a complaint, the
+  right cut is the hybrid: invert the nearly-deterministic naive
+  letter forms in code (only segmentation ambiguity) and keep just the
+  sound-changed official forms as data.
 - Selection support inside `<textarea>`/`<input>`; `all_frames` for iframes
 - 대법원 인명용 badge ("usable in given names", ~8,000 chars from the Supreme
   Court rules annex; Korean law excludes statutes/rules from copyright, so
