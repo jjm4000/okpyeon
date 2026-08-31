@@ -2556,12 +2556,17 @@ const native = {
     // 3-syllable key: the longest the declared maxLen allows.
     하늘색: [{ pos: "noun", glosses: ["sky blue"] }],
   },
+  // The native rr map (QA fix): keys only the native table can explain.
+  // rr.json stays Sino-only, so the shared `rr` fixture is untouched and the
+  // unflagged tests exercise exactly the pre-addendum candidate space.
+  rr: {
+    haneul: ["하늘"],
+    sarang: ["사랑"],
+    gadeuk: ["가득"], // reached from `kadeuk` by the leading-devoice variant
+  },
 };
 
-// `haneul` gives the rr interpreter a candidate only the NATIVE table can
-// explain. Only the copies below carry it; the shared fixtures are untouched.
-const nativeRr = { ...rr, words: { ...rr.words, haneul: ["하늘"] } };
-const nativeData = { ...data, rr: nativeRr, native };
+const nativeData = { ...data, native };
 
 test("unflagged responses are byte-identical with a native table present", () => {
   for (const q of ["사랑", "하늘이", "우리", "國民", "먹다", "국"]) {
@@ -2681,8 +2686,10 @@ test("hedge retirement preconditions ride the response", () => {
 });
 
 test("flagged interpretations consult both tables; native-only survives", () => {
-  // Romanized: the rr candidate 하늘 has no Sino entry, so before the
-  // addendum this interpretation died. Flagged, it lives on the native hit.
+  // Romanized: `haneul` is a key only native.json's rr map carries (rr.json
+  // is forward-generated from words.json, so no native headword can come out
+  // of it). Flagged, the candidate 하늘 has no Sino entry and the
+  // interpretation lives on the native hit alone, with empty `matches`.
   const rrRes = lookup("haneul", nativeData, { interpret: true, native: true });
   assert.deepEqual(rrRes.interpretations, [
     { kind: "rr", from: "haneul", to: "하늘", start: 0 },
@@ -2702,6 +2709,76 @@ test("flagged interpretations consult both tables; native-only survives", () => 
     ok: true,
     matches: [],
   });
+});
+
+test("flagged: a key in both rr maps merges the candidate spaces", () => {
+  // `mixmap` offers 국민 from rr.json and 하늘 from the native map: one rr
+  // interpretation, Sino matches AND native matches, `to` named by the first
+  // candidate that explained something (rr.json is consulted first).
+  const merged = {
+    ...nativeData,
+    rr: { ...rr, words: { ...rr.words, mixmap: ["국민"] } },
+    native: { ...native, rr: { ...native.rr, mixmap: ["하늘"] } },
+  };
+  const res = lookup("mixmap", merged, { interpret: true, native: true });
+  assert.deepEqual(res.interpretations, [
+    { kind: "rr", from: "mixmap", to: "국민", start: 0 },
+  ]);
+  assert.deepEqual(res.matches, lookup("국민", data).matches);
+  assert.deepEqual(res.nativeMatches, [
+    { kind: "native", word: "하늘", pos: "noun", glosses: ["sky", "heaven"] },
+  ]);
+  // The same hangul offered by both maps is one candidate, not two: the
+  // match set is exactly the single 국민 lookup's.
+  const dup = {
+    ...merged,
+    native: { ...native, rr: { mixmap: ["국민", "하늘"] } },
+  };
+  const dedup = lookup("mixmap", dup, { interpret: true, native: true });
+  assert.deepEqual(dedup.matches, lookup("국민", data).matches);
+});
+
+test("flagged: variant expansion reaches the native rr map", () => {
+  // kadeuk devoices to gadeuk, a key only the native map carries, so the
+  // kukmin-style spelling habits work on native headwords too.
+  const res = lookup("kadeuk", nativeData, { interpret: true, native: true });
+  assert.deepEqual(res.interpretations, [
+    { kind: "rr", from: "kadeuk", to: "가득", start: 0 },
+  ]);
+  assert.deepEqual(res.matches, []);
+  assert.deepEqual(res.nativeMatches, [
+    { kind: "native", word: "가득", pos: "adv", glosses: ["fully"] },
+    { kind: "native", word: "가득", pos: "det", glosses: ["full; filled"] },
+  ]);
+});
+
+test("unflagged interpretation never touches the native rr map", () => {
+  // The map is behind a throwing getter: an unflagged lookup that so much as
+  // reads it fails the test, and its response is byte-identical to a bundle
+  // with no native table at all.
+  const trapped = {
+    ...data,
+    native: {
+      version: 1,
+      maxLen: 3,
+      words: native.words,
+      get rr() {
+        throw new Error("native rr read on an unflagged lookup");
+      },
+    },
+  };
+  assert.deepEqual(lookup("haneul", trapped, { interpret: true }), {
+    ok: true,
+    matches: [],
+  });
+  for (const q of ["gukmin", "kadeuk", "gksmf", "guk"]) {
+    assert.equal(
+      JSON.stringify(lookup(q, trapped, { interpret: true })),
+      JSON.stringify(lookup(q, data, { interpret: true })),
+      `query ${q}`
+    );
+  }
+  assert.deepEqual(buildOmniboxSuggestions("haneul", trapped, { interpret: true }), []);
 });
 
 test("buildNativeMatches tolerates junk and keeps the 2-syllable floor", () => {
@@ -3175,6 +3252,36 @@ await testAsync("smoke: real native.json resolves 하늘 / 사랑 / 무리 / tog
   assert.ok(
     (eat.nativeMatches || []).some((m) => m.word === "먹다"),
     "먹다 should carry a native entry"
+  );
+
+  // Romanized reach (the QA gap): flagged `haneul` finds 하늘 through the
+  // native rr map, where the Dubeolsik mistype `gksmf` always worked.
+  const sayAll = (t) => lookup(t, all, { interpret: true, native: true });
+  const haneul = sayAll("haneul");
+  assert.ok(
+    (haneul.interpretations || []).some((i) => i.kind === "rr"),
+    "haneul should carry a live rr interpretation"
+  );
+  assert.ok(
+    (haneul.nativeMatches || []).some((m) => m.word === "하늘"),
+    "flagged haneul should reach the native 하늘"
+  );
+  const sarang = sayAll("sarang");
+  assert.ok(
+    (sarang.nativeMatches || []).some((m) => m.word === "사랑"),
+    "flagged sarang should reach the native 사랑"
+  );
+  const gksmf = sayAll("gksmf");
+  assert.ok(
+    (gksmf.nativeMatches || []).some((m) => m.word === "하늘"),
+    "gksmf (the keyboard path) must still reach 하늘"
+  );
+  // Unflagged, the romanization stays Sino-only: no native rides along.
+  assert.equal("nativeMatches" in lookup("haneul", all, { interpret: true }), false);
+  // The emitted map itself: present, and the headline key lands.
+  assert.ok(
+    Array.isArray((realNative.rr || {}).haneul) && realNative.rr.haneul.includes("하늘"),
+    "native.json's rr map should list 하늘 under haneul"
   );
 
   // Toggle off: byte-identical to a lookup that never saw the file.

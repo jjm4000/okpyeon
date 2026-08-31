@@ -1648,8 +1648,18 @@ rendering site below sits behind one settings predicate
 ```json
 { "version": 1,
   "maxLen": 5,
+  "rr": { "haneul": ["하늘"] },
   "words": { "하늘": [ { "pos": "noun", "glosses": ["sky", "heaven"] } ] } }
 ```
+- `rr` (ADDENDUM 2026-08-31, QA fix: `haneul` found nothing while the
+  mistype `gksmf` worked): every headword indexed under every form
+  pipeline/rr.py emits for it, the same recipe as rr.json's words half.
+  Values are arrays of headwords sorted LEXICOGRAPHICALLY (native
+  entries carry no frequency scores; the order only has to be
+  deterministic). The map lives here, NOT in rr.json: rr.json stays
+  Sino-only and byte-identical, so the Sino path never pays for native
+  romanization data, and the map loads exactly when native.json does,
+  with no extra fetch.
 - Keyed by hangul. The value is an array: one entry per part of speech
   (POS homonyms merge senses within their entry; distinct POS stay
   distinct entries). `maxLen` is the longest key's syllable count.
@@ -1718,6 +1728,13 @@ whole lookup.
   (Dubeolsik, RR) run exactly as today; each interpretation consults
   both tables when flagged. Internal navigation stays literal (the
   input-channel rule), including native drill rows.
+- Romanization candidates (ADDENDUM 2026-08-31, QA fix): a flagged
+  lookup's RR interpreter draws candidates from the merge of rr.json
+  and native.json's `rr` map, per query variant, so the spelling-habit
+  expansion reaches native headwords too. A candidate only the native
+  map offers behaves like any native-only interpretation (it survives
+  with empty `matches`). Unflagged lookups never read the map; rr.json
+  stays Sino-only so its cost stays off the Sino path.
 - LEAD RULE (the popup and every card-rendering view): the lead
   identity is the best non-rare hanja spelling; else the native entry;
   else the rare hanja. So 無理 and 家長 lead unchanged, 사랑 leads

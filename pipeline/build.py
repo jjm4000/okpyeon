@@ -1672,6 +1672,24 @@ def verify(hanja_obj, words_obj, variants_obj, rr_obj=None, decomp_obj=None,
             "maxLen %s, longest key %s syllables"
             % (native_obj["maxLen"],
                max((len(h) for h in nw), default=0)))
+        nr = native_obj.get("rr") or {}
+        # 하늘 has one collapsed form: naive and official are both haneul.
+        add("native rr: haneul lists 하늘, and both forms collapse to it",
+            "하늘" in nr.get("haneul", ()) and rr.forms("하늘") == ["haneul"],
+            "haneul -> %s | forms(하늘) = %s"
+            % ((nr.get("haneul") or [])[:4], rr.forms("하늘")))
+        add("native rr: sarang lists 사랑",
+            "사랑" in nr.get("sarang", ()),
+            "sarang -> %s" % (nr.get("sarang") or [])[:4])
+        add("native rr: keys are pure ASCII letters",
+            len(nr) > 0
+            and all(k and k.isascii() and k.isalpha() for k in list(nr)[:5000]),
+            "checked %d of %s keys" % (min(len(nr), 5000),
+                                       format(len(nr), ",")))
+        bad_vals = [f for f, v in list(nr.items())[:5000]
+                    if v != sorted(set(v))]
+        add("native rr: values are lexicographic and duplicate-free",
+            not bad_vals, "checked %d keys" % min(len(nr), 5000))
 
     failed = 0
     log("=============== SPOT CHECKS ================")
@@ -2322,8 +2340,21 @@ def main(argv):
                 for p, g in sorted(by_pos.items()) if g]
         if rows:
             native_words[hangul] = rows
+    # Native rr map (SPEC native-words addendum, QA fix): every native
+    # headword under every rr.forms() key, the same recipe as rr.json's
+    # words half. It lives inside native.json, not rr.json, so the Sino-only
+    # path never downloads it and the flagged path needs no extra fetch.
+    # Native entries carry no frequency scores, so values sort
+    # lexicographically; the order only has to be deterministic.
+    native_rr = {}
+    for h in native_words:
+        for form in rr.forms(h):
+            native_rr.setdefault(form, []).append(h)
+    for form, lst in native_rr.items():
+        native_rr[form] = sorted(lst)
     native_obj = {"version": 1,
                   "maxLen": max((len(h) for h in native_words), default=0),
+                  "rr": native_rr,
                   "words": native_words}
     s_h = write_json("hanja.json", hanja_obj)
     s_w = write_json("words.json", words_obj)
@@ -2338,8 +2369,9 @@ def main(argv):
     log("words      : %-9s (expect >= 20000)" % format(len(words_out), ","))
     log("byHangul   : %-9s" % format(len(by_hangul), ","))
     log("variants   : %-9s (expect >= 1000)" % format(len(variant_map), ","))
-    log("native     : %-9s (expect ~ 16000; maxLen %d)"
-        % (format(len(native_words), ","), native_obj["maxLen"]))
+    log("native     : %-9s (expect ~ 16000; maxLen %d; rr keys %s)"
+        % (format(len(native_words), ","), native_obj["maxLen"],
+           format(len(native_rr), ",")))
     log("  variant sources: " + ", ".join(
         "%s=%d" % (PRIO_NAMES[k], v) for k, v in sorted(src_counts.items())))
     zones = collections.Counter(e["lvl"] for e in chars_out.values())

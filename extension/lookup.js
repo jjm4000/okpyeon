@@ -914,10 +914,18 @@ export function romanizationVariants(text) {
  * Every hangul string the rr index offers for a variant set: words first, then
  * single syllables, in rr.json's own order (which is frequency-sorted for
  * words). Deduped across variants.
+ *
+ * Native words ADDENDUM: rr.json is forward-generated from words.json alone,
+ * so no native headword can ever come out of it. A flagged call passes
+ * native.json's own `rr` map, and each variant consults it too: Sino words
+ * first (frequency order), then native headwords (lexicographic order), then
+ * syllables. Merging here, per variant, is what lets the query-side variant
+ * expansion reach the native map as well.
  */
-function rrCandidates(variants, rr) {
+function rrCandidates(variants, rr, nativeRr) {
   const words = (rr && rr.words) || {};
   const syllables = (rr && rr.syllables) || {};
+  const nativeWords = nativeRr || {};
   const out = [];
   const seen = new Set();
   const take = (list) => {
@@ -930,6 +938,7 @@ function rrCandidates(variants, rr) {
   };
   for (const variant of variants) {
     if (hasOwn(words, variant)) take(words[variant]);
+    if (hasOwn(nativeWords, variant)) take(nativeWords[variant]);
     if (hasOwn(syllables, variant)) take(syllables[variant]);
   }
   return out;
@@ -970,7 +979,10 @@ function dubeolsikInterpretation(raw, data, native) {
  * candidate order (i.e. rr.json's frequency order), deduped.
  */
 function rrInterpretation(raw, data, native) {
-  const candidates = rrCandidates(romanizationVariants(raw), data && data.rr);
+  // Only a flagged call may read native.json's rr map: the unflagged
+  // candidate space (and everything downstream of it) stays byte-identical.
+  const nativeRr = native ? (data && data.native && data.native.rr) || null : null;
+  const candidates = rrCandidates(romanizationVariants(raw), data && data.rr, nativeRr);
   const matches = [];
   const nativeMatches = [];
   const seen = new Set();
