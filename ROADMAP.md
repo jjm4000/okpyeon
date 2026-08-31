@@ -179,20 +179,23 @@ one schema entry plus its feature code:
 
 ## Later / unscheduled
 
-- Romanized-search maps could shrink to code if size ever matters
-  (standing alternative, reasoned through 2026-08-31; record kept so it
-  is not relitigated from scratch). The rr maps (rr.json and
-  native.json's rr block) are the inverse romanization function
-  precomputed at build time. A runtime inverse is possible and even
-  provable complete by a round-trip property test (every dictionary
-  word is in inverse(forward(word))), but that test needs the forward
-  generation anyway, so the choice is storing bytes versus shipping
-  per-keystroke phonology code that generates 10 to 60 candidates at
-  ambiguous boundaries. The maps compress to a couple hundred KB in
-  the zip, so data won. If shipped size ever becomes a complaint, the
-  right cut is the hybrid: invert the nearly-deterministic naive
-  letter forms in code (only segmentation ambiguity) and keep just the
-  sound-changed official forms as data.
+- Romanized search: maps versus function, RESOLVED THE OTHER WAY
+  (2026-08-31, same day the record below first said "data won"; kept
+  so the reversal is not relitigated either). The maps lost on
+  composition, not on size or correctness: a map can only answer "is
+  this exact string a dictionary word", so romanized input never got
+  the span segmentation hangul input gets, and inflected forms
+  (mushihaesseo) were unrepresentable in principle. Three QA failures
+  in one session were all map-coverage omissions. v2 shipped the
+  function: forward RR ported to JS (equivalence-swept against rr.py,
+  the kept reference implementation, over the full word population), a
+  generous inverse generator gated by the dictionary (the rule the
+  keyboard channel always had), candidate collapse by coverage class,
+  and a measured resolve cap (garbage worst case 57ms warm behind the
+  debounce). rr.json and native.json's rr block are deleted, 1.5 MB
+  lighter. The round-trip completeness test (every word reachable
+  from each of its forms) is the safety story the maps used to
+  provide by construction.
 - Selection support inside `<textarea>`/`<input>`; `all_frames` for iframes
 - 대법원 인명용 badge ("usable in given names", ~8,000 chars from the Supreme
   Court rules annex; Korean law excludes statutes/rules from copyright, so
