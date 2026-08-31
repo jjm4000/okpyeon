@@ -192,6 +192,10 @@
     "  --lvl-h-bg: #e5ecfb; --lvl-h-fg: #2a4ea6; --lvl-h-edge: rgba(42, 78, 166, 0.26);",
     "  --lvl-a-bg: #fbf1de; --lvl-a-fg: #8a5810; --lvl-a-edge: rgba(138, 88, 16, 0.20);",
     "  --lvl-r-bg: #f0f0f3; --lvl-r-fg: #74747e; --lvl-r-edge: rgba(0, 0, 0, 0.10);",
+    /* Native-word family: the sidebar's brand/seal jade (#2e6b57), so the
+       NATIVE marker and the scope hint read as one voice with the wordmark. */
+    "  --native-bg: #e6f1ec; --native-fg: #2e6b57;",
+    "  --native-edge: rgba(46, 107, 87, 0.28);",
     "  width: 340px;",
     "  max-height: 360px;",
     "  overflow-y: auto;",
@@ -251,6 +255,10 @@
     "    --lvl-a-edge: rgba(224, 178, 113, 0.24);",
     "    --lvl-r-bg: rgba(255, 255, 255, 0.06); --lvl-r-fg: #9a9aa4;",
     "    --lvl-r-edge: rgba(255, 255, 255, 0.13);",
+    /* Same wash-plus-coloured-text move the level chips make; the hue is the
+       sidebar's dark-mode jade. */
+    "    --native-bg: rgba(124, 195, 163, 0.14); --native-fg: #7cc3a3;",
+    "    --native-edge: rgba(124, 195, 163, 0.30);",
     "  }",
     "}",
     /* ---- embed mode: in-flow, flat, and NOT a scroll container ----
@@ -495,6 +503,41 @@
     "}",
     ".usedin-row b { font-weight: 600; color: var(--fg-soft); }",
     ".card.component .usedin-row { font-size: 11px; }",
+    /* ---- native words: card marker, Same sound rows, the scope hint ---- */
+    // The NATIVE marker is a bordered sentence-height pill like the level
+    // chips, but in the jade family: a statement of register, not a warning.
+    ".native-tag {",
+    "  display: inline-block; padding: 0 5px; border-radius: 4px;",
+    "  font-size: 9px; font-weight: 700; letter-spacing: 0.05em;",
+    "  text-transform: uppercase; line-height: 1.7; white-space: nowrap;",
+    "  color: var(--native-fg); background: var(--native-bg);",
+    "  border: 1px solid var(--native-edge);",
+    "}",
+    // Inside a Same sound row the tag steps down to the rare-marker size and
+    // sits between the hangul and the gloss.
+    ".compound .native-tag { font-size: 8px; margin-left: 5px; vertical-align: 1px; }",
+    // POS chip on the native card head: the neutral badge look, since part of
+    // speech is classification, not register.
+    ".pos-chip {",
+    "  display: inline-block; padding: 0 5px; border-radius: 4px;",
+    "  font-size: 10px; font-weight: 600; line-height: 1.7; white-space: nowrap;",
+    "  color: var(--chip-fg); background: var(--chip-bg);",
+    "  border: 1px solid var(--chip-edge);",
+    "}",
+    ".native-meta { display: flex; align-items: center; gap: 6px; margin-top: 3px; }",
+    // One block per part of speech when a headword has several.
+    ".native-pos { margin-top: 8px; }",
+    ".native-pos .glosses { margin-top: 4px; }",
+    // Same sound rows are ordinary entry rows; only the insets are declared,
+    // matching the compounds box so text lines up with the label above.
+    ".samesound { margin-top: 2px; margin-left: -6px; margin-right: -6px; }",
+    // Cross-scope hint (embed only): a quiet jade nav row after the results.
+    ".entry-row.native-hint {",
+    "  margin: 8px 6px 2px; padding: 4px 8px; border-radius: 6px;",
+    "  font-size: 12px; color: var(--native-fg); background: var(--native-bg);",
+    "}",
+    ".native-hint b { font-weight: 700; }",
+    ".entry-row.native-hint::after { color: var(--native-fg); }",
     ".view > .card.usedin { padding: 0; }",
     ".usedin-list { padding: 3px 0 5px; }",
     ".usedin-item { padding: 4px 12px; border-radius: 0; }",
@@ -779,6 +822,15 @@
   var anchorRect = null;      // selection rect the popup is currently glued to
   var embedContainer = null;  // embed mode only: the page element the host lives in
 
+  // --- embed native-scope state (all of it meaningless outside IS_EMBED) ---
+  // `native` and `scope` are searchFor options; the scope is a RENDER-side
+  // filter, so the request flag and the render gate are tracked separately.
+  var embedNative = false;        // requests of the current session carry native:true
+  var embedScope = "hanja";       // "hanja" renders exactly today's results
+  var embedLast = null;           // {response, query}: the hint re-renders this
+  var embedOnScopeChange = null;  // shell callback, from mount() options
+  var embedHintCount = 0;         // consumed by the next showAt root view
+
   // --- resize state (survives the popup session; only a reload resets it) ---
   var userSized = false;      // the user has taken control of the dimensions
   var resizing = false;       // a handle drag is in progress
@@ -807,6 +859,13 @@
   // an ordinary view): the chars that are nobody's component, the cards built
   // for them, and the box they live in.
   var charGroups = [];
+  // Native entries of the current view, grouped by headword. A word card
+  // claims its group while rendering; whatever stays unclaimed becomes a
+  // standalone native card at the end of the view.
+  var viewNativeGroups = [];
+  // Chars swallowed by a native-led group: its hanja spellings' components
+  // must not surface as top-level cards beside the native card.
+  var nativeOwnedChars = null;
 
   function ensureHost() {
     if (host && host.isConnected) return;
@@ -1142,12 +1201,104 @@
 
   /* ---- Card sections ---------------------------------------------------- *
    * Settings reach every section's enabled-predicate through this one
-   * accessor. It returns null until the first real toggle ships, and a
-   * predicate reads null as enabled, so populating it is the only plumbing
-   * that toggle needs.
+   * accessor. It hands back the last okpSettings record seen (loaded once at
+   * startup, kept fresh by the storage listener), or null before the load
+   * answers. The always-on predicates ignore it; nativeEnabled is the first
+   * that reads it, and it reads null as OFF, per its SPEC default.
    * -------------------------------------------------------------------- */
 
+  // The raw okpSettings record. The worker is the single writer and always
+  // writes normalized records, so no re-normalization happens here.
+  var settingsCache = null;
+
   function sectionSettings() {
+    return settingsCache;
+  }
+
+  /* ---- Native Korean words (SPEC ADDENDUM 2026-08-31) ------------------- *
+   * One settings toggle gates everything. Off must be byte-identical to
+   * today on both axes: requests carry no `native` field at all, and no
+   * native data reaches the renderer, so no native DOM can exist.
+   * -------------------------------------------------------------------- */
+
+  // The section predicate. Default OFF: an absent record, an old record and
+  // an explicit false all read the same way.
+  function nativeEnabled(settings) {
+    return !!settings && settings.nativeWords === true;
+  }
+
+  // Request side: does a lookup carry native:true? In embed the shell decides
+  // per searchFor call; in the popup the settings toggle decides.
+  function nativeRequestOn() {
+    if (IS_EMBED) return embedNative === true;
+    return nativeEnabled(sectionSettings());
+  }
+
+  // Render side: does this surface draw native cards and sections? Embed's
+  // "hanja" scope keeps the flag on the wire but renders exactly today's
+  // results; the popup has no scopes, so both gates coincide there.
+  function nativeRenderOn() {
+    if (IS_EMBED) return embedNative === true && embedScope === "all";
+    return nativeEnabled(sectionSettings());
+  }
+
+  // Ingestion: raw nativeMatches -> clean {word, pos, glosses} entries.
+  // Everything downstream (views, cards, rows) sees only this shape.
+  function normalizeNativeMatches(rawList) {
+    var out = [];
+    asArray(rawList).forEach(function (e) {
+      if (!e || typeof e !== "object" || e.kind !== "native") return;
+      var word = nonEmptyString(e.word);
+      if (!word) return;
+      out.push({
+        word: word,
+        pos: nonEmptyString(e.pos),
+        glosses: asArray(e.glosses).map(nonEmptyString).filter(Boolean)
+      });
+    });
+    return out;
+  }
+
+  function nativeEntriesOf(response) {
+    return normalizeNativeMatches(response && response.nativeMatches);
+  }
+
+  // Group a view's entries by headword, first-appearance order, deduped by
+  // (word, pos) as the worker promises for interpreted unions. `claimed`
+  // starts false; renderers flip it, so leftovers are exactly the unclaimed.
+  function nativeGroupsFor(view) {
+    if (!nativeRenderOn()) return [];
+    var groups = [];
+    var byWord = Object.create(null);
+    var seen = Object.create(null);
+    asArray(view && view.native).forEach(function (entry) {
+      if (!entry || typeof entry !== "object") return;
+      var word = nonEmptyString(entry.word);
+      if (!word) return;
+      var dupKey = word + " " + nonEmptyString(entry.pos);
+      if (seen[dupKey]) return;
+      seen[dupKey] = true;
+      var group = byWord[word];
+      if (!group) {
+        group = { word: word, entries: [], claimed: false };
+        byWord[word] = group;
+        groups.push(group);
+      }
+      group.entries.push(entry);
+    });
+    return groups;
+  }
+
+  // A word card claims the native group sharing its hangul, exactly once.
+  function claimNativeGroup(word) {
+    if (!word) return null;
+    for (var i = 0; i < viewNativeGroups.length; i++) {
+      var group = viewNativeGroups[i];
+      if (group.word === word && !group.claimed) {
+        group.claimed = true;
+        return group;
+      }
+    }
     return null;
   }
 
@@ -1955,7 +2106,9 @@
   }
 
   // Fills (or refills) the swappable body of a word card for one spelling.
-  function fillWordBody(body, m) {
+  // `natives` is the native group this word's hangul claimed, if any; the
+  // group is per-hangul, so a spelling swap re-renders the same rows.
+  function fillWordBody(body, m, natives) {
     clearNode(body);
 
     appendWordHead(body, m);
@@ -1965,6 +2118,41 @@
     appendCharChips(body, m);
 
     appendUsedInRow(body, m);
+
+    appendSameSoundNatives(body, natives);
+  }
+
+  /* ---- Same sound: native rows on a hanja-led card ----------------------- *
+   * One collapsed nav row per native entry, at the end of the word body
+   * right after the used-in row. Self-contained per the section convention:
+   * this predicate check, this function, and the single call above.
+   * -------------------------------------------------------------------- */
+
+  function appendSameSoundNatives(body, natives) {
+    if (!nativeRenderOn()) return;
+    var list = asArray(natives);
+    if (!list.length) return;
+
+    var box = el("div", "samesound");
+    list.forEach(function (entry) {
+      var word = nonEmptyString(entry && entry.word);
+      if (!word) return;
+      var row = el("div", "entry-row samesound-row nav");
+      var text = el("span", "compound");
+      text.appendChild(el("span", "cpd-hangul", word));
+      text.appendChild(el("span", "native-tag", "native"));
+      var gloss = asArray(entry.glosses).map(nonEmptyString).filter(Boolean)[0] || "";
+      if (gloss) text.appendChild(el("span", "cpd-gloss", ": " + gloss));
+      row.appendChild(clampWrap(text, 1));
+      row.setAttribute("aria-label",
+        word + ", native Korean word" + (gloss ? ": " + gloss : ""));
+      // A push, never an in-place swap: the native card is its own view.
+      makeNavRow(row, function () { pushNativeView(word); });
+      box.appendChild(row);
+    });
+    if (!box.firstChild) return;
+    body.appendChild(el("div", "label", "Same sound"));
+    body.appendChild(box);
   }
 
   function prefersReducedMotion() {
@@ -2165,7 +2353,7 @@
       state.hedgeBox.appendChild(el("div", "hedge-note",
         "Likely native Korean. This hanja spelling is obscure."));
     }
-    fillWordBody(state.body, m);
+    fillWordBody(state.body, m, state.natives);
     renderParts(state);
   }
 
@@ -2231,6 +2419,195 @@
 
     syncWordCard(state);
     return card;
+  }
+
+  /* ---- The native word card --------------------------------------------- *
+   * Headword, POS chip, NATIVE marker, glosses, Same sound, Wiktionary link.
+   * NO save star in v1: saved words have no native key namespace yet, so
+   * appendCardActions is simply not called and the action is absent rather
+   * than disabled. Sections that would be empty do not render.
+   * -------------------------------------------------------------------- */
+
+  // A single POS rides in the head beside the NATIVE marker. Several POS
+  // entries for one headword render as one POS-chipped gloss block each, so
+  // the noun senses and the verb senses never share a numbering.
+  function buildNativeCard(word, entries, spellings) {
+    var card = el("div", "card native");
+
+    var head = el("div", "head");
+    head.appendChild(el("div", "surface", word));
+    var meta = el("div", "headmeta");
+    var line = el("div", "native-meta");
+    if (entries.length === 1 && entries[0].pos) {
+      line.appendChild(el("span", "pos-chip", capitalizeSense(entries[0].pos)));
+    }
+    line.appendChild(el("span", "native-tag", "native"));
+    meta.appendChild(line);
+    head.appendChild(meta);
+    // Korean native entries live at the hangul title, which is exactly what
+    // appendWikiLink builds: /wiki/<hangul>#Korean.
+    appendWikiLink(head, word);
+    card.appendChild(head);
+
+    if (entries.length === 1) {
+      appendGlosses(card, entries[0].glosses);
+    } else {
+      entries.forEach(function (entry) {
+        var block = el("div", "native-pos");
+        if (entry.pos) block.appendChild(el("span", "pos-chip", capitalizeSense(entry.pos)));
+        appendGlosses(block, entry.glosses);
+        if (block.firstChild) card.appendChild(block);
+      });
+    }
+
+    appendSameSoundSpellings(card, spellings);
+    return card;
+  }
+
+  /* ---- Same sound: hanja rows on a native-led card ----------------------- *
+   * One collapsed nav row per hanja spelling, in the shared entry-row
+   * treatment (hangul, spelling in parens, first gloss, rare rows muted with
+   * the superscript marker). Self-contained: this predicate check, this
+   * function, and the single call in buildNativeCard.
+   * -------------------------------------------------------------------- */
+
+  function appendSameSoundSpellings(card, spellings) {
+    if (!nativeRenderOn()) return;
+    var box = el("div", "samesound");
+    usableMatches(spellings).forEach(function (m) {
+      if (m.kind !== "word") return;
+      var hanja = spellingKey(m);
+      if (!hanja) return;
+      var row = buildEntryRow({
+        hangul: nonEmptyString(m.hangul),
+        hanja: hanja,
+        gloss: asArray(m.glosses).map(nonEmptyString).filter(Boolean)[0] || "",
+        rare: m.rare === true
+      }, "samesound-row");
+      if (row) box.appendChild(row);
+    });
+    if (!box.firstChild) return;
+    card.appendChild(el("div", "label", "Same sound"));
+    card.appendChild(box);
+  }
+
+  // Push the native card as its own view. Data comes from a literal flagged
+  // lookup of the hangul (usually already in the session cache): its
+  // nativeMatches are the entries, its word matches the Same sound spellings.
+  function pushNativeView(word) {
+    var target = nonEmptyString(word);
+    if (!target) return;
+    if (reenterCurrentView("native:" + target)) return;
+    var seq = requestSeq;
+    fetchLookup(target).then(function (response) {
+      if (seq !== requestSeq) return;
+      if (!response || response.ok !== true) return;
+      var entries = nativeEntriesOf(response).filter(function (entry) {
+        return entry.word === target;
+      });
+      if (!entries.length) return;
+      var spellings = usableMatches(response.matches).filter(function (m) {
+        return m.kind === "word" && nonEmptyString(m.hangul) === target;
+      });
+      pushView({
+        key: "native:" + target,
+        label: target,               // the crumb is the hangul itself
+        matches: spellings,
+        native: entries,
+        nativeLead: true,
+        srcText: target
+      });
+    });
+  }
+
+  /* ---- Lead rule for whole lookup views ---------------------------------- *
+   * When EVERYTHING a lookup returned is one hedged homograph group (plus its
+   * own component chars) and a native entry exists, the native card is not a
+   * section of the view: it IS the view, keyed and crumbed by the hangul.
+   * Anything mixed returns null and the ordinary render applies the lead
+   * rule per word group instead.
+   * -------------------------------------------------------------------- */
+
+  function nativeLeadView(list, natives, target) {
+    if (!natives.length || !nativeRenderOn()) return null;
+    var words = [];
+    var chars = [];
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].kind === "word") words.push(list[i]);
+      else if (list[i].kind === "char") chars.push(list[i]);
+      else return null;   // readings and lists: a mixed view, no single lead
+    }
+
+    var word;
+    if (words.length) {
+      var surfaces = uniqStrings(words.map(function (m) {
+        return nonEmptyString(m.surface) || nonEmptyString(m.canonical);
+      }));
+      if (surfaces.length !== 1) return null;
+      if (!isHedged(words)) return null;
+      // Every char match must be a component of some spelling; a genuinely
+      // independent char means the view shows more than this word.
+      var component = Object.create(null);
+      words.forEach(function (m) {
+        uniqStrings(asArray(m.chars)).forEach(function (ch) { component[ch] = true; });
+      });
+      for (var c = 0; c < chars.length; c++) {
+        if (!component[spellingKey(chars[c])]) return null;
+      }
+      word = nonEmptyString(words[0].hangul);
+    } else {
+      if (chars.length) return null;
+      var headwords = uniqStrings(natives.map(function (entry) { return entry.word; }));
+      if (headwords.length !== 1) return null;
+      word = headwords[0];
+    }
+
+    var entries = natives.filter(function (entry) { return entry.word === word; });
+    if (!entries.length) return null;
+    return {
+      key: "native:" + word,
+      label: word,
+      matches: words,
+      native: entries,
+      nativeLead: true,
+      srcText: nonEmptyString(target)
+    };
+  }
+
+  /* ---- Cross-scope hint (embed only) ------------------------------------- *
+   * In "hanja" scope a query with native matches gets one quiet nav row after
+   * the results (or alone, under the shell's empty-state seal). Tapping it
+   * re-renders the SAME response in "all" scope; there is no new lookup.
+   * -------------------------------------------------------------------- */
+
+  function buildScopeHint(count) {
+    var row = el("div", "entry-row native-hint nav");
+    var text = el("span", "native-hint-text");
+    text.appendChild(el("b", null, String(count)));
+    text.appendChild(document.createTextNode(
+      (count === 1 ? " native word" : " native words") + " in All words"));
+    row.appendChild(text);
+    row.setAttribute("aria-label",
+      count + (count === 1 ? " native word" : " native words") + " in All words");
+    makeNavRow(row, switchEmbedScope);
+    return row;
+  }
+
+  function switchEmbedScope() {
+    if (!IS_EMBED || !embedLast) return;
+    embedScope = "all";
+    // Supersede any in-flight drill fetch: the stack it targeted is going away.
+    requestSeq++;
+    var response = embedLast.response;
+    showAt(EMBED_RECT, response.matches,
+      searchContext(response, embedLast.query),
+      response.interpretations, response.nativeMatches);
+    if (lookupCache) lookupCache[embedLast.query] = response;
+    if (typeof embedOnScopeChange === "function") {
+      try {
+        embedOnScopeChange("all");
+      } catch (e) { /* the shell's listener, the shell's problem */ }
+    }
   }
 
   // Homophone browse: "국 — 12 hanja" over a scrollable list of candidates.
@@ -3070,8 +3447,26 @@
     }
 
     groups.forEach(function (group) {
+      // LEAD RULE per word group: the best non-rare hanja spelling leads
+      // exactly as today; a hedge-worthy group (all spellings rare, hangul
+      // surface) with a native entry hands the lead to the native card
+      // instead. HEDGE RETIREMENT falls out of that: the hedged word card is
+      // never built, so its banner cannot render, and the muted rare row in
+      // Same sound states what the banner used to guess.
+      var nativeGroup = claimNativeGroup(nonEmptyString(group[0].hangul));
+      if (nativeGroup && isHedged(group)) {
+        group.forEach(function (m) {
+          uniqStrings(asArray(m.chars)).forEach(function (ch) {
+            nativeOwnedChars[ch] = true;
+          });
+        });
+        viewRoot.appendChild(buildNativeCard(nativeGroup.word, nativeGroup.entries, group));
+        count++;
+        return;
+      }
       var state = {
         items: group, index: 0, card: null, body: null, chips: [],
+        natives: nativeGroup ? nativeGroup.entries : [],
         partsBox: null, partsList: null,
         componentsBox: null, componentList: null, owned: []
       };
@@ -3095,7 +3490,9 @@
     var box = el("div", "top-chars");
     viewRoot.appendChild(box);
     charGroups.push({
-      chars: responseChars.filter(function (ch) { return !isComponent[ch]; }),
+      chars: responseChars.filter(function (ch) {
+        return !isComponent[ch] && !nativeOwnedChars[ch];
+      }),
       cardEls: Object.create(null),
       box: box
     });
@@ -3436,10 +3833,27 @@
     // so appendMatchCards can simply be called per group.
     wordStates = [];
     charGroups = [];
+    viewNativeGroups = nativeGroupsFor(view);
+    nativeOwnedChars = Object.create(null);
+    var count = 0;
+
+    // A pushed native view (Same sound drill, or a whole-lookup native lead)
+    // is exactly one card: the native entry, with its hanja spellings as its
+    // own Same sound rows. Nothing else the response held renders here.
+    if (view.nativeLead === true) {
+      if (viewNativeGroups.length) {
+        var lead = viewNativeGroups[0];
+        lead.claimed = true;
+        viewRoot.appendChild(buildNativeCard(lead.word, lead.entries, view.matches));
+        count++;
+      }
+      pendingScrollTop = view.scrollTop || 0;
+      return count;
+    }
+
     var groups = (view.groups && view.groups.length)
       ? view.groups
       : [{ interpretation: null, matches: view.matches }];
-    var count = 0;
     groups.forEach(function (group) {
       if (groups.length > 1 && group.interpretation) {
         var divider = buildGroupDivider(group.interpretation);
@@ -3450,6 +3864,23 @@
     // Char regions are laid out ONCE across every group, so a glyph both
     // interpretations turned up renders a single card.
     count += renderCharRegions();
+
+    // Native entries no word group claimed: standalone native cards, which is
+    // how 하늘 renders where today nothing renders at all.
+    viewNativeGroups.forEach(function (group) {
+      if (group.claimed) return;
+      group.claimed = true;
+      viewRoot.appendChild(buildNativeCard(group.word, group.entries, []));
+      count++;
+    });
+
+    // Embed, hanja scope: the cross-scope hint rides at the end of the root
+    // view (alone under the shell's empty seal when nothing else rendered).
+    // Counted as content so an otherwise empty view stays on screen for it.
+    if (view.scopeHint > 0) {
+      viewRoot.appendChild(buildScopeHint(view.scopeHint));
+      count++;
+    }
 
     // Restore the spelling that was selected when we left this view.
     if (view.selection && view.selection.length) {
@@ -3500,6 +3931,8 @@
     saveCurrentViewState();
     viewStack.push({
       key: view.key || null, label: view.label, matches: view.matches,
+      native: asArray(view.native),
+      nativeLead: view.nativeLead === true,
       srcText: viewSourceText(view.matches, view.srcText),
       scrollTop: 0, selection: null
     });
@@ -3523,13 +3956,23 @@
       if (seq !== requestSeq) return;                 // dismissed or superseded
       if (!response || response.ok !== true) return;  // keep the current view
       var list = usableMatches(response.matches);
-      if (!list.length) return;
+      var natives = nativeRenderOn() ? nativeEntriesOf(response) : [];
+      if (!list.length && !natives.length) return;
+      // Whole-view lead rule first: a hedged group with a native entry, or a
+      // native-only hit, opens as the native card under its hangul key.
+      var nativeView = nativeLeadView(list, natives, target);
+      if (nativeView) {
+        if (reenterCurrentView(nativeView.key)) return;
+        pushView(nativeView);
+        return;
+      }
       // Authoritative check: a variant surface (学生) only resolves to its
       // canonical key once the worker has answered.
       var key = viewKey(list);
       if (reenterCurrentView(key)) return;
       pushView({
         key: key, label: viewLabel(list, target), matches: list,
+        native: natives,
         srcText: target                 // this view was looked up from the row
       });
     });
@@ -3576,19 +4019,29 @@
       if (seq !== requestSeq) return;
       if (!response || response.ok !== true) return;
       var list = usableMatches(response.matches);
-      if (!list.length) return;
+      var natives = nativeRenderOn() ? nativeEntriesOf(response) : [];
+      if (!list.length && !natives.length) return;
       if (hangulSpellings(list, target).length > 1) {
         // The hangul itself is the identity, and the crumb names it.
         pushView({
-          key: "hangul:" + target, label: target, matches: list, srcText: target
+          key: "hangul:" + target, label: target, matches: list,
+          native: natives, srcText: target
         });
+        return;
+      }
+      // Whole-view lead rule, exactly as navigateTo applies it.
+      var nativeView = nativeLeadView(list, natives, target);
+      if (nativeView) {
+        if (reenterCurrentView(nativeView.key)) return;
+        pushView(nativeView);
         return;
       }
       // One spelling: an ordinary word view, under the ordinary orient rule.
       var key = viewKey(list);
       if (reenterCurrentView(key)) return;
       pushView({
-        key: key, label: viewLabel(list, target), matches: list, srcText: target
+        key: key, label: viewLabel(list, target), matches: list,
+        native: natives, srcText: target
       });
     });
   }
@@ -3672,9 +4125,12 @@
     positionAt(anchorRect);
   }
 
-  function showAt(rect, matches, srcText, interpretations) {
+  function showAt(rect, matches, srcText, interpretations, nativeMatches) {
     ensureHost();
     var list = usableMatches(matches);
+    // Native entries render only where the render gate is open; elsewhere the
+    // array is empty and every native code path below is inert.
+    var natives = nativeRenderOn() ? normalizeNativeMatches(nativeMatches) : [];
     // Split before anything filters the array: `start` indexes the raw one.
     var groups = interpretationGroups(matches, interpretations);
     var ambiguous = groups.length > 1;
@@ -3682,12 +4138,31 @@
     // view IS the typed text — the trail reads "su › 女" whichever group the
     // reader descended from, and neither reading is asserted over the other.
     var typed = nonEmptyString(srcText);
+    // Embed hanja scope only: searchFor parks the hint count here right
+    // before calling in, and the root view carries it from then on, so a
+    // crumb-back to the root re-renders the hint too.
+    var scopeHint = embedHintCount;
+    embedHintCount = 0;
     resetSession();
-    viewStack = [{
+    // Whole-view lead rule: a selection that IS a hedged homograph group with
+    // a native entry (사랑), or a native-only hit (하늘), roots the trail as
+    // the native card under its own hangul key and label.
+    var nativeView = ambiguous ? null : nativeLeadView(list, natives, typed);
+    viewStack = [nativeView ? {
+      key: nativeView.key,
+      label: nativeView.label,
+      matches: nativeView.matches,
+      native: nativeView.native,
+      nativeLead: true,
+      srcText: viewSourceText(list, srcText),
+      scrollTop: 0, selection: null
+    } : {
       key: (ambiguous && typed) ? "typed:" + typed : viewKey(list),
       label: (ambiguous && typed) ? typed : viewLabel(list, ""),
       matches: list,
+      native: natives,
       groups: groups,
+      scopeHint: scopeHint,
       // The selection itself: the root view is the one place a highlighted
       // variant glyph is guaranteed to belong.
       srcText: viewSourceText(list, srcText),
@@ -3802,6 +4277,9 @@
   function sendLookup(text, interpret) {
     var message = { type: "lookup", text: text };
     if (interpret === true) message.interpret = true;
+    // Toggle off, the field is ABSENT, not false: unflagged requests must be
+    // byte-identical to today's, and only flagged ones may touch native.json.
+    if (nativeRequestOn()) message.native = true;
     return sendToWorker(message);
   }
 
@@ -3877,7 +4355,15 @@
     var seq = ++requestSeq;
     sendLookup(sel.text).then(function (response) {
       if (seq !== requestSeq) return; // superseded by a newer selection
-      if (!response || response.ok !== true || !asArray(response.matches).length) {
+      if (!response || response.ok !== true) {
+        hide();
+        return;
+      }
+      // A native-only hit (하늘) has no Sino matches yet still renders a
+      // card; with the toggle off the native side is always empty, so this
+      // condition reads exactly as it did before.
+      if (!asArray(response.matches).length &&
+          !(nativeRenderOn() && nativeEntriesOf(response).length)) {
         hide();
         return;
       }
@@ -3889,7 +4375,7 @@
       // beats depending on that.
       showAt(fresh && fresh.text === sel.text ? fresh.rect : sel.rect,
         response.matches, searchContext(response, sel.text),
-        response.interpretations);
+        response.interpretations, response.nativeMatches);
       // Seed the cache so drilling back into the original text is free.
       if (lookupCache) lookupCache[sel.text] = response;
     });
@@ -3968,11 +4454,36 @@
       chrome.storage.onChanged &&
       typeof chrome.storage.onChanged.addListener === "function") {
     chrome.storage.onChanged.addListener(function (changes, area) {
-      // Only the saved record, only the area we write to. Settings changes
-      // and anything else are none of a star's business.
-      if (area !== "local" || !changes || !changes.okpSaved) return;
+      // Only the records we consume, only the area the worker writes to.
+      if (area !== "local" || !changes) return;
+      // Settings ride the change itself: the worker is the single writer and
+      // writes whole normalized records, so no re-read is needed.
+      if (changes.okpSettings) {
+        var next = changes.okpSettings.newValue;
+        settingsCache = next && typeof next === "object" ? next : null;
+      }
+      // The saved record is a star's business; settings are not.
+      if (!changes.okpSaved) return;
       applySavedChange();
     });
+  }
+
+  // One settings read at startup fills the cache the section predicates
+  // consult. Local storage only, so no service worker is woken on page load.
+  // A selection made before this answers renders as if the toggle were off,
+  // which is the safe direction: requests stay byte-identical to today's.
+  if (typeof chrome !== "undefined" && chrome && chrome.storage &&
+      chrome.storage.local &&
+      typeof chrome.storage.local.get === "function") {
+    try {
+      chrome.storage.local.get("okpSettings", function (got) {
+        if (HAS_CHROME_RUNTIME && globalThis.chrome.runtime.lastError) return;
+        var record = got && typeof got === "object" ? got.okpSettings : null;
+        if (record && typeof record === "object" && settingsCache === null) {
+          settingsCache = record;
+        }
+      });
+    } catch (e) { /* no storage access here: the toggle simply stays off */ }
   }
 
   /* ------------------------------------------------------------------ *
@@ -4007,7 +4518,10 @@
     globalThis.__okpyeonEmbedApi = {
       // The container must already be in the document: ensureHost appends into
       // it immediately and the first render measures inside it.
-      mount: function (container) {
+      // `options.onScopeChange(scope)` is the shell's notifier: invoked
+      // exactly when a cross-scope hint tap switches the render scope, never
+      // for a scope the shell itself passed to searchFor.
+      mount: function (container, options) {
         if (!container || container.nodeType !== 1) {
           throw new TypeError("okpyeon embed: mount() needs an element");
         }
@@ -4016,6 +4530,9 @@
         }
         if (embedContainer) return false; // single mount; later calls are no-ops
         embedContainer = container;
+        if (options && typeof options.onScopeChange === "function") {
+          embedOnScopeChange = options.onScopeChange;
+        }
         ensureHost();
         return true;
       },
@@ -4029,9 +4546,19 @@
       // (the shell's typed path, the omnibox, ?q=, the pending query) may
       // interpret. Absent means literal, so every programmatic search — a
       // saved row, the wordmark, anything internal — stays literal by default.
+      // `options.native` flags the underlying request; `options.scope`
+      // ("hanja" | "all", default "hanja", meaningful only when native is
+      // true) is a RENDER-side filter. Hanja scope renders exactly today's
+      // results and appends the cross-scope hint when native matches exist;
+      // tapping the hint re-renders this same response in All scope with no
+      // new lookup and fires onScopeChange("all").
       searchFor: function (text, options) {
         var query = typeof text === "string" ? text.trim() : "";
         var interpret = !!(options && options.interpret);
+        embedNative = !!(options && options.native);
+        embedScope = (embedNative && options && options.scope === "all")
+          ? "all" : "hanja";
+        embedLast = null;   // a failed search must not leave the hint armed
         ensureHost();
         if (!query) {
           hide();
@@ -4045,21 +4572,51 @@
             hide();
             return { ok: false, count: 0 };
           }
+          embedLast = { response: response, query: query };
           var list = usableMatches(response.matches);
-          if (!list.length ||
-              !showAt(EMBED_RECT, response.matches,
-                searchContext(response, query), response.interpretations)) {
-            // showAt already hid the panel when it rendered nothing.
-            if (!list.length) hide();
+          // Distinct native headwords in the response; always 0 without the
+          // native option, so every branch below reads exactly as it did.
+          var nativeWordCount = embedNative
+            ? uniqStrings(nativeEntriesOf(response).map(function (entry) {
+                return entry.word;
+              })).length
+            : 0;
+          // Nothing at all: hide without rendering, exactly as before.
+          if (!list.length && !nativeWordCount) {
+            hide();
+            return { ok: true, count: 0 };
+          }
+          // Hanja scope: the hint count rides into showAt's root view.
+          // Counted here, NOT via nativeGroupsFor, whose render gate is
+          // closed in this scope by design.
+          embedHintCount = (embedScope === "hanja") ? nativeWordCount : 0;
+          if (!showAt(EMBED_RECT, response.matches,
+                searchContext(response, query), response.interpretations,
+                embedScope === "all" ? response.nativeMatches : null)) {
+            // showAt already hid the panel when it rendered nothing. (A bare
+            // hint row counts as content, so it survives to sit under the
+            // shell's empty-state seal.)
             return { ok: true, count: 0 };
           }
           // Seed the session cache so drilling back to the query is free.
           if (lookupCache) lookupCache[query] = response;
-          return { ok: true, count: list.length };
+          // In All scope the rendered native cards count as results, so a
+          // native-only query does not read as empty to the shell. Hanja
+          // scope reports exactly today's count; the hint is not a result.
+          return {
+            ok: true,
+            count: list.length +
+              (embedScope === "all" ? nativeWordCount : 0)
+          };
         });
       },
 
-      clear: function () { hide(); }
+      clear: function () {
+        embedNative = false;
+        embedScope = "hanja";
+        embedLast = null;
+        hide();
+      }
     };
   }
 
@@ -4070,9 +4627,14 @@
   if (IS_STUB) {
     var testDragOrigin = { x: 0, y: 0 };
     globalThis.__hanjaHover = {
-      showAt: function (rect, matches, srcText, interpretations) {
+      showAt: function (rect, matches, srcText, interpretations, nativeMatches) {
         ensureHost();
-        return showAt(rect, matches, srcText, interpretations);
+        return showAt(rect, matches, srcText, interpretations, nativeMatches);
+      },
+      // A bare harness page has no chrome.storage to seed the settings cache
+      // from, so it hands a record in directly (e.g. { nativeWords: true }).
+      setSettings: function (record) {
+        settingsCache = record && typeof record === "object" ? record : null;
       },
       // The badge registry itself, so a check can prove a NEW badge needs
       // nothing but an entry (the harness registers a dummy and removes it).
