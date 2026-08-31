@@ -17,6 +17,7 @@ import { dirname, join } from "node:path";
 import {
   buildFullCompounds,
   buildMatches,
+  buildNativeMatches,
   buildOmniboxSuggestions,
   buildUsedIn,
   buildInterpretations,
@@ -24,6 +25,8 @@ import {
   buildWordParts,
   isInterpretableQuery,
   lookup,
+  nativeMaxLenOf,
+  MAX_NATIVE_WORD_LEN,
   normalizeRomanization,
   romanizationVariants,
   extractRuns,
@@ -2531,6 +2534,248 @@ test("omnibox suggestions run the same generators, deduped and capped", () => {
   assert.deepEqual(omni("- -"), []);
 });
 
+// ---------------------------------------------------------------------------
+// Native words ADDENDUM: the second table, the request flag, the omnibox.
+// ---------------------------------------------------------------------------
+
+/** Schema-exact native.json fixture (SPEC "native.json"). */
+const native = {
+  version: 1,
+  maxLen: 3,
+  words: {
+    하늘: [{ pos: "noun", glosses: ["sky", "heaven"] }],
+    사랑: [{ pos: "noun", glosses: ["love"] }],
+    우리: [{ pos: "pron", glosses: ["we; us"] }],
+    먹다: [{ pos: "verb", glosses: ["to eat"] }],
+    // Distinct POS = distinct entries (POS homonyms merged at build time).
+    가득: [
+      { pos: "adv", glosses: ["fully"] },
+      { pos: "det", glosses: ["full; filled"] },
+    ],
+    // 3-syllable key: the longest the declared maxLen allows.
+    하늘색: [{ pos: "noun", glosses: ["sky blue"] }],
+  },
+};
+
+// `haneul` gives the rr interpreter a candidate only the NATIVE table can
+// explain. Only the copies below carry it; the shared fixtures are untouched.
+const nativeRr = { ...rr, words: { ...rr.words, haneul: ["하늘"] } };
+const nativeData = { ...data, rr: nativeRr, native };
+
+test("unflagged responses are byte-identical with a native table present", () => {
+  for (const q of ["사랑", "하늘이", "우리", "國民", "먹다", "국"]) {
+    assert.equal(
+      JSON.stringify(lookup(q, nativeData)),
+      JSON.stringify(lookup(q, data)),
+      `query ${q}`
+    );
+    assert.equal("nativeMatches" in lookup(q, nativeData), false, `query ${q}`);
+  }
+  // The interpret channel too: a native-only romanization finds nothing.
+  assert.deepEqual(lookup("haneul", nativeData, { interpret: true }), {
+    ok: true,
+    matches: [],
+  });
+  assert.deepEqual(buildOmniboxSuggestions("haneul", nativeData, { interpret: true }), []);
+  assert.deepEqual(
+    buildOmniboxSuggestions("사랑", nativeData),
+    buildOmniboxSuggestions("사랑", data)
+  );
+});
+
+test("flagged: native joins on the Sino-resolved span, rare flags intact", () => {
+  const res = lookup("사랑", nativeData, { native: true });
+  assert.deepEqual(res.nativeMatches, [
+    { kind: "native", word: "사랑", pos: "noun", glosses: ["love"] },
+  ]);
+  // The Sino side is exactly today's: lead-rule inputs (rare flags, order)
+  // ride the response untouched. The renderer decides the lead.
+  const w = wordsOf(res.matches);
+  assert.deepEqual(canonicals(w), ["沙羅", "舍廊"]);
+  assert.equal("rare" in w[0], false);
+  assert.equal(w[1].rare, true);
+  assert.deepEqual(res.matches, lookup("사랑", data).matches);
+});
+
+test("flagged: a Han-run selection joins native on the word's hangul", () => {
+  // Selecting 舍廊 must carry the 사랑 native entry, so the hanja-led card
+  // can render its Same sound row.
+  const res = lookup("舍廊", nativeData, { native: true });
+  assert.deepEqual(res.nativeMatches, [
+    { kind: "native", word: "사랑", pos: "noun", glosses: ["love"] },
+  ]);
+});
+
+test("flagged: native-only spans run their own pass, josa fallthrough included", () => {
+  // The Sino resolver finds nothing in 하늘이; the native pass matches 하늘
+  // and leaves the josa unmatched, exactly as rule 3b does on 국민이.
+  const res = lookup("하늘이", nativeData, { native: true });
+  assert.deepEqual(res.matches, []);
+  assert.deepEqual(res.nativeMatches, [
+    { kind: "native", word: "하늘", pos: "noun", glosses: ["sky", "heaven"] },
+  ]);
+  // Longest match first: 하늘색이 finds 하늘색, not 하늘.
+  assert.deepEqual(
+    lookup("하늘색이", nativeData, { native: true }).nativeMatches.map((m) => m.word),
+    ["하늘색"]
+  );
+});
+
+test("flagged: the native pass fills the stretches the Sino resolver left", () => {
+  const res = lookup("하늘국민", nativeData, { native: true });
+  assert.deepEqual(canonicals(wordsOf(res.matches)), ["國民"]);
+  assert.deepEqual(res.nativeMatches.map((m) => m.word), ["하늘"]);
+});
+
+test("flagged: distinct POS entries stay distinct matches; empty is omitted", () => {
+  assert.deepEqual(lookup("가득", nativeData, { native: true }).nativeMatches, [
+    { kind: "native", word: "가득", pos: "adv", glosses: ["fully"] },
+    { kind: "native", word: "가득", pos: "det", glosses: ["full; filled"] },
+  ]);
+  // Nothing native to say: the field is omitted, not empty.
+  const res = lookup("국민", nativeData, { native: true });
+  assert.equal("nativeMatches" in res, false);
+  assert.deepEqual(res.matches, lookup("국민", data).matches);
+  // No deconjugation (documented gap): only the exact dictionary form hits.
+  assert.deepEqual(
+    lookup("먹다", nativeData, { native: true }).nativeMatches.map((m) => m.word),
+    ["먹다"]
+  );
+  assert.equal("nativeMatches" in lookup("먹었다", nativeData, { native: true }), false);
+});
+
+test("the native pass is bounded by native.json's declared maxLen", () => {
+  const capped = { ...nativeData, native: { version: 1, maxLen: 2, words: native.words } };
+  // 하늘색 exists in the table, but a maxLen of 2 keeps the pass from trying
+  // it; the greedy match stops at 하늘.
+  assert.deepEqual(
+    lookup("하늘색", capped, { native: true }).nativeMatches.map((m) => m.word),
+    ["하늘"]
+  );
+  assert.equal(nativeMaxLenOf(native), 3);
+  assert.equal(nativeMaxLenOf({}), MAX_NATIVE_WORD_LEN);
+  assert.equal(nativeMaxLenOf(null), MAX_NATIVE_WORD_LEN);
+  assert.equal(nativeMaxLenOf({ maxLen: "5" }), MAX_NATIVE_WORD_LEN);
+});
+
+test("hedge retirement preconditions ride the response", () => {
+  // 우리: every hanja spelling rare AND a native entry. The renderer retires
+  // the banner from exactly these two facts.
+  const res = lookup("우리", nativeData, { native: true });
+  const w = wordsOf(res.matches);
+  assert.ok(w.length > 0);
+  assert.ok(w.every((m) => m.rare === true));
+  assert.deepEqual(res.nativeMatches, [
+    { kind: "native", word: "우리", pos: "pron", glosses: ["we; us"] },
+  ]);
+  // All-rare hangul with NO native entry: no nativeMatches, the banner (and
+  // today's behavior entirely) stands.
+  const noEntry = {
+    ...nativeData,
+    native: { version: 1, maxLen: 3, words: { 하늘: native.words.하늘 } },
+  };
+  const kept = lookup("우리", noEntry, { native: true });
+  assert.ok(wordsOf(kept.matches).every((m) => m.rare === true));
+  assert.equal("nativeMatches" in kept, false);
+});
+
+test("flagged interpretations consult both tables; native-only survives", () => {
+  // Romanized: the rr candidate 하늘 has no Sino entry, so before the
+  // addendum this interpretation died. Flagged, it lives on the native hit.
+  const rrRes = lookup("haneul", nativeData, { interpret: true, native: true });
+  assert.deepEqual(rrRes.interpretations, [
+    { kind: "rr", from: "haneul", to: "하늘", start: 0 },
+  ]);
+  assert.deepEqual(rrRes.matches, []);
+  assert.deepEqual(rrRes.nativeMatches, [
+    { kind: "native", word: "하늘", pos: "noun", glosses: ["sky", "heaven"] },
+  ]);
+  // Dubeolsik: gksmf is 하늘 typed in the wrong mode.
+  const typed = lookup("gksmf", nativeData, { interpret: true, native: true });
+  assert.deepEqual(typed.interpretations, [
+    { kind: "dubeolsik", from: "gksmf", to: "하늘", start: 0 },
+  ]);
+  assert.deepEqual(typed.nativeMatches, rrRes.nativeMatches);
+  // Unflagged, both queries still find nothing at all.
+  assert.deepEqual(lookup("gksmf", nativeData, { interpret: true }), {
+    ok: true,
+    matches: [],
+  });
+});
+
+test("buildNativeMatches tolerates junk and keeps the 2-syllable floor", () => {
+  assert.deepEqual(buildNativeMatches("하늘", data), []);
+  assert.deepEqual(buildNativeMatches("하늘", null), []);
+  assert.deepEqual(buildNativeMatches("", nativeData), []);
+  assert.deepEqual(buildNativeMatches(42, nativeData), []);
+  // A key with no usable entry neither matches nor blocks the fallthrough.
+  const junk = {
+    ...data,
+    native: {
+      version: 1,
+      maxLen: 3,
+      words: { 하늘이: "nonsense", 하늘: [{ pos: "noun", glosses: ["sky"] }, "junk"] },
+    },
+  };
+  assert.deepEqual(buildNativeMatches("하늘이", junk), [
+    { kind: "native", word: "하늘", pos: "noun", glosses: ["sky"] },
+  ]);
+  // One syllable is the reading-browse channel (rule 3c); the native pass
+  // keeps rule 3b's 2-syllable floor, so a 1-syllable key is never matched.
+  const single = {
+    ...data,
+    native: { version: 1, maxLen: 3, words: { 물: [{ pos: "noun", glosses: ["water"] }] } },
+  };
+  assert.deepEqual(buildNativeMatches("물", single), []);
+});
+
+test("flagged omnibox: native rows sit between non-rare and rare hanja", () => {
+  const rows = buildOmniboxSuggestions("사랑", nativeData, { native: true });
+  // Merge order per the lead rule: non-rare hanja, native, rare hanja, then
+  // the component char rows. The native marker sits in the dim tail, where
+  // hanja rows carry the school level; content is the hangul word itself.
+  assert.deepEqual(contentsOf(rows), ["沙羅", "사랑", "舍廊", "沙", "羅"]);
+  assert.equal(rows[1].description, "<match>사랑</match> <dim>love · native</dim>");
+  // A native-only query yields its native row through the interpret channel.
+  const typed = buildOmniboxSuggestions("haneul", nativeData, {
+    interpret: true,
+    native: true,
+  });
+  assert.deepEqual(contentsOf(typed), ["하늘"]);
+  assert.equal(typed[0].description, "<match>하늘</match> <dim>sky · native</dim>");
+});
+
+await testAsync("native: guardNative shapes junk into an empty table", async () => {
+  const { guardNative } = await import("../extension/background.js");
+  assert.deepEqual(guardNative(null), { version: 1, words: {} });
+  assert.deepEqual(guardNative("nonsense"), { version: 1, words: {} });
+  assert.deepEqual(guardNative({ words: null }), { version: 1, words: {} });
+  // maxLen passes through as an integer only; lookup.js falls back otherwise.
+  assert.deepEqual(guardNative({ maxLen: "5", words: {} }), { version: 1, words: {} });
+  assert.deepEqual(guardNative({ version: 1, maxLen: 5, words: { 하늘: [] } }), {
+    version: 1,
+    words: { 하늘: [] },
+    maxLen: 5,
+  });
+});
+
+await testAsync("native: the pending query carries scope only when flagged", async () => {
+  const { setPendingQuery, handleGetPendingQuery } = await import("../extension/background.js");
+
+  setPendingQuery("하늘", "all");
+  assert.deepEqual(await handleGetPendingQuery(), { ok: true, query: "하늘", scope: "all" });
+  // Read-once clears the scope with the query.
+  assert.deepEqual(await handleGetPendingQuery(), { ok: true, query: null });
+
+  // The pre-addendum call shape: no scope key in the answer at all.
+  setPendingQuery("國民");
+  assert.deepEqual(await handleGetPendingQuery(), { ok: true, query: "國民" });
+
+  // A scope never rides without a query.
+  setPendingQuery(null, "all");
+  assert.deepEqual(await handleGetPendingQuery(), { ok: true, query: null });
+});
+
 // --- optional smoke test against Agent A's real corpus -------------------
 // Read-only, and skipped (not failed) if the files are absent.
 
@@ -2845,6 +3090,110 @@ await testAsync("smoke: real extension/data corpus resolves 國民 / 国 / 국�
       `${Object.keys(real.words.words).length} words, ` +
       `${Object.keys(real.variants.map).length} variants, ` +
       `${reading.candidates.length} hanja read 국)`
+  );
+});
+
+// --- native words against the real emitted native.json -------------------
+// Read-only. Skipped LOUDLY while the pipeline half has not landed yet: the
+// suite stays green now and goes fully live the moment native.json exists.
+
+await testAsync("smoke: real native.json resolves 하늘 / 사랑 / 무리 / toggle-off", async () => {
+  let real;
+  try {
+    const [h, w, v, r] = await Promise.all([
+      readFile(join(dataDir, "hanja.json"), "utf8"),
+      readFile(join(dataDir, "words.json"), "utf8"),
+      readFile(join(dataDir, "variants.json"), "utf8"),
+      readFile(join(dataDir, "rr.json"), "utf8"),
+    ]);
+    real = {
+      hanja: JSON.parse(h),
+      words: JSON.parse(w),
+      variants: JSON.parse(v),
+      rr: JSON.parse(r),
+    };
+  } catch (err) {
+    console.log(`      (skipped: extension/data unreadable: ${err.code || err.name})`);
+    return;
+  }
+  if (real.hanja.placeholder) {
+    console.log("      (skipped: placeholder corpus, no native anchors to check)");
+    return;
+  }
+
+  let realNative;
+  try {
+    realNative = JSON.parse(await readFile(join(dataDir, "native.json"), "utf8"));
+  } catch (err) {
+    console.log(
+      "      (SKIPPED: extension/data/native.json is not there yet; " +
+        "this smoke goes live when the pipeline emits it: " +
+        `${err.code || err.name})`
+    );
+    return;
+  }
+
+  const all = { ...real, native: realNative };
+
+  // 하늘: native card data where today nothing renders.
+  const sky = lookup("하늘", all, { native: true });
+  const skyEntry = (sky.nativeMatches || []).find((m) => m.word === "하늘");
+  assert.ok(skyEntry, "하늘 should carry a native entry");
+  assert.ok(
+    skyEntry.glosses.some((g) => /sky/i.test(g)),
+    "하늘 should carry a sky gloss"
+  );
+
+  // 사랑: every hanja spelling rare, native entry present with 舍廊 beside
+  // it. These are the inputs from which the renderer makes the native lead.
+  const love = lookup("사랑", all, { native: true });
+  assert.ok(
+    (love.nativeMatches || []).some((m) => m.word === "사랑"),
+    "사랑 should carry a native entry"
+  );
+  const loveWords = wordsOf(love.matches);
+  assert.ok(
+    loveWords.some((m) => m.canonical === "舍廊"),
+    "사랑 should still resolve 舍廊"
+  );
+  assert.ok(
+    loveWords.every((m) => m.rare === true),
+    "every hanja spelling of 사랑 should be rare (native leads)"
+  );
+
+  // 무리: 無理 is non-rare, so hanja still leads.
+  const muri = lookup("무리", all, { native: true });
+  const muriWords = wordsOf(muri.matches);
+  const mu = muriWords.find((m) => m.canonical === "無理");
+  assert.ok(mu, "무리 should resolve 無理");
+  assert.equal("rare" in mu, false, "無理 must not be rare");
+  assert.equal("rare" in muriWords[0], false, "무리 leads with a non-rare spelling");
+
+  // 먹다 (verb): reachable from a typed exact-form query.
+  const eat = lookup("먹다", all, { native: true });
+  assert.ok(
+    (eat.nativeMatches || []).some((m) => m.word === "먹다"),
+    "먹다 should carry a native entry"
+  );
+
+  // Toggle off: byte-identical to a lookup that never saw the file.
+  assert.equal(JSON.stringify(lookup("사랑", all)), JSON.stringify(lookup("사랑", real)));
+  assert.equal("nativeMatches" in lookup("사랑", all), false);
+
+  // Flagged omnibox rows carry the native marker.
+  const rows = buildOmniboxSuggestions("하늘", all, { interpret: true, native: true });
+  assert.ok(
+    rows.some((r) => r.content === "하늘" && r.description.includes("native")),
+    "omnibox should offer 하늘 as a native row"
+  );
+
+  // The declared cap is the real longest key.
+  const nativeKeys = Object.keys(realNative.words);
+  assert.equal(realNative.maxLen, Math.max(...nativeKeys.map((k) => [...k].length)));
+
+  console.log(
+    `      (native ${nativeKeys.length} words, maxLen ${realNative.maxLen}; ` +
+      `사랑 → ${loveWords.map((m) => m.canonical).join("/")} + native)`
   );
 });
 

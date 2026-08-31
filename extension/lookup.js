@@ -47,6 +47,17 @@ export function maxWordLenOf(words) {
 export function maxHangulLenOf(words) {
   return lenMeta(words && words.maxHangulLen, MAX_HANGUL_WORD_LEN);
 }
+
+/**
+ * Native words ADDENDUM: fallback for native.json's `maxLen`, same rule as
+ * MAX_WORD_LEN: the real cap is whatever the emitted file declares.
+ */
+export const MAX_NATIVE_WORD_LEN = 5;
+
+/** Native longest-match cap for a given native.json object. */
+export function nativeMaxLenOf(native) {
+  return lenMeta(native && native.maxLen, MAX_NATIVE_WORD_LEN);
+}
 /** Word-parts addendum: sub-word glosses are capped at 2 (first sense). */
 export const MAX_PART_GLOSSES = 2;
 /**
@@ -715,6 +726,111 @@ export function buildMatches(text, data) {
 }
 
 /* ---------------------------------------------------------------------------
+ * Native words ADDENDUM: the second table.
+ *
+ * native.json is hangul-keyed and NEVER consulted unless the request is
+ * flagged: unflagged responses must stay byte-identical to today's, so the
+ * native pass is a separate function the flagged path calls alongside
+ * buildMatches, not a change to buildMatches itself.
+ *
+ * Span rules: the Sino resolver is authoritative for the span when it
+ * succeeds, and native joins on that resolved hangul: the rule 3b span
+ * surface for a hangul-sourced match, the entry's `hangul` reading for a
+ * Han-sourced one (that reading is what the hanja-led card's Same sound
+ * section lists). Only where the Sino resolver found nothing does the native
+ * table get its own greedy longest-match pass, under the same span rules as
+ * rule 3b (min 2 syllables, longest first) but bounded by native.json's own
+ * `maxLen`. So selecting 하늘이 finds 하늘, the greedy pass leaving the josa
+ * unmatched exactly as rule 3b leaves it on 국민이. Conjugation is not
+ * deconjugated (documented gap).
+ * ------------------------------------------------------------------------- */
+
+/**
+ * Build the `nativeMatches` array for a flagged lookup. One match per
+ * (word, pos) pair, spans in text order, native.json entry order within a
+ * word. Empty when the native table has nothing to say.
+ *
+ * @param {string} text raw query or selection
+ * @param {{native?:object, words?:object, variants?:object}} data parsed data bundle
+ * @returns {Array<{kind:"native", word:string, pos:string, glosses:string[]}>}
+ */
+export function buildNativeMatches(text, data) {
+  const bundle = data || {};
+  const nativeWords = (bundle.native && bundle.native.words) || {};
+  const wordTable = (bundle.words && bundle.words.words) || {};
+  const byHangul = (bundle.words && bundle.words.byHangul) || {};
+  const variantMap = (bundle.variants && bundle.variants.map) || {};
+  const maxWordLen = maxWordLenOf(bundle.words);
+  const maxHangulLen = maxHangulLenOf(bundle.words);
+  const nativeMaxLen = nativeMaxLenOf(bundle.native);
+
+  const out = [];
+  const seen = new Set();
+
+  /** Usable entries of one native key: an object with a string pos. */
+  const entriesOf = (word) => {
+    if (!hasOwn(nativeWords, word)) return [];
+    const raw = nativeWords[word];
+    return (Array.isArray(raw) ? raw : []).filter(
+      (e) => e && typeof e === "object" && typeof e.pos === "string"
+    );
+  };
+
+  const joinNative = (word) => {
+    for (const entry of entriesOf(word)) {
+      const key = `${word}|${entry.pos}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({
+        kind: "native",
+        word,
+        pos: entry.pos,
+        glosses: Array.isArray(entry.glosses) ? entry.glosses.slice() : [],
+      });
+    }
+  };
+
+  // The native-only pass over one uncovered stretch of a hangul run. A key
+  // with no usable entry does not count as a match, so it cannot block the
+  // greedy fallthrough that strips a trailing josa.
+  const nativePass = (chars) => {
+    if (chars.length === 0) return;
+    const isWord = (key) => entriesOf(key).length > 0;
+    for (const seg of greedySegment(asItems(chars), isWord, MIN_HANGUL_WORD_LEN, nativeMaxLen)) {
+      if (seg.kind === "word") joinNative(seg.surface);
+    }
+  };
+
+  for (const run of extractRuns(text)) {
+    if (run.script === "han") {
+      // Han runs: the Sino resolver owns the span; native joins on each
+      // matched word's hangul reading(s).
+      for (const segment of segmentRun(run.chars, wordTable, variantMap, maxWordLen)) {
+        if (segment.kind !== "word") continue;
+        const raw = wordTable[segment.canonical];
+        for (const entry of Array.isArray(raw) ? raw : [raw]) {
+          if (entry && typeof entry.hangul === "string" && entry.hangul !== "") {
+            joinNative(entry.hangul);
+          }
+        }
+      }
+    } else {
+      // Hangul runs: rule 3b spans are authoritative where they exist; the
+      // stretches between them get the native-only pass.
+      let cursor = 0;
+      for (const span of segmentHangulRun(run.chars, byHangul, maxHangulLen)) {
+        nativePass(run.chars.slice(cursor, span.start));
+        joinNative(span.surface);
+        cursor = span.start + span.length;
+      }
+      nativePass(run.chars.slice(cursor));
+    }
+  }
+
+  return out;
+}
+
+/* ---------------------------------------------------------------------------
  * Romanized search ADDENDUM — the two interpreters.
  *
  * A Latin query has two plausible readings: hangul typed with the
@@ -830,12 +946,21 @@ function matchKey(match) {
  * Interpretation 1: the Dubeolsik reading of the typed letters. It receives
  * the RAW text, separators included: they are not Dubeolsik keys, so they
  * simply break composition, and the dictionary filter absorbs the result.
+ *
+ * Native words ADDENDUM: a flagged call consults both tables, and native hits
+ * alone keep the interpretation alive: `haneul` must reach 하늘 even though
+ * the Sino tables have nothing there. `nativeMatches` rides on the
+ * interpretation only when non-empty, so the unflagged shape is untouched.
  */
-function dubeolsikInterpretation(raw, data) {
+function dubeolsikInterpretation(raw, data, native) {
   const to = qwertyToHangul(raw);
   if (to === "" || to === raw) return null;
   const matches = buildMatches(to, data);
-  return matches.length === 0 ? null : { kind: "dubeolsik", from: raw, to, matches };
+  const nativeMatches = native ? buildNativeMatches(to, data) : [];
+  if (matches.length === 0 && nativeMatches.length === 0) return null;
+  const interp = { kind: "dubeolsik", from: raw, to, matches };
+  if (nativeMatches.length > 0) interp.nativeMatches = nativeMatches;
+  return interp;
 }
 
 /**
@@ -844,10 +969,12 @@ function dubeolsikInterpretation(raw, data) {
  * a single syllable takes the reading path — and the results merge in
  * candidate order (i.e. rr.json's frequency order), deduped.
  */
-function rrInterpretation(raw, data) {
+function rrInterpretation(raw, data, native) {
   const candidates = rrCandidates(romanizationVariants(raw), data && data.rr);
   const matches = [];
+  const nativeMatches = [];
   const seen = new Set();
+  const seenNative = new Set();
   let to = "";
   for (const candidate of candidates) {
     let contributed = false;
@@ -858,11 +985,25 @@ function rrInterpretation(raw, data) {
       matches.push(match);
       contributed = true;
     }
+    // Native words ADDENDUM: flagged calls consult the native table for every
+    // candidate too, and a native-only candidate still counts as explained.
+    if (native) {
+      for (const match of buildNativeMatches(candidate, data)) {
+        const key = `${match.word}|${match.pos}`;
+        if (seenNative.has(key)) continue;
+        seenNative.add(key);
+        nativeMatches.push(match);
+        contributed = true;
+      }
+    }
     // `to` names the mapping the UI shows ("su → 수"), so it is the first
     // candidate that actually explained something, not merely the first key.
     if (contributed && to === "") to = candidate;
   }
-  return matches.length === 0 ? null : { kind: "rr", from: raw, to, matches };
+  if (matches.length === 0 && nativeMatches.length === 0) return null;
+  const interp = { kind: "rr", from: raw, to, matches };
+  if (nativeMatches.length > 0) interp.nativeMatches = nativeMatches;
+  return interp;
 }
 
 /** True when an interpretation found real words (not just a reading list). */
@@ -936,14 +1077,18 @@ function orderPair(dubeolsik, rr, data) {
  *
  * @param {string} text raw query (trimming/NFC handled here)
  * @param {object} data parsed data bundle, including `rr`
+ * @param {{native?:boolean}} [options] `native: true` (native words ADDENDUM)
+ *        makes each interpretation consult the native table too
  * @returns {Array<{kind:string, from:string, to:string, matches:object[]}>}
  *          zero, one or two interpretations, preferred first
  */
-export function buildInterpretations(text, data) {
+export function buildInterpretations(text, data, options) {
+  const native =
+    options !== null && typeof options === "object" && options.native === true;
   const raw = normalize(text).trim();
   if (!isInterpretableQuery(raw)) return [];
-  const dubeolsik = dubeolsikInterpretation(raw, data);
-  const rr = rrInterpretation(raw, data);
+  const dubeolsik = dubeolsikInterpretation(raw, data, native);
+  const rr = rrInterpretation(raw, data, native);
   if (dubeolsik === null) return rr === null ? [] : [rr];
   if (rr === null) return [dubeolsik];
   return orderPair(dubeolsik, rr, data);
@@ -970,23 +1115,62 @@ function flattenInterpretations(interps) {
 }
 
 /**
+ * Native words ADDENDUM: the response-level `nativeMatches` for an interpreted
+ * lookup: the interpretations' native hits in preferred order, deduped by
+ * (word, pos). The per-interpretation grouping is not preserved: the shape is
+ * one flat array, parallel to `matches`.
+ */
+function collectNativeMatches(interps) {
+  const out = [];
+  const seen = new Set();
+  for (const interp of interps) {
+    if (!Array.isArray(interp.nativeMatches)) continue;
+    for (const match of interp.nativeMatches) {
+      const key = `${match.word}|${match.pos}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(match);
+    }
+  }
+  return out;
+}
+
+/**
  * Full lookup, returning the SPEC "Message protocol" response envelope.
  * Never throws.
  *
  * @param {string} text raw query or selection
  * @param {object} data parsed data bundle
- * @param {{interpret?:boolean}} [options] `interpret: true` opts the call into
- *        the two interpreters above. Absent (every internal navigation) means
- *        a literal lookup, so Latin text matches nothing.
+ * @param {{interpret?:boolean, native?:boolean}} [options] `interpret: true`
+ *        opts the call into the two interpreters above. Absent (every internal
+ *        navigation) means a literal lookup, so Latin text matches nothing.
+ *        `native: true` (native words ADDENDUM) adds `nativeMatches` to the
+ *        response when the native table has hits; an unflagged call never
+ *        reads `data.native` and its response shape is byte-identical to
+ *        before the addendum.
  */
 export function lookup(text, data, options) {
   try {
-    const interpret = options !== null && typeof options === "object" && options.interpret === true;
+    const opts = options !== null && typeof options === "object" ? options : {};
+    const interpret = opts.interpret === true;
+    const native = opts.native === true;
     if (interpret) {
-      const interps = buildInterpretations(text, data);
-      if (interps.length > 0) return { ok: true, ...flattenInterpretations(interps) };
+      const interps = buildInterpretations(text, data, { native });
+      if (interps.length > 0) {
+        const result = { ok: true, ...flattenInterpretations(interps) };
+        if (native) {
+          const nativeMatches = collectNativeMatches(interps);
+          if (nativeMatches.length > 0) result.nativeMatches = nativeMatches;
+        }
+        return result;
+      }
     }
-    return { ok: true, matches: buildMatches(text, data) };
+    const result = { ok: true, matches: buildMatches(text, data) };
+    if (native) {
+      const nativeMatches = buildNativeMatches(text, data);
+      if (nativeMatches.length > 0) result.nativeMatches = nativeMatches;
+    }
+    return result;
   } catch (err) {
     return { ok: false, error: toErrorMessage(err) };
   }
@@ -1070,9 +1254,11 @@ function charSuggestion(char, hun, eum, gloss, lvl) {
  * Never throws: junk data yields [].
  *
  * @param {string} text raw omnibox input
- * @param {{hanja?:object, words?:object, variants?:object, rr?:object}} data parsed data files
- * @param {{interpret?:boolean}} [options] same input-channel rule as lookup();
- *        the omnibox IS a typed channel, so background.js passes it.
+ * @param {{hanja?:object, words?:object, variants?:object, rr?:object, native?:object}} data parsed data files
+ * @param {{interpret?:boolean, native?:boolean}} [options] same input-channel
+ *        rule as lookup(); the omnibox IS a typed channel, so background.js
+ *        passes `interpret`. `native: true` (native words ADDENDUM) draws the
+ *        rows from the All-scope result set, native entries included.
  * @returns {Array<{content:string, description:string}>}
  */
 export function buildOmniboxSuggestions(text, data, options) {
@@ -1081,23 +1267,35 @@ export function buildOmniboxSuggestions(text, data, options) {
     // entries, `hj gukmin` suggests 국민's. Each row's `content` stays the
     // candidate's canonical searchable string, so the suggestion the user
     // picks re-enters as hanja, not as what they typed.
-    const interpret =
-      options !== null && typeof options === "object" && options.interpret === true;
-    const interps = interpret ? buildInterpretations(text, data) : [];
+    const opts = options !== null && typeof options === "object" ? options : {};
+    const interpret = opts.interpret === true;
+    const native = opts.native === true;
+    const interps = interpret ? buildInterpretations(text, data, { native }) : [];
     const groups =
       interps.length > 0
-        ? interps.map((i) => i.matches)
-        : [buildMatches(text, data)];
+        ? interps.map((i) => ({
+            matches: i.matches,
+            nativeMatches: Array.isArray(i.nativeMatches) ? i.nativeMatches : [],
+          }))
+        : [
+            {
+              matches: buildMatches(text, data),
+              nativeMatches: native ? buildNativeMatches(text, data) : [],
+            },
+          ];
 
     // Ordering applies WITHIN a group, so the preferred interpretation's rows
     // stay ahead of the other's.
     const rows = [];
-    for (const matches of groups) {
+    for (const { matches, nativeMatches } of groups) {
       const words = matches.filter((m) => m.kind === "word");
       rows.push(
         // Rare-flagged spellings rank last across the whole query, not just
         // within one hangul span (buildMatches only orders within a span).
+        // Native rows sit between them, per the lead rule's priority order:
+        // non-rare hanja, then native, then rare hanja.
         ...words.filter((m) => m.rare !== true),
+        ...nativeMatches,
         ...words.filter((m) => m.rare === true),
         ...matches.filter((m) => m.kind === "reading"),
         ...matches.filter((m) => m.kind === "char")
@@ -1122,6 +1320,15 @@ export function buildOmniboxSuggestions(text, data, options) {
             gloss,
             match.rare === true ? "rare" : "",
           ]),
+        });
+      } else if (match.kind === "native") {
+        // Native words ADDENDUM: "native" sits in the dim tail, where hanja
+        // rows carry the school level. Content is the hangul word itself, so
+        // activating the row deep-links to it literally.
+        const gloss = Array.isArray(match.glosses) ? match.glosses[0] : "";
+        push({
+          content: match.word,
+          description: describe(match.word, "", [gloss, "native"]),
         });
       } else if (match.kind === "char") {
         const pair = Array.isArray(match.eumhun) ? match.eumhun[0] : null;

@@ -1684,7 +1684,10 @@ The worker stays stateless about the toggle: requests carry
 requests may touch native.json. The file joins the worker's lazy
 per-file cache and is loaded on the FIRST flagged request that needs
 it, never at startup, never for unflagged requests (build a harness
-check on that: unflagged lookups make no native.json fetch).
+check on that: unflagged lookups make no native.json fetch). A fetch
+failure degrades THAT request to an empty native table and clears the
+cache slot, so a later flagged request retries; it never fails the
+whole lookup.
 
 ### Lookup semantics
 
@@ -1694,12 +1697,23 @@ check on that: unflagged lookups make no native.json fetch).
   unchanged — toggle-off responses are byte-identical to today's.
 - Span resolution (selection popup): the Sino resolver runs first and
   is AUTHORITATIVE for the span when it succeeds; nativeMatches then
-  joins on that resolved hangul span. When the Sino resolver finds
-  nothing, the native table gets its own pass under the same span
-  rules (longest match within `maxLen`, josa stripping reused), so
-  selecting 하늘이 finds 하늘. Conjugation is NOT deconjugated
-  (documented gap: verbs/adjectives are reachable from typed search
-  and exact-form selection only).
+  joins on that resolved hangul span. Stretches the Sino resolver left
+  uncovered get a native-only greedy longest-match pass under the same
+  span rules (bounded by `maxLen`, josa stripping reused), so
+  selecting 하늘이 finds 하늘. The native pass has a 2-syllable floor:
+  single syllables remain the reading-browse channel, exactly as for
+  Sino lookups. Han-run selections join native on each Sino word
+  match's hangul reading (selecting 舍廊 carries the 사랑 native
+  entry), because the hanja-led card's Same sound section is fed from
+  the same response and no other channel supplies it. Conjugation is
+  NOT deconjugated (documented gap: verbs/adjectives are reachable
+  from typed search and exact-form selection only).
+- Ordering: nativeMatches lists spans in text order, native.json entry
+  order within a word, one match per (word, pos). For interpreted
+  queries it is the flat union across interpretations in preferred
+  order, deduped by (word, pos); per-interpretation grouping is not
+  preserved, and a native-only hit keeps its interpretation alive with
+  empty `matches`.
 - Typed queries (search shell, omnibox, ?q= deep links): interpreters
   (Dubeolsik, RR) run exactly as today; each interpretation consults
   both tables when flagged. Internal navigation stays literal (the
@@ -1757,6 +1771,14 @@ check on that: unflagged lookups make no native.json fetch).
   words scope. The Hanja reset governs fresh opens only; an
   omnibox-handed query carries its scope explicitly. Toggle off:
   omnibox unchanged.
+- Handoff mechanics (as landed): the `getPendingQuery` response may
+  carry `"scope": "all"` beside `query`, read-once together; the
+  tab-fallback deep link carries `&scope=all` on sidepanel.html's URL.
+  The omnibox flow reads the raw stored settings record's
+  `nativeWords === true` (cached per keystroke, because
+  onInputEntered cannot await storage without losing the user
+  gesture); everywhere else the toggle travels as the per-request
+  `native` flag set by the client.
 - Settings schema entry (exact copy): title "Korean word search",
   description "Include native Korean words: adds an All words scope to
   search and the omnibox, and shows native words in selection

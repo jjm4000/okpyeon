@@ -42,6 +42,27 @@ const DATA_FILES = {
 };
 
 /**
+ * Native words ADDENDUM: native.json is NOT in DATA_FILES on purpose. It has
+ * its own lazy cache below and is fetched on the first native-flagged request
+ * only: never at startup, never for an unflagged request, so the Sino path
+ * never pays for it.
+ */
+const NATIVE_DATA_FILE = "data/native.json";
+
+/**
+ * Shape guard for native.json, in the guardRr spirit: a bundle without the
+ * file must leave flagged lookups working, with the native table simply empty.
+ * `maxLen` passes through only as an integer; lookup.js falls back otherwise.
+ */
+export function guardNative(raw) {
+  const n = raw !== null && typeof raw === "object" ? raw : {};
+  const words = n.words !== null && typeof n.words === "object" ? n.words : {};
+  const out = { version: 1, words };
+  if (Number.isInteger(n.maxLen)) out.maxLen = n.maxLen;
+  return out;
+}
+
+/**
  * Shape guard for rr.json. A bundle mid-update (or one built before the
  * romanization addendum) must cost the interpreter nothing worse than finding
  * no candidates, so the tables are always objects.
@@ -294,28 +315,56 @@ function getFoundInIndex(data) {
 }
 
 /**
- * Handle a {type:"lookup", text, interpret} message.
+ * Native words ADDENDUM: native.json's own lazy cache, separate from the main
+ * data promise so unflagged traffic never triggers the fetch. A failed fetch
+ * clears the cache (a later flagged request retries) and the caller degrades
+ * to an empty table for this one.
+ * @type {Promise<object>|null}
+ */
+let nativePromise = null;
+
+function getNative() {
+  if (nativePromise === null) {
+    nativePromise = fetchJson(NATIVE_DATA_FILE).then(guardNative);
+    nativePromise.catch(() => {
+      nativePromise = null;
+    });
+  }
+  return nativePromise;
+}
+
+/**
+ * Handle a {type:"lookup", text, interpret, native} message.
  *
  * Romanized search ADDENDUM (input-channel rule): `interpret` is set only by
  * free-typed entry points (the search shell, the omnibox, `?q=` deep links,
  * the pending query). Everything else — every internal navigation — arrives
  * without it and gets a literal lookup.
+ *
+ * Native words ADDENDUM: `native` is set by the CLIENT when its toggle is on;
+ * the worker stays stateless about the toggle. Only a flagged request loads
+ * native.json (first one pays the fetch) and only a flagged response can
+ * carry `nativeMatches`; unflagged responses are byte-identical to before.
  * @returns {Promise<{ok:true, matches:object[]}|{ok:false, error:string}>}
  */
-export async function handleLookup(text, interpret) {
+export async function handleLookup(text, interpret, native) {
   try {
     const data = await getData();
-    const result = lookup(
-      text,
-      {
-        ...data,
-        getReadingIndex: () => {
-          if (readingIndex === null) readingIndex = buildReadingIndex(data.hanja);
-          return readingIndex;
-        },
+    const flagged = native === true;
+    const bundle = {
+      ...data,
+      getReadingIndex: () => {
+        if (readingIndex === null) readingIndex = buildReadingIndex(data.hanja);
+        return readingIndex;
       },
-      { interpret: interpret === true }
-    );
+    };
+    if (flagged) {
+      bundle.native = await getNative().catch(() => guardNative(null));
+    }
+    const result = lookup(text, bundle, {
+      interpret: interpret === true,
+      native: flagged,
+    });
     return attachFoundIn(attachDecomp(result, data), () => getFoundInIndex(data));
   } catch (err) {
     return { ok: false, error: toErrorMessage(err) };
@@ -415,21 +464,37 @@ export async function handleOpenTab(url) {
  */
 let pendingQuery = null;
 
-/** Store the query the next panel boot should search. Exported for the tests. */
-export function setPendingQuery(text) {
+/**
+ * Native words ADDENDUM: the scope riding with the pending query. "all" when
+ * the omnibox flow was native-flagged (the panel must open the query in All
+ * words scope; its open-time reset to Hanja governs fresh opens only), null
+ * otherwise. Set and cleared strictly alongside pendingQuery.
+ * @type {"all"|null}
+ */
+let pendingScope = null;
+
+/** Store the query (and its scope) the next panel boot should search. Exported for the tests. */
+export function setPendingQuery(text, scope) {
   pendingQuery = typeof text === "string" && text !== "" ? text : null;
+  pendingScope = pendingQuery !== null && scope === "all" ? "all" : null;
 }
 
 /**
  * Handle a {type:"getPendingQuery"} message: hand over the query the omnibox
  * left behind, and clear it. Read-once, so a later panel open (or a reload of
- * the panel page) does not re-run a stale search.
- * @returns {Promise<{ok:true, query:string|null}>}
+ * the panel page) does not re-run a stale search. `scope` ("all") rides along
+ * only when the native-flagged omnibox set it, so the un-toggled response
+ * shape is unchanged.
+ * @returns {Promise<{ok:true, query:string|null, scope?:"all"}>}
  */
 export async function handleGetPendingQuery() {
   const query = pendingQuery;
+  const scope = pendingScope;
   pendingQuery = null;
-  return { ok: true, query };
+  pendingScope = null;
+  const response = { ok: true, query };
+  if (query !== null && scope !== null) response.scope = scope;
+  return response;
 }
 
 // ---------------------------------------------------------------------------
@@ -717,7 +782,7 @@ export async function handleSavedExport(selection, format) {
  * set against the SPEC without a chrome.runtime.
  */
 export const MESSAGE_HANDLERS = {
-  lookup: (m) => handleLookup(m.text, m.interpret === true),
+  lookup: (m) => handleLookup(m.text, m.interpret === true, m.native === true),
   compounds: (m) => handleCompounds(m.char),
   usedIn: (m) => handleUsedIn(m.word),
   foundIn: (m) => handleFoundIn(m.char),
@@ -823,17 +888,22 @@ function pokePanelPages() {
   }
 }
 
-/** Sidebar ADDENDUM: the panel page as a TAB, deep-linked with the typed query. */
-function searchUrl(text) {
-  return `${chrome.runtime.getURL("sidepanel/sidepanel.html")}?q=${encodeURIComponent(text)}`;
+/**
+ * Sidebar ADDENDUM: the panel page as a TAB, deep-linked with the typed query.
+ * Native words ADDENDUM: `scope=all` rides on the URL when the omnibox flow
+ * was native-flagged. It is the tab path's equivalent of the pending query's scope.
+ */
+function searchUrl(text, scope) {
+  const base = `${chrome.runtime.getURL("sidepanel/sidepanel.html")}?q=${encodeURIComponent(text)}`;
+  return scope === "all" ? `${base}&scope=all` : base;
 }
 
 /**
  * Omnibox fallback: open the panel page in a tab, respecting the disposition.
  * Used when the side panel cannot be opened (gesture edge cases, older Chrome).
  */
-function openSearchTab(text, disposition) {
-  const url = searchUrl(text);
+function openSearchTab(text, disposition, scope) {
+  const url = searchUrl(text, scope);
   if (disposition === "currentTab") {
     chrome.tabs.update({ url });
   } else {
@@ -842,6 +912,34 @@ function openSearchTab(text, disposition) {
     chrome.tabs.create({ url, active: disposition !== "newBackgroundTab" });
   }
 }
+
+/**
+ * Native words ADDENDUM: the omnibox flow has no client page to carry the
+ * toggle, so the worker reads it from chrome.storage itself: the ONE
+ * exception to the per-request flag model. The raw stored record is read
+ * directly (not through normalizeSettings) so this module needs no schema
+ * dependency; absent or malformed means off.
+ */
+async function readNativeToggle() {
+  const area = storageArea();
+  if (area === null) return false;
+  try {
+    const got = await area.get(SETTINGS_KEY);
+    const settings = got !== null && typeof got === "object" ? got[SETTINGS_KEY] : undefined;
+    return settings !== null && typeof settings === "object" && settings.nativeWords === true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The toggle as the LAST keystroke read it. onInputEntered cannot await a
+ * storage read: sidePanel.open() must be the first async call or the gesture
+ * is lost (see focusedWindowId above). So Enter uses the value the
+ * onInputChanged handler cached, seeded the same way focusedWindowId is:
+ * keystrokes always precede Enter.
+ */
+let omniboxNative = false;
 
 // Search popup ADDENDUM (omnibox keyword "hj"). Guarded like the listener
 // above so this module still imports cleanly in Node.
@@ -855,8 +953,20 @@ if (typeof chrome !== "undefined" && chrome.omnibox && chrome.omnibox.onInputCha
   chrome.omnibox.onInputChanged.addListener((text, suggest) => {
     (async () => {
       try {
-        // The omnibox is a typed channel, so it always interprets.
-        suggest(buildOmniboxSuggestions(text, await getData(), { interpret: true }));
+        omniboxNative = await readNativeToggle();
+        const data = await getData();
+        if (!omniboxNative) {
+          // The omnibox is a typed channel, so it always interprets. Toggle
+          // off: exactly the pre-addendum call, native.json never fetched.
+          suggest(buildOmniboxSuggestions(text, data, { interpret: true }));
+          return;
+        }
+        // Toggle on: the omnibox IS the All words search. A missing
+        // native.json degrades to an empty table, not to no suggestions.
+        const native = await getNative().catch(() => guardNative(null));
+        suggest(
+          buildOmniboxSuggestions(text, { ...data, native }, { interpret: true, native: true })
+        );
       } catch {
         // Data unavailable (offline install, mid-update): no rows, no noise.
         suggest([]);
@@ -870,13 +980,17 @@ if (typeof chrome !== "undefined" && chrome.omnibox && chrome.omnibox.onInputCha
   // the tab path carries the query in its URL and a leftover would re-run this
   // search the next time the panel opens for any other reason.
   chrome.omnibox.onInputEntered.addListener((text, disposition) => {
+    // Native words ADDENDUM: a native-flagged flow hands the panel All words
+    // scope: via the pending query on the panel path, via the URL on the tab
+    // path. Read from the keystroke-cached value, never awaited here.
+    const scope = omniboxNative ? "all" : null;
     // No panel API, or the worker somehow has no window id yet: straight to
     // the tab path (which needs no gesture and carries the query in its URL).
     if (!chrome.sidePanel || !chrome.sidePanel.open || focusedWindowId === null) {
-      openSearchTab(text, disposition);
+      openSearchTab(text, disposition, scope);
       return;
     }
-    setPendingQuery(text);
+    setPendingQuery(text, scope);
     try {
       // Called SYNCHRONOUSLY in the gesture — see the focusedWindowId note.
       // The poke goes in the RESOLVE half, never before open(): an awaited
@@ -884,11 +998,11 @@ if (typeof chrome !== "undefined" && chrome.omnibox && chrome.omnibox.onInputCha
       // .then().catch(), so the fallback stays tied to open() failing.
       chrome.sidePanel.open({ windowId: focusedWindowId }).then(pokePanelPages, () => {
         setPendingQuery(null);
-        openSearchTab(text, disposition);
+        openSearchTab(text, disposition, scope);
       });
     } catch {
       setPendingQuery(null);
-      openSearchTab(text, disposition);
+      openSearchTab(text, disposition, scope);
     }
   });
 }
