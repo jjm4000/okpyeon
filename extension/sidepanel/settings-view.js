@@ -33,17 +33,28 @@
    * The schema
    *
    * Entry: {
-   *   key,      // dot-path into the settings object; also the control's id
-   *   group,    // heading it renders under; groups appear in schema order
-   *   type,     // "select" | "checkset" | "folder-select"
-   *   label,    // the visible label
-   *   options,  // [{value, label}] — omitted by folder-select, which resolves
-   *             //   its options from the worker's folders at render time
-   *   default   // what a settings object that does not carry the key reads as
+   *   key,         // dot-path into the settings object; also the control's id
+   *   group,       // heading it renders under; groups appear in schema order
+   *   type,        // "select" | "checkset" | "folder-select" | "toggle"
+   *   label,       // the visible label
+   *   description, // optional second line under the label, muted
+   *   options,     // [{value, label}] — omitted by folder-select, which
+   *                //   resolves its options from the worker's folders at
+   *                //   render time, and by toggle, which has none
+   *   default      // what a settings object without the key reads as
    * }
    * ------------------------------------------------------------------ */
 
   var SETTINGS_SCHEMA = [
+    {
+      key: "nativeWords",
+      group: "Search",
+      type: "toggle",
+      label: "Korean word search",
+      description: "Include native Korean words: adds an All words scope to " +
+        "search and the omnibox, and shows native words in selection lookups.",
+      default: false
+    },
     {
       key: "defaultFolderId",
       group: "Saving",
@@ -272,6 +283,24 @@
     return box;
   }
 
+  // A boolean setting is one checkbox in the checkset's clothes: same label
+  // wrapper, same accent, no option list. The write is the raw boolean.
+  function buildToggle(entry) {
+    var label = document.createElement("label");
+    label.className = "settings-checkbox settings-toggle";
+    var input = document.createElement("input");
+    input.type = "checkbox";
+    input.className = "settings-check";
+    input.id = controlId(entry.key);
+    input.checked = currentValue(entry) === true;
+    var text = document.createElement("span");
+    text.textContent = "Enabled";
+    label.appendChild(input);
+    label.appendChild(text);
+    input.addEventListener("change", function () { write(entry, input.checked); });
+    return label;
+  }
+
   function buildControl(entry) {
     switch (entry.type) {
       case "select":
@@ -279,6 +308,8 @@
         return buildSelect(entry);
       case "checkset":
         return buildCheckset(entry);
+      case "toggle":
+        return buildToggle(entry);
       default:
         // An unknown type is a schema mistake, not a user-facing state: say so
         // quietly rather than dropping the row and hiding the bug.
@@ -330,6 +361,12 @@
       label.textContent = entry.label == null ? entry.key : String(entry.label);
       label.setAttribute("for", controlId(entry.key));
       row.appendChild(label);
+      if (entry.description != null && entry.description !== "") {
+        var note = document.createElement("p");
+        note.className = "settings-note";
+        note.textContent = String(entry.description);
+        row.appendChild(note);
+      }
       var control = document.createElement("div");
       control.className = "settings-control";
       control.appendChild(buildControl(entry));

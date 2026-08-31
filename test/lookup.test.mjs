@@ -1551,6 +1551,7 @@ test("normalizeSettings fills the SPEC defaults and drops unknown tokens", () =>
     assert.deepEqual(normalizeSettings(junk), {
       v: 1,
       defaultFolderId: "f0",
+      nativeWords: false,
       anki: {
         wordFront: "hanja",
         wordBack: ["hangul", "defs"],

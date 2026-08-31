@@ -257,6 +257,50 @@ body {
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--page-accent) 28%, transparent);
 }
 
+/* ---- scope pills ------------------------------------------------------
+   Native words ADDENDUM: "Hanja" / "All words" under the search box, filled
+   and shown by the shell only while the Korean-word-search setting is on
+   ([hidden] otherwise). Same quiet-control family as the tabs and the saved
+   bar's buttons; the round shape is what says "scope", and the active state
+   borrows the accent, since the pills steer the search rather than save it. */
+
+.scopebar {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 6px;
+}
+
+.scope-pill {
+  font: inherit;
+  font-size: 11.5px;
+  line-height: 1.3;
+  padding: 1px 9px;
+  color: var(--page-muted);
+  background: var(--field-bg);
+  border: 1px solid var(--field-edge);
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.scope-pill:hover { background: var(--action-hover); }
+
+.scope-pill:focus-visible {
+  outline: 2px solid var(--page-accent);
+  outline-offset: -1px;
+}
+
+.scope-pill--active {
+  color: var(--page-fg);
+  border-color: var(--page-accent);
+  background: color-mix(in srgb, var(--page-accent) 14%, transparent);
+}
+
+.scope-pill--active:hover {
+  background: color-mix(in srgb, var(--page-accent) 14%, transparent);
+}
+
 /* ---- views ------------------------------------------------------------
    The container fills what the header and searchbar leave, and each view
    fills the container. Hidden views keep their DOM (and their scroll
@@ -727,6 +771,15 @@ body {
   margin: 0;
   accent-color: var(--page-accent);
   cursor: pointer;
+}
+
+/* A schema entry's description: one muted line between the label and its
+   control, only rendered when the entry carries one. */
+.settings-note {
+  margin: 0 0 4px;
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--page-muted);
 }
 
 .settings-unknown {

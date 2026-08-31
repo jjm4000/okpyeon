@@ -157,6 +157,12 @@
   // The query the search view should start with. Resolved before the view is
   // mounted (see the boot sequence), because the shell takes it at init time.
   var bootQuery = "";
+  // Native words ADDENDUM: the scope riding with that query ("all" from an
+  // omnibox handoff or an &scope=all deep link, null otherwise) and the
+  // Korean-word-search toggle as stored. Resolved alongside bootQuery for
+  // the same reason: the shell takes both at init time.
+  var bootScope = null;
+  var bootNative = false;
 
   function findView(key) {
     for (var i = 0; i < SIDEBAR_VIEWS.length; i++) {
@@ -341,6 +347,9 @@
         input: document.getElementById("okp-input"),
         results: container.querySelector("#okp-results"),
         status: container.querySelector("#okp-status"),
+        scopeBox: document.getElementById("okp-scope"),
+        nativeEnabled: bootNative,
+        initialScope: bootScope,
         onState: function () { scheduleSeal(); },
         // Focus rules: the input is focused ONLY on an empty boot — the
         // icon-click open, where typing into the panel is the next thing the
@@ -409,6 +418,19 @@
     }
   }
 
+  // The tab path's equivalent of the pending query's scope: &scope=all rides
+  // on the URL when the omnibox flow was native-flagged. Anything else is
+  // no scope at all; the shell then applies its own fresh-open default.
+  function deepLinkScope() {
+    try {
+      return new URLSearchParams(location.search).get("scope") === "all"
+        ? "all"
+        : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
   // content.js's HAS_CHROME_RUNTIME probe with one addition: `id`. A plain
   // web page (the test harness) can also see a chrome.runtime, but only an
   // extension page's has an id and a receiver for a one-argument
@@ -463,20 +485,35 @@
   }
 
   // The panel must boot normally when there is no pending query, no worker,
-  // or a worker too old to know the message type — all of which read as "".
+  // or a worker too old to know the message type, all of which read as a
+  // blank query. The response's `scope` ("all") rides along when the worker
+  // stored one; the read is once, so query and scope arrive together.
   function pendingQuery() {
     return sendToWorker({ type: "getPendingQuery" }).then(function (res) {
-      if (res && res.ok === true && typeof res.query === "string") return res.query;
-      return "";
+      if (res && res.ok === true && typeof res.query === "string") {
+        return { query: res.query, scope: res.scope === "all" ? "all" : null };
+      }
+      return { query: "", scope: null };
     }, function () {
-      return "";
+      return { query: "", scope: null };
     });
   }
 
   function resolveInitialQuery() {
     var deep = deepLinkQuery();
-    if (deep) return Promise.resolve(deep);
+    if (deep) return Promise.resolve({ query: deep, scope: deepLinkScope() });
     return pendingQuery();
+  }
+
+  // The Korean-word-search toggle, read once at boot. Every failure reads as
+  // off, which is the setting's own default.
+  function nativeToggle() {
+    return sendToWorker({ type: "settingsGet" }).then(function (res) {
+      return !!(res && res.ok === true && res.settings &&
+                res.settings.nativeWords === true);
+    }, function () {
+      return false;
+    });
   }
 
   /* ------------------------------------------------------------------ *
@@ -487,12 +524,15 @@
     return renderHeaderActions(actionsBox, HEADER_ACTIONS);
   }
 
-  var ready = resolveInitialQuery().then(function (initialQuery) {
-    bootQuery = initialQuery;
-    renderActions();
-    showView(SIDEBAR_VIEWS[0].key); // mounts the search view and wires the shell
-    return initialQuery;
-  });
+  var ready = Promise.all([resolveInitialQuery(), nativeToggle()])
+    .then(function (resolved) {
+      bootQuery = resolved[0].query;
+      bootScope = resolved[0].scope;
+      bootNative = resolved[1];
+      renderActions();
+      showView(SIDEBAR_VIEWS[0].key); // mounts the search view and wires the shell
+      return bootQuery;
+    });
 
   // Never rejects, so a poke that arrives while boot is in flight (or after a
   // boot that went wrong) still gets a decision instead of hanging.
@@ -557,7 +597,7 @@
   // Value only: no focus, no selection. The user typed this in the omnibox and
   // is still there, so a panel that grabbed focus (or moved a caret in an input
   // that happens to be focused) would take the keystrokes meant for it.
-  function applyPendingQuery(query) {
+  function applyPendingQuery(query, scope) {
     // The search has to be VISIBLE: an omnibox query that landed behind the
     // saved or settings view would look like nothing happened.
     showView("search");
@@ -568,6 +608,12 @@
     if (!controller) return Promise.resolve({ applied: false, reason: "no-shell" });
     var inputEl = document.getElementById("okp-input");
     if (inputEl) inputEl.value = query;
+    // An omnibox-handed query carries its scope explicitly (native words
+    // ADDENDUM); no scope means the toggle was off, and the session scope
+    // stands. The shell owns the state; this only hands the switch over.
+    if (scope === "all" && typeof controller.syncScope === "function") {
+      controller.syncScope("all");
+    }
     return Promise.resolve(controller.search(query)).then(function () {
       return { applied: true, query: query };
     }, function () {
@@ -589,11 +635,11 @@
           message.windowId !== ownWindowId) {
         return { applied: false, reason: "other-window" };
       }
-      return pendingQuery().then(function (query) {
+      return pendingQuery().then(function (pending) {
         // Empty means another panel won the read-once race, or the poke was
         // stale. Either way there is nothing to show and nothing to clear.
-        if (!query) return { applied: false, reason: "nothing-pending" };
-        return applyPendingQuery(query);
+        if (!pending.query) return { applied: false, reason: "nothing-pending" };
+        return applyPendingQuery(pending.query, pending.scope);
       });
     });
   }
@@ -609,6 +655,40 @@
     }
     runtime.onMessage.addListener(function (message) {
       handleWorkerMessage(message);
+    });
+  })();
+
+  /* ------------------------------------------------------------------ *
+   * Live settings (native words ADDENDUM)
+   *
+   * The settings view writes through the worker, the worker writes storage,
+   * and storage.onChanged is how every open surface hears about it, the
+   * same channel saved-view.js and the renderer already listen on. Only the
+   * Korean-word-search toggle matters to this page's chrome; the record in
+   * `newValue` is the worker's own normalized write, read with the same
+   * `=== true` strictness the worker applies.
+   * ------------------------------------------------------------------ */
+
+  (function () {
+    var chromeObj = globalThis.chrome;
+    var runtime = chromeObj && chromeObj.runtime;
+    var storage = chromeObj && chromeObj.storage;
+    if (!runtime || !runtime.id || !storage || !storage.onChanged ||
+        typeof storage.onChanged.addListener !== "function") {
+      return;
+    }
+    storage.onChanged.addListener(function (changes, area) {
+      if (area !== "local" || !changes || !changes.okpSettings) return;
+      var next = changes.okpSettings.newValue;
+      var on = next !== null && typeof next === "object" &&
+        next.nativeWords === true;
+      var shell = globalThis.__okpyeonSearchShell;
+      var controller = shell && typeof shell.controller === "function"
+        ? shell.controller()
+        : null;
+      if (controller && typeof controller.setNativeEnabled === "function") {
+        controller.setNativeEnabled(on);
+      }
     });
   })();
 

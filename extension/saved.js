@@ -29,6 +29,8 @@ export const CHAR_FIELDS = ["char", "eumhun", "readings", "defs", "lvl"];
 export const DEFAULT_SETTINGS = Object.freeze({
   v: SETTINGS_VERSION,
   defaultFolderId: DEFAULT_FOLDER_ID,
+  // Native words ADDENDUM: off is byte-identical to today on every surface.
+  nativeWords: false,
   anki: Object.freeze({
     wordFront: "hanja",
     wordBack: Object.freeze(["hangul", "defs"]),
@@ -199,6 +201,9 @@ export function normalizeSettings(raw, savedState) {
   return {
     v: SETTINGS_VERSION,
     defaultFolderId,
+    // Anything that is not literally `true` reads as off, so hand-edited junk
+    // can never switch the native surfaces on by accident.
+    nativeWords: src.nativeWords === true,
     anki: {
       wordFront: oneOf(anki.wordFront, WORD_FIELDS, DEFAULT_SETTINGS.anki.wordFront),
       wordBack: manyOf(anki.wordBack, WORD_FIELDS, DEFAULT_SETTINGS.anki.wordBack),

@@ -13,11 +13,19 @@
  *     input,          // required: the <input> to wire
  *     results,        // required: the document-connected scroll container
  *     status,         // optional: element to receive state text
+ *     scopeBox,       // optional: container for the scope pill row (native
+ *                     //   words ADDENDUM); without it no pills ever render
+ *     nativeEnabled,  // optional: the Korean-word-search toggle as read at
+ *                     //   boot; false renders and requests exactly as before
+ *     initialScope,   // optional: "all", an omnibox/deep-link handed scope.
+ *                     //   The open-time reset to Hanja is init's default, so
+ *                     //   this governs handed queries only, never fresh opens
  *     onState,        // optional: fn(state, detail) — for custom chrome
  *     messages,       // optional: partial override of the default strings
  *     autofocus,      // optional: focus the input, caret at the end
  *     initialQuery    // optional: ?q= deep link — searched immediately
- *   }) -> controller { search, searchSoon, state, query, destroy }
+ *   }) -> controller { search, searchSoon, state, query, scope,
+ *                      syncScope, setNativeEnabled, destroy }
  *
  * Loaded as a CLASSIC script, after boot.js and content.js: it needs
  * globalThis.__okpyeonEmbedApi, which content.js only exposes when the boot
@@ -43,6 +51,13 @@
   };
 
   var current = null; // one shell per page; see init()
+
+  // Scope pills (native words ADDENDUM). Copy is SPEC-fixed, including the
+  // tooltips; the pill row renders only while the toggle is on.
+  var SCOPES = [
+    { value: "hanja", label: "Hanja", title: "Sino-Korean entries, as before" },
+    { value: "all", label: "All words", title: "Includes native Korean words" }
+  ];
 
   function textFor(messages, state, detail) {
     var entry = messages[state];
@@ -91,12 +106,91 @@
       }
     }
 
-    api.mount(results);
-
     var timer = null;
     var state = "empty";
     var lastQuery = "";
     var destroyed = false;
+
+    /* -------------------------------------------------------------- *
+     * Scope state: the shell is the ONE owner (native words ADDENDUM).
+     *
+     * The panel page is built fresh on every open, so initializing here IS
+     * the SPEC's reset-to-Hanja-on-open; `initialScope` rides only on a
+     * handed query (omnibox pending query, &scope=all deep link) and never
+     * changes that default. Within the session the scope is sticky: pill
+     * taps and the embed's cross-scope hint both move it, nothing else.
+     * -------------------------------------------------------------- */
+
+    var scopeBox = opts.scopeBox && opts.scopeBox.nodeType === 1
+      ? opts.scopeBox
+      : null;
+    var nativeEnabled = opts.nativeEnabled === true;
+    var scope = opts.initialScope === "all" ? "all" : "hanja";
+    var pillButtons = [];
+
+    function renderPills() {
+      if (!scopeBox) return;
+      if (!nativeEnabled) {
+        scopeBox.setAttribute("hidden", "");
+        return;
+      }
+      if (pillButtons.length === 0) {
+        for (var i = 0; i < SCOPES.length; i++) {
+          var button = document.createElement("button");
+          button.type = "button";
+          button.className = "scope-pill scope-pill--" + SCOPES[i].value;
+          button.textContent = SCOPES[i].label;
+          button.title = SCOPES[i].title;
+          button.setAttribute("data-scope", SCOPES[i].value);
+          button.addEventListener("click", (function (value) {
+            return function () { pickScope(value); };
+          })(SCOPES[i].value));
+          scopeBox.appendChild(button);
+          pillButtons.push(button);
+        }
+      }
+      for (var j = 0; j < pillButtons.length; j++) {
+        var active = pillButtons[j].getAttribute("data-scope") === scope;
+        pillButtons[j].classList.toggle("scope-pill--active", active);
+        pillButtons[j].setAttribute("aria-pressed", active ? "true" : "false");
+      }
+      scopeBox.removeAttribute("hidden");
+    }
+
+    // A pill tap: set the scope and re-run the current query under it.
+    function pickScope(next) {
+      if (next !== "hanja" && next !== "all") return;
+      if (next === scope) return;
+      scope = next;
+      renderPills();
+      if (lastQuery) search(lastQuery);
+    }
+
+    // Adopt a scope without re-running anything. Two callers: the embed's
+    // cross-scope hint row (it switched and re-rendered itself, so the pill
+    // row only has to agree), and the page handing over a mid-session omnibox
+    // query whose scope rides with it (the search follows separately).
+    function syncScope(next) {
+      if (next !== "hanja" && next !== "all") return;
+      scope = next;
+      renderPills();
+    }
+
+    // Live settings (the storage.onChanged path the page owns): off hides the
+    // pills and returns every search to the unflagged shape; the scope also
+    // resets, so a later re-enable starts at Hanja like a fresh open. The
+    // current results re-run so what is on screen matches the toggle.
+    function setNativeEnabled(next) {
+      var on = next === true;
+      if (on === nativeEnabled) return;
+      nativeEnabled = on;
+      if (!on) scope = "hanja";
+      renderPills();
+      if (lastQuery) search(lastQuery);
+    }
+
+    api.mount(results, { onScopeChange: syncScope });
+    renderPills();
 
     function setState(next, detail) {
       state = next;
@@ -132,7 +226,14 @@
       // that reaches it was typed or deep-linked by the user, so it opts into
       // interpretation. Non-typed shell rides (wordmark, saved-row opens)
       // pass hanja/hangul, which the interpreters' Latin gate ignores.
-      return api.searchFor(query, { interpret: true }).then(function (res) {
+      var searchOpts = { interpret: true };
+      // Toggle off omits BOTH new fields, so the request is byte-identical
+      // to today's (native words ADDENDUM: off is identical on every surface).
+      if (nativeEnabled) {
+        searchOpts.native = true;
+        searchOpts.scope = scope;
+      }
+      return api.searchFor(query, searchOpts).then(function (res) {
         // A newer search already owns the panel; its own .then will set state.
         if (destroyed || (res && res.stale)) return res;
         // A fresh query always starts at the top of the results.
@@ -209,6 +310,9 @@
       ready: ready,
       state: function () { return state; },
       query: function () { return lastQuery; },
+      scope: function () { return scope; },
+      syncScope: syncScope,
+      setNativeEnabled: setNativeEnabled,
       destroy: function () {
         if (destroyed) return;
         destroyed = true;

@@ -27,6 +27,13 @@
            placeholder="한자 · 한글 · 음절"
            aria-label="Search hanja, a sino-Korean word, or a single syllable"
            autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+    <!--
+      Scope pills (native words ADDENDUM). Ships hidden and empty: the shell
+      fills it and shows it only while the Korean-word-search setting is on,
+      so with the toggle off this row costs nothing and renders nothing.
+    -->
+    <div id="okp-scope" class="scopebar" role="group" aria-label="Search scope"
+         hidden></div>
   </div>
   <!--
     The view container: one child container per registered view, shown and
