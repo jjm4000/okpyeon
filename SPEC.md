@@ -1635,6 +1635,145 @@ index is a pure function of the decomp table it was built from).
   back restores without re-query; a char used nowhere shows no row;
   word cards unchanged; single-call-site check for appendFoundIn.
 
+## Native Korean words (ADDENDUM 2026-08-31, design settled by mockups)
+
+One settings toggle, "Korean word search", default OFF. Off is
+byte-identical to today on every surface: no pill row, no native data
+loaded, no new sections, no response-shape additions consumed. Every
+rendering site below sits behind one settings predicate
+(`nativeEnabled`), per the card section convention.
+
+### native.json
+
+```json
+{ "version": 1,
+  "maxLen": 5,
+  "words": { "하늘": [ { "pos": "noun", "glosses": ["sky", "heaven"] } ] } }
+```
+- Keyed by hangul. The value is an array: one entry per part of speech
+  (POS homonyms merge senses within their entry; distinct POS stay
+  distinct entries). `maxLen` is the longest key's syllable count.
+- Build filters (the bar is quality, NOT frequency — a cutoff was
+  measured and rejected): kaikki Korean extract, `lang_code` ko; POS
+  whitelist noun/verb/adj/adv/intj/det/pron/num/classifier; headword is
+  hangul-only; NO hanja form anywhere in `forms` (a hanja form means
+  Sino-Korean, words.json territory); at least one gloss that is not an
+  alt-of/form-of redirect; max 3 glosses per entry, full strings, never
+  cut (the no-truncation rule applies). Proper nouns (`name`) excluded.
+- Deterministic emit (sort_keys), own file, NOT merged into words.json:
+  the Sino lookup path must never pay for it.
+- Verify anchors: 하늘 present with a sky gloss; 사랑 present with a
+  love gloss; 먹다 present (verb); 국민 ABSENT (Sino); 서울 ABSENT
+  (proper noun); count logged and sane (expect ≈ 16,000, from the
+  2026-08-31 measurement of 16,331); size logged (expect ≈ 1.6 MB).
+- DATA-LICENSE.md: same source (English Wiktionary via kaikki.org,
+  CC BY-SA); one line, no new licensing.
+
+### Loading and the request flag
+
+The worker stays stateless about the toggle: requests carry
+`"native": true` when the client's toggle is on, and only flagged
+requests may touch native.json. The file joins the worker's lazy
+per-file cache and is loaded on the FIRST flagged request that needs
+it, never at startup, never for unflagged requests (build a harness
+check on that: unflagged lookups make no native.json fetch).
+
+### Lookup semantics
+
+- Flagged lookup responses gain `"nativeMatches": [ { "kind":
+  "native", "word": "하늘", "pos": "noun", "glosses": [...] } ]`,
+  parallel to `matches` and empty-omitted. Existing match shapes are
+  unchanged — toggle-off responses are byte-identical to today's.
+- Span resolution (selection popup): the Sino resolver runs first and
+  is AUTHORITATIVE for the span when it succeeds; nativeMatches then
+  joins on that resolved hangul span. When the Sino resolver finds
+  nothing, the native table gets its own pass under the same span
+  rules (longest match within `maxLen`, josa stripping reused), so
+  selecting 하늘이 finds 하늘. Conjugation is NOT deconjugated
+  (documented gap: verbs/adjectives are reachable from typed search
+  and exact-form selection only).
+- Typed queries (search shell, omnibox, ?q= deep links): interpreters
+  (Dubeolsik, RR) run exactly as today; each interpretation consults
+  both tables when flagged. Internal navigation stays literal (the
+  input-channel rule), including native drill rows.
+- LEAD RULE (the popup and every card-rendering view): the lead
+  identity is the best non-rare hanja spelling; else the native entry;
+  else the rare hanja. So 無理 and 家長 lead unchanged, 사랑 leads
+  native, 하늘 renders the native card where today nothing renders.
+- HEDGE RETIREMENT: when nativeMatches is non-empty and every hanja
+  spelling is rare, the native card leads and the rare-homograph
+  banner does NOT render — the muted rare row in Same sound states
+  what the banner used to guess. The banner (and today's behavior
+  entirely) remains when the toggle is off, and for all-rare hangul
+  with no native entry.
+
+### Rendering
+
+- Native card: headword, POS chip, NATIVE marker (house label style,
+  jade tint), glosses list, Same sound section, "Wiktionary ↗" to
+  https://en.wiktionary.org/wiki/<hangul>#Korean. NO star in v1 (saved
+  words have no native key namespace yet — the star is absent, not
+  disabled). No derived-words section in v1 (needs a derivation-link
+  build step that does not exist). Sections that would be empty do not
+  render, per the existing convention.
+- Same sound section: label "Same sound", collapsed nav rows at the
+  END of the word body, immediately after the used-in row's position.
+  On a hanja-led card: one row per native entry (hangul, NATIVE tag,
+  first gloss). On a native-led card: one row per hanja spelling
+  (hangul, spelling in parens, first gloss, rare rows muted with the
+  superscript marker). Tap pushes the other card as its OWN view with
+  a breadcrumb — never an in-place swap. Native view key:
+  "native:<hangul>"; crumb label: the hangul itself.
+- The spelling chip row is UNTOUCHED: hanja spellings only, current
+  population (2+ hanja spellings), current styling. Explicitly
+  rejected: native as a chip, whisper cards, disclosure rows.
+  Char cards are untouched entirely.
+
+### Sidebar and omnibox
+
+- Scope pills render under the search box ONLY while the toggle is on:
+  "Hanja" and "All words", title-attribute tooltips "Sino-Korean
+  entries, as before" and "Includes native Korean words". Hanja is the
+  default, renders exactly today's results, and the scope RESETS to
+  Hanja whenever the panel opens; it is sticky within a panel session.
+- Cross-scope hint: in Hanja scope only (All is a strict superset),
+  when the query has native matches, a quiet row after the results
+  (or under the empty-state seal): "1 native word in All words" /
+  "N native words in All words", with the nav chevron. Tap switches
+  the scope FOR THAT QUERY. Never an auto-switch.
+- Omnibox, toggle on: the omnibox IS the All words search, remote.
+  Suggestions draw from the All-scope result set, native entries
+  marked "native" in the dim text (where hanja entries show school
+  levels), non-rare-first ordering; picking a suggestion deep-links to
+  that card (literal); raw enter opens the panel with the query IN All
+  words scope. The Hanja reset governs fresh opens only; an
+  omnibox-handed query carries its scope explicitly. Toggle off:
+  omnibox unchanged.
+- Settings schema entry (exact copy): title "Korean word search",
+  description "Include native Korean words: adds an All words scope to
+  search and the omnibox, and shows native words in selection
+  lookups." One schema row, default off.
+
+### Tests
+
+- Build: the anchors above; determinism; native.json absent from the
+  toggle-off runtime path is a runtime concern, not a build one.
+- Node: flag gating (unflagged request shapes byte-identical); span
+  rules incl. josa-stripped native-only spans and Sino-span
+  authority; lead rule matrix (non-rare hanja / native / rare-only /
+  native-only); hedge retirement conditions; omnibox merge order;
+  real-data smokes: 하늘 → native card data, 사랑 → native leads with
+  舍廊 in sameSound, 무리 → 無理 leads, toggle-off 사랑 → hedged as
+  today.
+- Harness (fixture blocks byte-identical, mini native table): toggle
+  off renders byte-identical DOM on a native-contested fixture; pills
+  render/switch/reset-on-open; hint row wording and tap-switches-scope;
+  popup lead rule for the four cases; Same sound rows both directions,
+  drill pushes a view with "native:" key and hangul crumb, back
+  restores; native card has NO star and no empty sections; unflagged
+  path never requests native.json; single-call-site checks for the new
+  section functions.
+
 ## Verification expectations
 
 - A: after build, spot-check in the output: 國 has eumhun 나라/국 and compounds;
