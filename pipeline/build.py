@@ -14,7 +14,6 @@ Outputs (UTF-8, no BOM, compact / no indentation)
     extension/data/hanja.json
     extension/data/words.json
     extension/data/variants.json
-    extension/data/rr.json
     extension/data/decomp.json
 
 Usage
@@ -41,11 +40,11 @@ import time
 import unicodedata
 import zipfile
 
-# Revised Romanization tables and sound-change rules (pipeline/rr.py). Local
-# module, stdlib only; sys.path[0] is this directory whenever build.py runs as
-# a script, which is the only supported way to run it.
-import rr
-# Character decomposition rules (pipeline/decomp.py); same local-module rule.
+# Character decomposition rules (pipeline/decomp.py). Local module, stdlib
+# only; sys.path[0] is this directory whenever build.py runs as a script,
+# which is the only supported way to run it. (pipeline/rr.py is no longer
+# imported: the romanized-search v2 addendum retired the rr emits, and the
+# RR anchors now live in the node suite, which uses rr.py as its reference.)
 import decomp
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -1169,7 +1168,7 @@ NOT_RARE_OVERRIDES = {
 }
 
 
-def verify(hanja_obj, words_obj, variants_obj, rr_obj=None, decomp_obj=None,
+def verify(hanja_obj, words_obj, variants_obj, decomp_obj=None,
            native_obj=None):
     chars_out = hanja_obj["chars"]
     words_out = words_obj["words"]
@@ -1480,69 +1479,10 @@ def verify(hanja_obj, words_obj, variants_obj, rr_obj=None, decomp_obj=None,
             max((sp for sp in words_out), key=len, default=""),
             max((h for h in by_hangul), key=len, default="")))
 
-    # --- romanized search (SPEC addendum) ------------------------------
-    # The BINDING anchor pairs. Every one is an example from the standard
-    # itself; if the implementation disagrees, the implementation is wrong.
-    rr_anchors = [
-        ("백마", "baengma"), ("신문로", "sinmunno"),
-        ("종로", "jongno"), ("왕십리", "wangsimni"),
-        ("별내", "byeollae"), ("신라", "silla"),
-        ("학여울", "hangnyeoul"), ("알약", "allyak"),
-        ("해돋이", "haedoji"), ("같이", "gachi"),
-        ("좋고", "joko"), ("놓다", "nota"),
-        ("잡혀", "japyeo"), ("낳지", "nachi"),
-        ("국민", "gungmin"),
-    ]
-    bad = ["%s -> %s (want %s)" % (w, rr.official(w), want)
-           for w, want in rr_anchors if rr.official(w) != want]
-    add("rr OFFICIAL anchors (the standard's own examples)", not bad,
-        "%d/%d pass%s" % (len(rr_anchors) - len(bad), len(rr_anchors),
-                          "" if not bad else "; FAILED " + ", ".join(bad)))
-    naive_anchors = [("국민", "gukmin")]
-    bad = ["%s -> %s (want %s)" % (w, rr.naive(w), want)
-           for w, want in naive_anchors if rr.naive(w) != want]
-    add("rr NAIVE anchors (positional letters, no cross-syllable change)",
-        not bad, "%d/%d pass%s" % (len(naive_anchors) - len(bad),
-                                   len(naive_anchors),
-                                   "" if not bad else "; FAILED " + ", ".join(bad)))
-    tr_anchors = [("국민", "gugmin"), ("좋다", "johda"),
-                  ("먹는", "meogneun"), ("값", "gabs")]
-    bad = ["%s -> %s (want %s)" % (w, rr.translit(w), want)
-           for w, want in tr_anchors if rr.translit(w) != want]
-    add("rr TRANSLITERATION anchors (RR Article 8, one letter per jamo)",
-        not bad, "%d/%d pass%s" % (len(tr_anchors) - len(bad), len(tr_anchors),
-                                   "" if not bad else "; FAILED " + ", ".join(bad)))
-
-    if rr_obj is not None:
-        rw = rr_obj["words"]
-        rs = rr_obj["syllables"]
-        add("rr.json schema", rr_obj.get("v") == 1
-            and isinstance(rw, dict) and isinstance(rs, dict)
-            and all(isinstance(k, str) and k and k.isascii() and k.isalpha()
-                    for k in list(rw)[:2000]),
-            "v=%s, %s word keys, %s syllable keys"
-            % (rr_obj.get("v"), format(len(rw), ","), format(len(rs), ",")))
-        # every byHangul key reachable under all of its forms
-        missing = [h for h in list(by_hangul)[:5000]
-                   for form in rr.forms(h) if h not in rw.get(form, ())]
-        add("rr.json words: every byHangul key indexed under every form",
-            not missing, "checked %d keys; %d unreachable%s"
-            % (min(len(by_hangul), 5000), len(missing),
-               "" if not missing else " e.g. " + ", ".join(missing[:3])))
-        both = [f for f in ("gukmin", "gugmin", "gungmin")
-                if "국민" in rw.get(f, ())]
-        add("rr.json spot-check: naive/translit/official all find 국민",
-            len(both) == 3, "found under %s" % (both or "(none)"))
-        add("rr.json spot-check: single-syllable readings",
-            "수" in rs.get("su", ()) and "국" in rs.get("guk", ()),
-            "su -> %s | guk -> %s"
-            % (rs.get("su", [])[:4], rs.get("guk", [])[:4]))
-        # values are ordered most-frequent-first: the check that matters is
-        # that the order is a pure function of the data, i.e. reproducible.
-        unsorted_vals = [f for f, v in list(rw.items())[:5000]
-                         if len(v) != len(set(v))]
-        add("rr.json values are duplicate-free", not unsorted_vals,
-            "checked %d keys" % min(len(rw), 5000))
+    # Romanized search v2 (SPEC ADDENDUM 2026-08-31): the RR anchors moved to
+    # the node suite (test/lookup.test.mjs), which sweeps extension/rr.js
+    # against pipeline/rr.py directly. Nothing romanization-shaped ships from
+    # the build any more, so nothing is verified here.
 
     # --- decomp.json (SPEC character-decomposition addendum) -----------
     if decomp_obj is not None:
@@ -1672,24 +1612,11 @@ def verify(hanja_obj, words_obj, variants_obj, rr_obj=None, decomp_obj=None,
             "maxLen %s, longest key %s syllables"
             % (native_obj["maxLen"],
                max((len(h) for h in nw), default=0)))
-        nr = native_obj.get("rr") or {}
-        # 하늘 has one collapsed form: naive and official are both haneul.
-        add("native rr: haneul lists 하늘, and both forms collapse to it",
-            "하늘" in nr.get("haneul", ()) and rr.forms("하늘") == ["haneul"],
-            "haneul -> %s | forms(하늘) = %s"
-            % ((nr.get("haneul") or [])[:4], rr.forms("하늘")))
-        add("native rr: sarang lists 사랑",
-            "사랑" in nr.get("sarang", ()),
-            "sarang -> %s" % (nr.get("sarang") or [])[:4])
-        add("native rr: keys are pure ASCII letters",
-            len(nr) > 0
-            and all(k and k.isascii() and k.isalpha() for k in list(nr)[:5000]),
-            "checked %d of %s keys" % (min(len(nr), 5000),
-                                       format(len(nr), ",")))
-        bad_vals = [f for f, v in list(nr.items())[:5000]
-                    if v != sorted(set(v))]
-        add("native rr: values are lexicographic and duplicate-free",
-            not bad_vals, "checked %d keys" % min(len(nr), 5000))
+        # Romanized search v2: the `rr` block is retired; runtime rr.js
+        # computes forms on demand, so native.json must not carry one.
+        add("native: no `rr` block (romanized search v2)",
+            "rr" not in native_obj,
+            "keys: %s" % sorted(native_obj.keys()))
 
     failed = 0
     log("=============== SPOT CHECKS ================")
@@ -1706,10 +1633,6 @@ def verify_only():
             return json.load(fh)
     h, w, v = rd("hanja.json"), rd("words.json"), rd("variants.json")
     try:
-        r = rd("rr.json")
-    except (OSError, ValueError):
-        r = None
-    try:
         d = rd("decomp.json")
     except (OSError, ValueError):
         d = None
@@ -1723,7 +1646,7 @@ def verify_only():
             format(len(w["byHangul"]), ","), format(len(v["map"]), ","),
             format(len(d["parts"]), ",") if d else "-",
             format(len(n["words"]), ",") if n else "-"))
-    return verify(h, w, v, r, d, n)
+    return verify(h, w, v, d, n)
 
 
 # ---------------------------------------------------------------- main
@@ -2228,57 +2151,9 @@ def main(argv):
             by_hangul[hangul] = ([sp for sp in picked if sp not in rare_sp]
                                  + [sp for sp in picked if sp in rare_sp])
 
-    # ---- rr.json (SPEC romanized-search addendum) ---------------------
-    # Forward-generated romanization index: hangul -> latin is deterministic,
-    # so the build does it once and the runtime never inverts anything. Both
-    # halves are keyed by romanization; values are hangul.
-    #   words     every byHangul key, most-frequent-first
-    #   syllables every reading-index eum (the same set lookup.js derives from
-    #             hanja.json at runtime), most-used-first
-    # rr.forms() supplies all three forms (naive, Article 8 transliteration,
-    # official); identical forms collapse into one key.
-    rr_syllables = {}
-    for c, e in chars_out.items():
-        for eum in ([x["eum"] for x in e["eumhun"] if x["eum"]]
-                    + list(e.get("readings") or ())):
-            rr_syllables.setdefault(eum, set()).add(c)
-
-    def word_rank_key(h):
-        rank = ranks.get(h)
-        return (freq_bucket(rank) if rank else FREQ_BUCKETS,
-                -ext_freq.get(h, 0), len(h), h)
-
-    rr_words_map = {}
-    rr_syl_map = {}
-    n_word_forms = n_word_collapsed = n_syl_forms = n_syl_collapsed = 0
-    for h in by_hangul:
-        cands = rr.candidates(h)
-        fs = rr.forms(h)
-        n_word_forms += len(fs)
-        n_word_collapsed += len(cands) - len(fs)
-        for form in fs:
-            rr_words_map.setdefault(form, []).append(h)
-    for syl in rr_syllables:
-        cands = rr.candidates(syl)
-        fs = rr.forms(syl)
-        n_syl_forms += len(fs)
-        n_syl_collapsed += len(cands) - len(fs)
-        for form in fs:
-            rr_syl_map.setdefault(form, []).append(syl)
-    for form, lst in rr_words_map.items():
-        rr_words_map[form] = sorted(lst, key=word_rank_key)
-    for form, lst in rr_syl_map.items():
-        # most-used reading first: how many characters carry it.
-        rr_syl_map[form] = sorted(
-            lst, key=lambda s: (-len(rr_syllables[s]), s))
-    rr_obj = {"v": 1, "words": rr_words_map, "syllables": rr_syl_map}
-    log("  rr index: %s hangul -> %s keys (%s distinct forms, %s identical "
-        "forms collapsed); %s syllables -> %s keys (%s distinct forms, %s "
-        "collapsed)"
-        % (format(len(by_hangul), ","), format(len(rr_words_map), ","),
-           format(n_word_forms, ","), format(n_word_collapsed, ","),
-           format(len(rr_syllables), ","), format(len(rr_syl_map), ","),
-           format(n_syl_forms, ","), format(n_syl_collapsed, ",")))
+    # Romanized search v2 (SPEC ADDENDUM 2026-08-31): no romanization index
+    # is built any more. extension/rr.js computes forms at runtime and the
+    # inverse generator de-romanizes typed queries, so rr.json is retired.
 
     # ---- decomp.json (SPEC character-decomposition addendum) ----------
     # Built last: the visibility rule and the click targets both need the
@@ -2340,26 +2215,14 @@ def main(argv):
                 for p, g in sorted(by_pos.items()) if g]
         if rows:
             native_words[hangul] = rows
-    # Native rr map (SPEC native-words addendum, QA fix): every native
-    # headword under every rr.forms() key, the same recipe as rr.json's
-    # words half. It lives inside native.json, not rr.json, so the Sino-only
-    # path never downloads it and the flagged path needs no extra fetch.
-    # Native entries carry no frequency scores, so values sort
-    # lexicographically; the order only has to be deterministic.
-    native_rr = {}
-    for h in native_words:
-        for form in rr.forms(h):
-            native_rr.setdefault(form, []).append(h)
-    for form, lst in native_rr.items():
-        native_rr[form] = sorted(lst)
+    # Romanized search v2: no `rr` block. The runtime computes forms with
+    # extension/rr.js, so native.json carries only the words themselves.
     native_obj = {"version": 1,
                   "maxLen": max((len(h) for h in native_words), default=0),
-                  "rr": native_rr,
                   "words": native_words}
     s_h = write_json("hanja.json", hanja_obj)
     s_w = write_json("words.json", words_obj)
     s_v = write_json("variants.json", variants_obj)
-    s_r = write_json("rr.json", rr_obj)
     s_d = write_json("decomp.json", decomp_obj)
     s_n = write_json("native.json", native_obj)
 
@@ -2369,9 +2232,8 @@ def main(argv):
     log("words      : %-9s (expect >= 20000)" % format(len(words_out), ","))
     log("byHangul   : %-9s" % format(len(by_hangul), ","))
     log("variants   : %-9s (expect >= 1000)" % format(len(variant_map), ","))
-    log("native     : %-9s (expect ~ 16000; maxLen %d; rr keys %s)"
-        % (format(len(native_words), ","), native_obj["maxLen"],
-           format(len(native_rr), ",")))
+    log("native     : %-9s (expect ~ 16000; maxLen %d)"
+        % (format(len(native_words), ","), native_obj["maxLen"]))
     log("  variant sources: " + ", ".join(
         "%s=%d" % (PRIO_NAMES[k], v) for k, v in sorted(src_counts.items())))
     zones = collections.Counter(e["lvl"] for e in chars_out.values())
@@ -2390,12 +2252,11 @@ def main(argv):
     log("hanja.json    : %s" % mb(s_h))
     log("words.json    : %s" % mb(s_w))
     log("variants.json : %s" % mb(s_v))
-    log("rr.json       : %s" % mb(s_r))
     log("decomp.json   : %s" % mb(s_d))
     log("native.json   : %s" % mb(s_n))
-    log("total         : %s" % mb(s_h + s_w + s_v + s_r + s_d + s_n))
+    log("total         : %s" % mb(s_h + s_w + s_v + s_d + s_n))
 
-    failed = verify(hanja_obj, words_obj, variants_obj, rr_obj, decomp_obj,
+    failed = verify(hanja_obj, words_obj, variants_obj, decomp_obj,
                     native_obj)
     log("============================================")
     log("done in %.1fs; %d failed check(s)" % (time.time() - t0, failed))

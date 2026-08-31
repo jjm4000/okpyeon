@@ -1,7 +1,13 @@
-# Revised Romanization (국어의 로마자 표기법) for the build-time search index.
+# Revised Romanization (국어의 로마자 표기법).
 #
-# Two forms per hangul string, both indexed, per the SPEC "Romanized search"
-# addendum:
+# No longer imported by build.py: the romanized-search v2 addendum retired
+# the rr.json / native `rr` emits, and the runtime computes forms with
+# extension/rr.js. This module stays as the REFERENCE IMPLEMENTATION for the
+# node equivalence sweep ("rr.js matches rr.py" in test/lookup.test.mjs),
+# which shells out to it over the shipped word lists. Keep it in lockstep
+# with extension/rr.js.
+#
+# Two forms per hangul string, per the SPEC "Romanized search" addendum:
 #
 #   NAIVE    letter-for-letter, positional, no cross-syllable interaction.
 #            국민 -> gukmin.  This is what a learner types.

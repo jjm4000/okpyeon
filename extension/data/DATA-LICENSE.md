@@ -1,7 +1,7 @@
 # Dictionary data license and attribution
 
 The JSON files in this directory (`hanja.json`, `words.json`, `variants.json`,
-`rr.json`, `decomp.json`, `native.json`) are a derived database compiled from
+`decomp.json`, `native.json`) are a derived database compiled from
 the following sources by `pipeline/build.py`:
 
 - **English Wiktionary** (https://en.wiktionary.org), via the machine-readable
@@ -35,10 +35,6 @@ the following sources by `pipeline/build.py`:
   format. The credit here is given because it is deserved, not because it is
   required. `decomp.json` also carries short part names taken from the Unihan
   `kDefinition` field, covered by the Unicode License above.
-
-`rr.json` adds no source of its own: it is a mechanical Revised Romanization
-transform of hangul already present in the files above, so it carries the same
-attribution and licence as the rest of this directory.
 
 `native.json` (native Korean words) is compiled solely from the English
 Wiktionary extract via kaikki.org listed above, CC BY-SA, so it adds no new
