@@ -227,9 +227,29 @@ one schema entry plus its feature code:
     not exist yet; v1 may ship without it.
   - Saved words need a native key namespace before native cards get a
     star; v1 may omit the star from native cards instead.
-  - Still open: pill wording, whether the omnibox joins a scope
-    (lean: omnibox stays hanja-only in v1), and the native.json
-    frequency cutoff.
+  - Pill wording (decided): "Hanja" and "All words"; tooltips carry
+    the precision ("Sino-Korean entries, as before" / "includes native
+    Korean words").
+  - Omnibox (decided): with the toggle on, the omnibox IS the All
+    words search, remote. Suggestions draw from the All-scope result
+    set (native entries marked, non-rare first); picking a suggestion
+    deep-links to that card (a literal lookup, no scope involved); raw
+    enter opens the panel with the query IN All words scope. The
+    Hanja-default reset governs fresh panel opens only; an
+    omnibox-handed query carries its scope explicitly, so nothing
+    auto-switches. Toggle off: omnibox unchanged.
+  - Size (decided, measured 2026-08-31): no frequency cutoff. Quality
+    filters are the bar (real gloss, no alt-of/form-of stubs, content
+    POS, hangul-only): 16,331 lemmas, about 1.63 MB emitted, smaller
+    than words.json. A frequency cutoff was rejected because the
+    subtitle corpus counts conjugated surface forms, so rank-cutting
+    would gut verbs and adjectives while sparing nouns.
+  - Known gap, not a blocker: the 3,072 verbs and 1,101 adjectives are
+    mostly unreachable from SELECTION without deconjugation (selecting
+    사랑스러운 cannot find 사랑스럽다; josa stripping does not cover
+    conjugation). Typed search reaches everything. Deconjugation is
+    its own future item, possibly seedable from the kaikki `forms`
+    arrays.
 - Japanese and Chinese pronunciations on character cards, as an option
   (Unihan kMandarin / kJapaneseOn / kJapaneseKun: data is nearly free, but
   whether cross-language readings belong in a Korean-first tool is uncertain;
