@@ -755,45 +755,196 @@
     };
   }
 
-  // CANNED interpreted responses. The harness deliberately does NOT
-  // reimplement the interpreters — Node owns the Dubeolsik automaton and the
-  // rr map. What a browser harness needs is the RESPONSE SHAPE, so the
-  // renderer can be held to the grouping and labeling rules.
-  //
-  //   gkrtod: ONE interpretation, the keyboard reading of 학생.
-  //   su:     TWO, which is the case the renderer has to tell apart. RR reads
-  //           it 수, the keyboard mapping reads it 녀, and no view may assert
-  //           either over the other.
-  //
-  // Order here is the worker's preference order, which the renderer must
-  // preserve as-is.
-  var INTERPRETED = {
-    gkrtod: [{ kind: "dubeolsik", to: "학생" }],
-    su: [{ kind: "rr", to: "수" }, { kind: "dubeolsik", to: "녀" }]
+  // Interpreted lookups, v2 (SPEC "Romanized search v2"): the mini rr map is
+  // gone. The keyboard side stays canned, because Node owns the Dubeolsik
+  // automaton and the harness needs only the conversions its checks type.
+  // Romanization is no longer canned at all: the REAL generator in
+  // extension/deromanize.js (rr.js rides in through its import graph)
+  // proposes hangul candidates, the fixture tables gate them, and the v2
+  // coverage collapse below decides what the interpretation claims. The
+  // module loads once, on the first interpreted lookup, so interpreted
+  // responses are promises; sendMessage settles them for both call styles.
+  var DUBEOLSIK = {
+    gkrtod: "학생",
+    su: "녀"
   };
 
-  // Flatten the groups into one match list plus the descriptors, where
-  // `start` is the index in `matches` at which each group begins. A group
-  // that finds nothing is dropped, exactly as the worker drops it.
-  function interpretedLookup(typed) {
-    var matches = [];
-    var interpretations = [];
-    INTERPRETED[typed].forEach(function (group) {
-      var inner = lookup(group.to);
-      if (!inner.ok || !inner.matches.length) return;
-      interpretations.push({
-        kind: group.kind, from: typed, to: group.to, start: matches.length
-      });
-      matches = matches.concat(inner.matches);
-    });
-    if (!interpretations.length) return { ok: true, matches: [] };
-    return { ok: true, matches: matches, interpretations: interpretations };
+  // Preference between two surviving interpretations is Node's business (the
+  // merge matrix is node-tested). The fixture pins the worker's decision for
+  // its one dual case; everything else takes the Dubeolsik tiebreak.
+  var DUAL_RR_FIRST = { su: true };
+
+  // The typed-channel gate, as the worker applies it: letters, with hyphens,
+  // apostrophes and internal spaces tolerated.
+  var LATIN_QUERY = /^[A-Za-z][A-Za-z' -]*$/;
+
+  var deromanizePromise = null;
+  function loadDeromanize() {
+    if (!deromanizePromise) {
+      deromanizePromise = import("../extension/deromanize.js")
+        .then(function (mod) { return mod.deromanize; });
+    }
+    return deromanizePromise;
   }
 
-  function lookup(text) {
+  // How many syllables of one candidate the fixture explains: rule 3b spans
+  // over BY_HANGUL first, then (flagged only) the native greedy walk over
+  // the stretches the Sino pass left, mirroring the worker.
+  function coveredSyllables(h, native) {
+    var mark = [], i, j, len;
+    i = 0;
+    while (i < h.length) {
+      var hit = 0;
+      for (len = Math.min(MAX_WORD, h.length - i); len >= 2; len--) {
+        if (BY_HANGUL[h.substr(i, len)]) { hit = len; break; }
+      }
+      if (hit) { for (j = 0; j < hit; j++) mark[i + j] = true; i += hit; }
+      else { i += 1; }
+    }
+    if (native) {
+      i = 0;
+      while (i < h.length) {
+        if (mark[i]) { i += 1; continue; }
+        var end = i;
+        while (end < h.length && !mark[end]) end += 1;
+        var k = i;
+        while (k < end) {
+          var nhit = 0;
+          for (len = Math.min(5, end - k); len >= 2; len--) {
+            if (NATIVE[h.substr(k, len)]) { nhit = len; break; }
+          }
+          if (nhit) { for (j = 0; j < nhit; j++) mark[k + j] = true; k += nhit; }
+          else { k += 1; }
+        }
+        i = end;
+      }
+    }
+    var covered = 0;
+    for (i = 0; i < h.length; i++) if (mark[i]) covered += 1;
+    return covered;
+  }
+
+  // Dedupe key for merged candidate matches, per the worker's rules.
+  function matchKey(m) {
+    return m.kind + ":" + (m.canonical || m.surface || "");
+  }
+
+  // The keyboard interpretation: canned conversion, normal fixture lookup.
+  function dubeolsikInterpretation(typed, native) {
+    if (!Object.prototype.hasOwnProperty.call(DUBEOLSIK, typed)) return null;
+    var to = DUBEOLSIK[typed];
+    var matches = lookup(to).matches;
+    var nativeMatches = native ? nativeMatchesFor(to, matches) : [];
+    if (!matches.length && !nativeMatches.length) return null;
+    return {
+      kind: "dubeolsik", from: typed, to: to,
+      matches: matches, nativeMatches: nativeMatches
+    };
+  }
+
+  // Candidates the fake bothers to resolve. The worker's cap is larger; the
+  // fixture's queries all land their words in the first dozen candidates.
+  var RESOLVE_CAP = 64;
+
+  // The romanization interpretation, v2: real candidates, fixture gate,
+  // coverage collapse. Class A (one dictionary unit) beats class B (covered
+  // end to end) beats class C (partial); class C keeps only the candidates
+  // covering the most syllables, so a splinter can never add matches, and
+  // it roots as the TYPED text because no one hangul spelling is canonical.
+  function rrInterpretation(typed, native, deromanize) {
+    var candidates = deromanize(typed);
+    var survivors = [];
+    for (var i = 0; i < candidates.length && i < RESOLVE_CAP; i++) {
+      var hangul = candidates[i].hangul;
+      var matches = lookup(hangul).matches;
+      var nativeMatches = native ? nativeMatchesFor(hangul, matches) : [];
+      if (!matches.length && !nativeMatches.length) continue;
+      var whole = matches.some(function (m) {
+        return (m.kind === "word" && m.surface === hangul) || m.kind === "reading";
+      }) || nativeMatches.some(function (m) { return m.word === hangul; });
+      var covered = whole ? hangul.length : coveredSyllables(hangul, native);
+      survivors.push({
+        hangul: hangul, tier: candidates[i].tier,
+        matches: matches, nativeMatches: nativeMatches,
+        cls: whole ? 0 : (covered === hangul.length ? 1 : 2),
+        covered: covered
+      });
+    }
+    if (!survivors.length) return null;
+    var bestClass = Math.min.apply(null, survivors.map(function (s) {
+      return s.cls;
+    }));
+    var pool = survivors.filter(function (s) { return s.cls === bestClass; });
+    if (bestClass === 2) {
+      var maxCovered = Math.max.apply(null, pool.map(function (s) {
+        return s.covered;
+      }));
+      pool = pool.filter(function (s) { return s.covered === maxCovered; });
+    }
+    // Tier first; the fixture carries no `f` buckets, so the rest of the
+    // ranking is the generator's own stable order.
+    pool.sort(function (a, b) { return a.tier - b.tier; });
+    var merged = [], nativeMerged = [], seen = {}, seenNative = {};
+    pool.forEach(function (s) {
+      s.matches.forEach(function (m) {
+        var key = matchKey(m);
+        if (seen[key]) return;
+        seen[key] = true;
+        merged.push(m);
+      });
+      s.nativeMatches.forEach(function (m) {
+        var key = m.word + "|" + m.pos;
+        if (seenNative[key]) return;
+        seenNative[key] = true;
+        nativeMerged.push(m);
+      });
+    });
+    var to = bestClass === 2 ? typed : pool[0].hangul;
+    return {
+      kind: "rr", from: typed, to: to,
+      matches: merged, nativeMatches: nativeMerged
+    };
+  }
+
+  // Both interpreters, dropped when empty, flattened into the response with
+  // `start` marking where each group's matches begin. Native hits collect at
+  // the response level, deduped in preferred order, as the worker does it.
+  function interpretedLookup(typed, native) {
+    return loadDeromanize().then(function (deromanize) {
+      var dub = dubeolsikInterpretation(typed, native);
+      var rr = rrInterpretation(typed, native, deromanize);
+      var interps = [dub, rr].filter(function (x) { return x !== null; });
+      if (interps.length === 2 && DUAL_RR_FIRST[typed]) interps.reverse();
+      if (!interps.length) return { ok: true, matches: [] };
+      var matches = [], descriptors = [];
+      var nativeOut = [], seenNative = {};
+      interps.forEach(function (interp) {
+        descriptors.push({
+          kind: interp.kind, from: interp.from, to: interp.to,
+          start: matches.length
+        });
+        matches = matches.concat(interp.matches);
+        interp.nativeMatches.forEach(function (m) {
+          var key = m.word + "|" + m.pos;
+          if (seenNative[key]) return;
+          seenNative[key] = true;
+          nativeOut.push(m);
+        });
+      });
+      var resp = { ok: true, matches: matches, interpretations: descriptors };
+      if (native && nativeOut.length) resp.nativeMatches = nativeOut;
+      return resp;
+    });
+  }
+
+  function lookup(text, opts) {
     var typed = String(text === null || text === undefined ? "" : text).trim();
-    if (Object.prototype.hasOwnProperty.call(INTERPRETED, typed)) {
-      return interpretedLookup(typed);
+    var o = opts !== null && typeof opts === "object" ? opts : {};
+    // Interpretation is gated on the flag, never on string shape alone: a
+    // literal Latin lookup falls through and matches nothing, exactly as the
+    // worker's does. The interpreted path answers with a promise.
+    if (o.interpret === true && LATIN_QUERY.test(typed)) {
+      return interpretedLookup(typed, o.native === true);
     }
 
     var words = [], chars = [], seenChar = {};
@@ -1260,9 +1411,13 @@
           if (msg.interpret === true) this.__interpretCalls++;
           this.__lastNative = msg.native === true;
           if (msg.native === true) this.__nativeCalls++;
-          resp = lookup(String(msg.text || ""));
-          // SPEC gate: only flagged requests may touch the native table.
-          if (msg.native === true && resp && resp.ok === true) {
+          resp = lookup(String(msg.text || ""),
+            { interpret: msg.interpret === true, native: msg.native === true });
+          // SPEC gate: only flagged requests may touch the native table. An
+          // interpreted response is a promise and already carries its own
+          // native hits, collected per candidate inside the interpreters.
+          if (msg.native === true && resp && typeof resp.then !== "function" &&
+              resp.ok === true) {
             var nm = nativeMatchesFor(String(msg.text || ""), resp.matches);
             if (nm.length) resp.nativeMatches = nm;
           }
@@ -1298,8 +1453,13 @@
       } catch (e) {
         resp = { ok: false, error: String(e) };
       }
-      if (typeof cb === "function") { setTimeout(function () { cb(resp); }, 0); return undefined; }
-      return Promise.resolve(resp);
+      // Interpreted responses are promises; everything else is settled
+      // already. Both call styles stay asynchronous either way.
+      var settled = Promise.resolve(resp).catch(function (e) {
+        return { ok: false, error: String(e) };
+      });
+      if (typeof cb === "function") { settled.then(function (r) { cb(r); }); return undefined; }
+      return settled;
     },
     __lookup: lookup,
     // How often the native table has been consulted, and a stand-in for
@@ -2294,6 +2454,42 @@
       api.query(".word-body .surface").textContent === "學生" &&
       api.viewSrcText().indexOf("학생") === 0,
       api.viewKeys().join(",") + " dividers=" + api.queryAll(".interp").length);
+
+    // --- romanized search v2: roots follow the coverage class -------------
+    // The candidates come from the REAL generator now, so these pins are
+    // about the collapse: a partial parse roots as what was typed, a clean
+    // one roots as the hangul, and splinter candidates never add matches.
+    // "gungmineun" is the fixture's mushihaesseo: the generator covers
+    // 국민 but not the particle, so no hangul spelling is canonical.
+    await embed.searchFor("gungmineun", { interpret: true });
+    await wait(TAIL);
+    check("an inflected romanization still finds its word",
+      api.query(".word-body .surface").textContent === "國民" &&
+      api.viewKeys().join(",") === "word:國民",
+      api.viewKeys().join(","));
+    check("a partial parse roots as the TYPED text, with no divider",
+      api.viewSrcText().indexOf("gungmineun") === 0 &&
+      api.queryAll(".interp").length === 0,
+      JSON.stringify(api.viewSrcText()));
+    check("splinter candidates never add matches beside the word",
+      api.queryAll(".word-body .surface").length === 1,
+      api.queryAll(".word-body .surface").map(function (n) {
+        return n.textContent;
+      }).join(","));
+
+    // "haneul" is the clean case: the whole candidate is a native headword,
+    // so the view roots as the hangul, exactly as typing 하늘 does.
+    await embed.searchFor("haneul", { interpret: true, native: true, scope: "all" });
+    await wait(TAIL);
+    check("a clean romanization renders the native card under its hangul",
+      !!api.query(".card.native") &&
+      api.query(".card.native .surface").textContent === "하늘" &&
+      api.viewKeys().join(",") === "native:하늘",
+      api.viewKeys().join(","));
+    check("...and the search context is the hangul, never the Latin",
+      api.viewSrcText().indexOf("하늘") === 0 &&
+      api.viewSrcText().indexOf("haneul") < 0,
+      JSON.stringify(api.viewSrcText()));
 
     // --- shell: ?q= deep link -------------------------------------------
     // init() with initialQuery is exactly what sidepanel.js does with ?q=.
