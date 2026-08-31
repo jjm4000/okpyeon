@@ -1759,10 +1759,13 @@ whole lookup.
 ### Sidebar and omnibox
 
 - Scope pills render under the search box ONLY while the toggle is on:
-  "Hanja" and "All words", title-attribute tooltips "Sino-Korean
-  entries, as before" and "Includes native Korean words". Hanja is the
-  default, renders exactly today's results, and the scope RESETS to
-  Hanja whenever the panel opens; it is sticky within a panel session.
+  "Hanja only" and "All words", title-attribute tooltips "Sino-Korean
+  entries, as before" and "Includes native Korean words". All words is
+  the default (user-directed 2026-08-31 QA: turning the toggle on IS
+  choosing the wide dictionary, so "Hanja only" is the narrowing act);
+  the scope RESETS to All words whenever the panel opens and is sticky
+  within a panel session. The Hanja-only scope renders exactly today's
+  results; the toggle-off state remains the byte-identical one.
 - Cross-scope hint: in Hanja scope only (All is a strict superset),
   when the query has native matches, a quiet row after the results
   (or under the empty-state seal): "1 native word in All words" /
@@ -1784,10 +1787,11 @@ whole lookup.
   onInputEntered cannot await storage without losing the user
   gesture); everywhere else the toggle travels as the per-request
   `native` flag set by the client.
-- Settings schema entry (exact copy): title "Korean word search",
-  description "Include native Korean words: adds an All words scope to
-  search and the omnibox, and shows native words in selection
-  lookups." One schema row, default off.
+- Settings schema entry (exact copy, user-adjusted 2026-08-31 QA for
+  plain language): title "Native Korean word search", description
+  "Adds native Korean words to the dictionary. Search shows all words,
+  and highlighting a native word on a page shows its meaning." One
+  schema row, default off.
 
 ### Tests
 

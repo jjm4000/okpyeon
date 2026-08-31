@@ -1657,6 +1657,9 @@
       JSON.stringify(api.query(".native-hint").textContent));
 
     // --- the hint tap: same response, All scope, no new lookup ------------
+    // The shell boots in All words (the default); narrow it to Hanja only
+    // first so the tap below performs a real hanja -> all transition.
+    shellApi.controller().syncScope("hanja");
     var ntvScopeBefore = shellApi.controller().scope();
     var ntvCallsHint = fake.__calls;
     api.query(".native-hint").click();
@@ -3314,11 +3317,11 @@
         "Anki export/anki.wordFront:select Anki export/anki.wordBack:checkset " +
         "Anki export/anki.charFront:select Anki export/anki.charBack:checkset",
       settingsView.schema.map(function (e) { return e.key; }).join(","));
-    check("the Korean word search row carries the SPEC's exact copy, default off",
-      settingsView.schema[0].label === "Korean word search" &&
-      settingsView.schema[0].description === "Include native Korean words: " +
-        "adds an All words scope to search and the omnibox, and shows native " +
-        "words in selection lookups." &&
+    check("the native word search row carries the SPEC's exact copy, default off",
+      settingsView.schema[0].label === "Native Korean word search" &&
+      settingsView.schema[0].description === "Adds native Korean words to " +
+        "the dictionary. Search shows all words, and highlighting a native " +
+        "word on a page shows its meaning." &&
       settingsView.schema[0].default === false &&
       byId("okp-set-nativeWords").checked === false,
       JSON.stringify(settingsView.schema[0].label));
@@ -3370,7 +3373,9 @@
       "roomy=" + settingsSealView.classList.contains("view--roomy"));
     var sealFrame = document.querySelector(".panel-frame");
     var sealFrameH = sealFrame.style.height;
-    sealFrame.style.height = "780px";
+    // 880, not 780: the Search group (native words ADDENDUM) made the
+    // settings column a row taller, and the check is about the tall case.
+    sealFrame.style.height = "880px";
     await settingsView.render();
     await wait(250);
     check("a taller panel has room under the settings and the seal shows",

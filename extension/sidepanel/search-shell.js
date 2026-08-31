@@ -55,7 +55,7 @@
   // Scope pills (native words ADDENDUM). Copy is SPEC-fixed, including the
   // tooltips; the pill row renders only while the toggle is on.
   var SCOPES = [
-    { value: "hanja", label: "Hanja", title: "Sino-Korean entries, as before" },
+    { value: "hanja", label: "Hanja only", title: "Sino-Korean entries, as before" },
     { value: "all", label: "All words", title: "Includes native Korean words" }
   ];
 
@@ -115,17 +115,19 @@
      * Scope state: the shell is the ONE owner (native words ADDENDUM).
      *
      * The panel page is built fresh on every open, so initializing here IS
-     * the SPEC's reset-to-Hanja-on-open; `initialScope` rides only on a
-     * handed query (omnibox pending query, &scope=all deep link) and never
-     * changes that default. Within the session the scope is sticky: pill
-     * taps and the embed's cross-scope hint both move it, nothing else.
+     * the SPEC's reset-to-All-words-on-open (user-directed: with the toggle
+     * on, the wide scope is the default and "Hanja only" is the narrowing
+     * act); `initialScope` rides only on a handed query (omnibox pending
+     * query, &scope=all deep link) and never changes that default. Within
+     * the session the scope is sticky: pill taps and the embed's
+     * cross-scope hint both move it, nothing else.
      * -------------------------------------------------------------- */
 
     var scopeBox = opts.scopeBox && opts.scopeBox.nodeType === 1
       ? opts.scopeBox
       : null;
     var nativeEnabled = opts.nativeEnabled === true;
-    var scope = opts.initialScope === "all" ? "all" : "hanja";
+    var scope = opts.initialScope === "hanja" ? "hanja" : "all";
     var pillButtons = [];
 
     function renderPills() {
@@ -178,13 +180,13 @@
 
     // Live settings (the storage.onChanged path the page owns): off hides the
     // pills and returns every search to the unflagged shape; the scope also
-    // resets, so a later re-enable starts at Hanja like a fresh open. The
-    // current results re-run so what is on screen matches the toggle.
+    // resets, so a later re-enable starts at All words like a fresh open.
+    // The current results re-run so what is on screen matches the toggle.
     function setNativeEnabled(next) {
       var on = next === true;
       if (on === nativeEnabled) return;
       nativeEnabled = on;
-      if (!on) scope = "hanja";
+      if (!on) scope = "all";
       renderPills();
       if (lastQuery) search(lastQuery);
     }

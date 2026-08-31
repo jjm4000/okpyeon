@@ -191,15 +191,16 @@ one schema entry plus its feature code:
     Native entries live in their own lazily loaded native.json; the
     Sino lookup path never consults it. Data source is the already
     parsed Korean extract, so the build cost is a filter and an emit.
-  - Sidebar search gains scope pills, "Hanja" and "All words" (two, not
-    three: a native-only scope reads as "the language" and All is a
-    strict superset anyway). Hanja scope is the default, renders
-    exactly today's results, and the scope resets to Hanja whenever
-    the panel opens; it is sticky only within a panel session. When
-    the other scope has matches the active one lacks, a quiet
-    cross-scope hint row renders after the results; tapping it
-    switches scope for that query. Never an auto-switch, and the hint
-    exists only on the Hanja side.
+  - Sidebar search gains scope pills, "Hanja only" and "All words"
+    (two, not three: a native-only scope reads as "the language" and
+    All is a strict superset anyway). All words is the default and the
+    scope resets to it whenever the panel opens (QA-adjusted
+    2026-08-31: turning the toggle on IS choosing the wide dictionary,
+    so Hanja only is the narrowing act); sticky within a panel
+    session. Hanja-only scope renders exactly today's results, and
+    when it hides native matches a quiet cross-scope hint row renders
+    after the results; tapping it switches scope for that query.
+    Never an auto-switch, and the hint exists only on the Hanja side.
   - The selection popup IS affected when the toggle is on: it renders
     the same identity group as the All words scope. Its one special
     rule is the default identity: best non-rare hanja spelling, else
@@ -227,7 +228,7 @@ one schema entry plus its feature code:
     not exist yet; v1 may ship without it.
   - Saved words need a native key namespace before native cards get a
     star; v1 may omit the star from native cards instead.
-  - Pill wording (decided): "Hanja" and "All words"; tooltips carry
+  - Pill wording (decided): "Hanja only" and "All words"; tooltips carry
     the precision ("Sino-Korean entries, as before" / "includes native
     Korean words").
   - Omnibox (decided): with the toggle on, the omnibox IS the All

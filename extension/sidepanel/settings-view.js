@@ -50,9 +50,9 @@
       key: "nativeWords",
       group: "Search",
       type: "toggle",
-      label: "Korean word search",
-      description: "Include native Korean words: adds an All words scope to " +
-        "search and the omnibox, and shows native words in selection lookups.",
+      label: "Native Korean word search",
+      description: "Adds native Korean words to the dictionary. Search shows " +
+        "all words, and highlighting a native word on a page shows its meaning.",
       default: false
     },
     {
