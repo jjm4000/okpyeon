@@ -1275,7 +1275,7 @@
       if (!entry || typeof entry !== "object") return;
       var word = nonEmptyString(entry.word);
       if (!word) return;
-      var dupKey = word + " " + nonEmptyString(entry.pos);
+      var dupKey = word + "\u0000" + nonEmptyString(entry.pos);
       if (seen[dupKey]) return;
       seen[dupKey] = true;
       var group = byWord[word];
@@ -2562,6 +2562,12 @@
       word = headwords[0];
     }
 
+    // A native headword OUTSIDE the lead word means the view holds more than
+    // this word (하늘 beside a hedged 사랑): the whole-view shortcut would
+    // silently drop it, so the ordinary per-group render must compose instead.
+    for (var n = 0; n < natives.length; n++) {
+      if (natives[n].word !== word) return null;
+    }
     var entries = natives.filter(function (entry) { return entry.word === word; });
     if (!entries.length) return null;
     return {

@@ -1722,6 +1722,11 @@ whole lookup.
   identity is the best non-rare hanja spelling; else the native entry;
   else the rare hanja. So 無理 and 家長 lead unchanged, 사랑 leads
   native, 하늘 renders the native card where today nothing renders.
+  The rule is PER GROUP, and a native lead replaces its group's word
+  card rather than preceding it. The whole-view native shortcut (the
+  view keyed "native:<hangul>") applies only when the entire lookup is
+  one such group; a view holding anything else (하늘 beside a hedged
+  사랑) composes per group, so no native headword is ever dropped.
 - HEDGE RETIREMENT: when nativeMatches is non-empty and every hanja
   spelling is rare, the native card leads and the rare-homograph
   banner does NOT render — the muted rare row in Same sound states
