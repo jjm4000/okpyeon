@@ -1896,20 +1896,36 @@ would have computed. Decided with Jesse across this QA session.
   EXCEPT that class C merges only the candidates achieving the maximal
   covered-syllable count, so a fragment can never add matches a better
   candidate lacks (mushihada must never surface 아다, the splinter
-  뭇이하다's suffix read, beside the legitimate 하다). Ranking inside
-  the winning pool is unchanged: tier first, then best frequency among
-  whole-word readings of the query (gungmin leads with 국민, not the
-  rare surface reading 궁민), then word-bearing candidates before
-  native-only ones, stable on the generator's own order. `to` is the
-  pool's best candidate for classes A and B, and for class C it is the
-  TYPED text itself: srcText derives from `to`, and a partial parse
-  has no canonical hangul spelling (the multi-match-root rule
+  뭇이하다's suffix read, beside the legitimate 하다). An ambiguous
+  romanization renders EVERY maximal parse (inclusive, user-directed:
+  the romanized typist, unlike the hangul typist, chose no
+  segmentation), ordered by ANCHORED COVERAGE (the covered syllables
+  before the first uncovered one) then by match frequency, because a
+  parse is judged before the words it found: one that skips the
+  query's head is a worse reading of the input, and among equally
+  anchored parses the common word is the likelier intent. So
+  balgyeonhaesseo leads with 발견했어's 發見 (anchored 2) over the
+  ㄺ-cluster splinter 밝연해써's 沿海 (anchored 0), and gungminmyeo,
+  where both parses anchor equally, leads with 國民 over the rare
+  窮民 on frequency. The frequency key is the same best-f comparator
+  the interpretation preference rules use; unranked and native-only
+  contributions compare as worst, and remaining ties keep the
+  generator's own deterministic order. The full pool ranking is
+  therefore: tier, best frequency among whole-word readings of the
+  query (gungmin leads with 국민, not the rare surface reading 궁민),
+  word-bearing before native-only, then the class-C keys above. `to`
+  is the pool's best candidate for classes A and B, and for class C it
+  is the TYPED text itself: srcText derives from `to`, and a partial
+  parse has no canonical hangul spelling (the multi-match-root rule
   generalized), so mushihaesseo roots as what was typed while 무시하다
   roots as the hangul. The response shape is untouched. Pinned
   regressions (real data): flagged mushihada resolves to/srcText
   무시하다 with 無視 leading and native 하다 but never 아다; flagged
-  mushihaesseo leads 無視 and roots as typed; haneul roots 하늘;
-  gukmin, gungmin and kukmin root 국민; su and toddlf unchanged.
+  mushihaesseo roots as typed and leads 無視 (anchoring beats the
+  splinter's commoner 理解); balgyeonhaesseo renders both parses with
+  發見 before 沿海 and roots as typed; gungminmyeo leads 國民 with
+  窮民 still rendered; haneul roots 하늘; gukmin, gungmin and kukmin
+  root 국민; su and toddlf unchanged.
 
 ## Verification expectations
 

@@ -907,40 +907,63 @@ const CLASS_COVERED = 1;  // covered end to end by word/native entries
 const CLASS_PARTIAL = 2;  // dictionary explains only part of the candidate
 
 /**
- * How many syllables of one hangul candidate the dictionary explains,
- * mirroring the lookup itself: rule 3b spans first, then (flagged only) the
- * native pass over the stretches the Sino resolver left, same floor and cap.
+ * How much of one hangul candidate the dictionary explains, mirroring the
+ * lookup itself: rule 3b spans first, then (flagged only) the native pass
+ * over the stretches the Sino resolver left, same floor and cap.
+ *
+ * `covered` is the total explained syllable count. `anchored` is the length
+ * of the contiguous explained run from the FIRST syllable: 발견했어 anchors
+ * 2 through 발견, while the splinter 밝연해써 anchors 0 because its 연해
+ * only starts at syllable two.
  */
-function coveredSyllables(hangul, data, native) {
+function coverageOf(hangul, data, native) {
   const bundle = data || {};
   const byHangul = (bundle.words && bundle.words.byHangul) || {};
   const chars = [...hangul];
   const spans = segmentHangulRun(chars, byHangul, maxHangulLenOf(bundle.words));
-  let covered = 0;
-  for (const span of spans) covered += span.length;
-  if (!native) return covered;
+  // Disjoint covered intervals: rule 3b spans, plus native segs inside the
+  // gaps between them on a flagged request.
+  const intervals = [];
+  let fillStretch = null;
 
-  const nativeWords = (bundle.native && bundle.native.words) || {};
-  const nativeMaxLen = nativeMaxLenOf(bundle.native);
-  const isNativeWord = (key) => {
-    if (!hasOwn(nativeWords, key)) return false;
-    const raw = nativeWords[key];
-    return (Array.isArray(raw) ? raw : []).some(
-      (e) => e && typeof e === "object" && typeof e.pos === "string"
-    );
+  if (native) {
+    const nativeWords = (bundle.native && bundle.native.words) || {};
+    const nativeMaxLen = nativeMaxLenOf(bundle.native);
+    const isNativeWord = (key) => {
+      if (!hasOwn(nativeWords, key)) return false;
+      const raw = nativeWords[key];
+      return (Array.isArray(raw) ? raw : []).some(
+        (e) => e && typeof e === "object" && typeof e.pos === "string"
+      );
+    };
+    fillStretch = (base, slice) => {
+      for (const seg of greedySegment(asItems(slice), isNativeWord, MIN_HANGUL_WORD_LEN, nativeMaxLen)) {
+        if (seg.kind === "word") intervals.push([base + seg.start, seg.length]);
+      }
+    };
+  }
+  const stretch = (base, end) => {
+    if (fillStretch !== null && end > base) fillStretch(base, chars.slice(base, end));
   };
-  const stretch = (slice) => {
-    for (const seg of greedySegment(asItems(slice), isNativeWord, MIN_HANGUL_WORD_LEN, nativeMaxLen)) {
-      if (seg.kind === "word") covered += seg.length;
-    }
-  };
+
   let cursor = 0;
   for (const span of spans) {
-    stretch(chars.slice(cursor, span.start));
+    stretch(cursor, span.start);
+    intervals.push([span.start, span.length]);
     cursor = span.start + span.length;
   }
-  stretch(chars.slice(cursor));
-  return covered;
+  stretch(cursor, chars.length);
+  intervals.sort((a, b) => a[0] - b[0]);
+
+  let covered = 0;
+  let anchored = 0;
+  let contiguous = true;
+  for (const [start, length] of intervals) {
+    covered += length;
+    if (contiguous && start === anchored) anchored += length;
+    else contiguous = false;
+  }
+  return { covered, anchored };
 }
 
 /**
@@ -960,8 +983,10 @@ function coveredSyllables(hangul, data, native) {
  * candidate lacks (mushihada must not surface 아다 beside 하다). Inside the
  * winning pool, candidates order by tier, then by best frequency among
  * whole-word readings (gungmin leads with 국민, not the rare surface reading
- * 궁민), then word-bearing before native-only; the sort is stable, so
- * remaining ties keep deromanize's order (fewest deviations first). `to` is
+ * 궁민), then word-bearing before native-only, then (partial class only) by
+ * anchored coverage and, among equally anchored parses, by the best
+ * frequency among what each parse found; the sort is stable, so remaining
+ * ties keep deromanize's order (fewest deviations first). `to` is
  * the pool's best candidate, EXCEPT for a partial-class win, where `to` is
  * the typed text itself: srcText derives from `to`, and no single hangul
  * spelling is canonical for a partial parse (the multi-match-root rule
@@ -1006,9 +1031,12 @@ function rrInterpretation(raw, data, native) {
     if (whole) {
       s.cls = CLASS_WHOLE;
       s.covered = len;
+      s.anchored = len;
     } else {
-      s.covered = coveredSyllables(s.hangul, data, native);
-      s.cls = s.covered === len ? CLASS_COVERED : CLASS_PARTIAL;
+      const { covered, anchored } = coverageOf(s.hangul, data, native);
+      s.covered = covered;
+      s.anchored = anchored;
+      s.cls = covered === len ? CLASS_COVERED : CLASS_PARTIAL;
     }
   }
   const bestClass = Math.min(...survivors.map((s) => s.cls));
@@ -1027,14 +1055,31 @@ function rrInterpretation(raw, data, native) {
     // Last tie key: a candidate with word matches outranks one the flagged
     // native pass alone kept alive.
     s.wordless = s.matches.some((m) => m.kind === "word") ? 0 : 1;
+    // Partial-pool ordering key: the best f among what the parse actually
+    // found, the same comparator the interpretation preference rules use.
+    s.cf = bestFrequency(s, wordTable);
   }
   // Two Infinity ranks compare equal (Infinity minus Infinity is NaN, which
-  // would poison the comparator).
+  // would poison the comparator). In a partial-class pool, every maximal
+  // parse of an ambiguous romanization renders (inclusivity is
+  // user-directed: the romanized typist, unlike the hangul typist, chose no
+  // segmentation), and a parse is judged before the words it found:
+  // ANCHORED coverage orders first, because a parse that cannot explain the
+  // query's first syllable is a worse reading of the input (balgyeonhaesseo
+  // leads with 발견했어's 發見, anchored 2, and the ㄺ-cluster splinter
+  // 밝연해써 trails with its 沿海, anchored 0); among equally anchored
+  // parses the common word is the likelier intent, so the best f among what
+  // each parse found breaks the tie (gungminieoteo leads with 國民 over the
+  // rare 窮民, both anchored 2). Unranked and native-only contributions
+  // compare as worst, per the unranked convention; remaining ties keep the
+  // deterministic generation order.
   pool.sort(
     (a, b) =>
       (a.tier - b.tier) ||
       (a.f === b.f ? 0 : a.f - b.f) ||
-      (a.wordless - b.wordless)
+      (a.wordless - b.wordless) ||
+      (bestClass === CLASS_PARTIAL ? b.anchored - a.anchored : 0) ||
+      (bestClass === CLASS_PARTIAL && a.cf !== b.cf ? a.cf - b.cf : 0)
   );
 
   // Pass 4: merge the pool, deduped, in rank order.

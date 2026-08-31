@@ -3219,6 +3219,14 @@ await testAsync("smoke: real extension/data corpus resolves 國民 / 国 / 국�
   // dictionary prefix exactly the way the typed hangul does. Unflagged,
   // nothing covers the suffix, so these are class-C parses and `to` (the
   // srcText root) stays the typed text.
+  const bucketOf = (spelling) => {
+    const entries = real.words.words[spelling] || [];
+    let best = Infinity;
+    for (const e of entries) {
+      if (e && Number.isInteger(e.f) && e.f < best) best = e.f;
+    }
+    return best;
+  };
   for (const [q, expectHangul] of [["mushihada", "무시"], ["mushihaesseo", "무시"]]) {
     const r = say(q);
     assert.deepEqual(
@@ -3232,11 +3240,64 @@ await testAsync("smoke: real extension/data corpus resolves 國民 / 国 / 국�
       `${kind} data: ${q} should resolve a ${expectHangul} word`
     );
     assert.equal(r.matches[0].kind, "word", `${kind} data: ${q} leads with a word`);
-    assert.equal(r.matches[0].canonical, "無視", `${kind} data: ${q} leads with 無視`);
   }
+  // Class-C ordering, first key: ANCHORED coverage. A parse that cannot
+  // explain the query's first syllable is a worse reading of the input, so
+  // 무시-anchored parses (anchored 2) lead over the splinters 뭇이하다 (以下)
+  // and 뭇이해써 (理解), anchored 0, whatever their frequencies say.
+  assert.equal(say("mushihada").matches[0].canonical, "無視");
+  assert.equal(say("mushihaesseo").matches[0].canonical, "無視");
+  // Second key, live where anchoring TIES: the best f among what each parse
+  // found. gungminmyeo parses as 궁민며 (surface) and 국민며 (the nasal
+  // preimage), both anchored 2 with an opaque tail, so frequency decides:
+  // 國民 outranks the rare 窮民, which still renders after it. Asserted
+  // THROUGH the f comparison so a data flip fails loudly.
+  assert.ok(
+    bucketOf("國民") < bucketOf("窮民"),
+    `${kind} data: 國民 (f ${bucketOf("國民")}) must outrank 窮民 (f ${bucketOf("窮民")})`
+  );
+  const gungminmyeo = say("gungminmyeo");
+  assert.equal(
+    gungminmyeo.interpretations[0].to,
+    "gungminmyeo",
+    `${kind} data: gungminmyeo roots as typed (class C)`
+  );
+  const gungminmyeoWords = gungminmyeo.matches
+    .filter((m) => m.kind === "word")
+    .map((m) => m.canonical);
+  assert.equal(gungminmyeoWords[0], "國民", `${kind} data: frequency breaks the anchor tie`);
+  assert.ok(
+    gungminmyeoWords.includes("窮民"),
+    `${kind} data: the equally anchored 궁민 parse still renders`
+  );
   assert.ok(
     say("musihaesseo").matches.some((m) => m.kind === "word" && m.hangul === "무시"),
     `${kind} data: musihaesseo resolves 무시 like typed 무시했어`
+  );
+
+  // Ambiguous romanization, inclusivity user-directed: balgyeonhaesseo
+  // parses as 발견했어 AND as the ㄺ-cluster splinter 밝연해써 (연해 from
+  // syllable two). BOTH render, and the root stays the typed text. ANCHORING
+  // decides the order before frequency is even consulted: 발견 anchors 2,
+  // the splinter anchors 0.
+  const balgyeon = say("balgyeonhaesseo");
+  assert.deepEqual(
+    (balgyeon.interpretations || []).map((i) => [i.kind, i.to]),
+    [["rr", "balgyeonhaesseo"]],
+    `${kind} data: balgyeonhaesseo roots as typed (class C)`
+  );
+  assert.equal(balgyeon.matches[0].kind, "word");
+  assert.equal(
+    balgyeon.matches[0].canonical,
+    "發見",
+    `${kind} data: balgyeonhaesseo leads with 發見`
+  );
+  const balgyeonWords = balgyeon.matches
+    .filter((m) => m.kind === "word")
+    .map((m) => m.canonical);
+  assert.ok(
+    balgyeonWords.indexOf("沿海") > balgyeonWords.indexOf("發見"),
+    `${kind} data: the 沿海 splinter renders too, after 發見`
   );
   assert.ok(
     lookup("무시했어", real).matches.some((m) => m.kind === "word" && m.hangul === "무시"),
@@ -3548,7 +3609,9 @@ await testAsync("smoke: real native.json resolves 하늘 / 사랑 / 무리 / tog
   assert.ok(mushihadaNative.includes("하다"), "the native suffix 하다 must ride");
   assert.ok(!mushihadaNative.includes("아다"), "the splinter junk 아다 must not");
   // mushihaesseo stays class C (nothing covers 했어): it roots as the TYPED
-  // text, still leads with 無視, and carries no splinter native matches.
+  // text and carries no splinter native matches. The anchored-coverage key
+  // leads it with 無視: the 무시-anchored parses (anchored 2) order before
+  // the splinter 뭇이해써 (理解, anchored 0), whatever the frequencies say.
   const mushihaesseo = sayAll("mushihaesseo");
   assert.deepEqual(
     (mushihaesseo.interpretations || []).map((i) => [i.kind, i.to]),
@@ -3560,6 +3623,25 @@ await testAsync("smoke: real native.json resolves 하늘 / 사랑 / 무리 / tog
   assert.ok(
     !(mushihaesseo.nativeMatches || []).some((m) => m.word === "아다"),
     "no splinter native matches on mushihaesseo"
+  );
+  // Ambiguous romanization, flagged: both maximal parses of balgyeonhaesseo
+  // render (inclusivity is user-directed), anchoring deciding the order
+  // before frequency is consulted: 발견했어's 發見 anchors 2, the ㄺ-cluster
+  // splinter 밝연해써's 沿海 anchors 0. Root stays typed.
+  const balgyeon = sayAll("balgyeonhaesseo");
+  assert.deepEqual(
+    (balgyeon.interpretations || []).map((i) => [i.kind, i.to]),
+    [["rr", "balgyeonhaesseo"]],
+    "flagged balgyeonhaesseo roots as typed (class C)"
+  );
+  assert.equal(balgyeon.matches[0].kind, "word");
+  assert.equal(balgyeon.matches[0].canonical, "發見", "flagged balgyeonhaesseo leads with 發見");
+  const balgyeonWords = balgyeon.matches
+    .filter((m) => m.kind === "word")
+    .map((m) => m.canonical);
+  assert.ok(
+    balgyeonWords.indexOf("沿海") > balgyeonWords.indexOf("發見"),
+    "flagged: the 沿海 splinter renders too, after 發見"
   );
   // Unflagged, the romanization stays Sino-only: no native rides along.
   assert.equal("nativeMatches" in lookup("haneul", all, { interpret: true }), false);
