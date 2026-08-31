@@ -2825,16 +2825,41 @@ test("flagged omnibox: native rows sit between non-rare and rare hanja", () => {
 
 await testAsync("native: guardNative shapes junk into an empty table", async () => {
   const { guardNative } = await import("../extension/background.js");
-  assert.deepEqual(guardNative(null), { version: 1, words: {} });
-  assert.deepEqual(guardNative("nonsense"), { version: 1, words: {} });
-  assert.deepEqual(guardNative({ words: null }), { version: 1, words: {} });
+  assert.deepEqual(guardNative(null), { version: 1, words: {}, rr: {} });
+  assert.deepEqual(guardNative("nonsense"), { version: 1, words: {}, rr: {} });
+  assert.deepEqual(guardNative({ words: null }), { version: 1, words: {}, rr: {} });
   // maxLen passes through as an integer only; lookup.js falls back otherwise.
-  assert.deepEqual(guardNative({ maxLen: "5", words: {} }), { version: 1, words: {} });
+  assert.deepEqual(guardNative({ maxLen: "5", words: {} }),
+    { version: 1, words: {}, rr: {} });
   assert.deepEqual(guardNative({ version: 1, maxLen: 5, words: { 하늘: [] } }), {
     version: 1,
     words: { 하늘: [] },
+    rr: {},
     maxLen: 5,
   });
+});
+
+await testAsync("native: guardNative preserves the rr map (the worker's path)", async () => {
+  // The guard once rebuilt the object without `rr`, which killed native
+  // romanization in the REAL worker alone: every other caller hands lookup
+  // the raw file, so tests and the staging page kept passing while haneul
+  // rendered "No entry" in Chrome. This drives the exact worker shape.
+  const { guardNative } = await import("../extension/background.js");
+  const guarded = guardNative({
+    version: 1,
+    maxLen: 2,
+    words: { 하늘: [{ pos: "noun", glosses: ["sky"] }] },
+    rr: { haneul: ["하늘"] },
+  });
+  assert.deepEqual(guarded.rr, { haneul: ["하늘"] });
+  const bundle = { ...data, native: guarded };
+  const viaWorkerShape = lookup("haneul", bundle, { interpret: true, native: true });
+  assert.equal(viaWorkerShape.ok, true);
+  assert.deepEqual(
+    (viaWorkerShape.nativeMatches || []).map((m) => m.word),
+    ["하늘"],
+    "the guarded bundle must still resolve haneul"
+  );
 });
 
 await testAsync("native: the pending query carries scope only when flagged", async () => {

@@ -53,11 +53,15 @@ const NATIVE_DATA_FILE = "data/native.json";
  * Shape guard for native.json, in the guardRr spirit: a bundle without the
  * file must leave flagged lookups working, with the native table simply empty.
  * `maxLen` passes through only as an integer; lookup.js falls back otherwise.
+ * `rr` MUST pass through: the guard once rebuilt the object without it, which
+ * dropped native romanization in the worker alone, since every other caller
+ * hands lookup the raw file (haneul dead, gksmf alive).
  */
 export function guardNative(raw) {
   const n = raw !== null && typeof raw === "object" ? raw : {};
   const words = n.words !== null && typeof n.words === "object" ? n.words : {};
-  const out = { version: 1, words };
+  const rr = n.rr !== null && typeof n.rr === "object" ? n.rr : {};
+  const out = { version: 1, words, rr };
   if (Number.isInteger(n.maxLen)) out.maxLen = n.maxLen;
   return out;
 }
