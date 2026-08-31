@@ -228,7 +228,8 @@ one schema entry plus its feature code:
     not exist yet; v1 may ship without it.
   - Saved words need a native key namespace before native cards get a
     star; v1 may omit the star from native cards instead.
-  - Pill wording (decided): "Hanja only" and "All words"; tooltips carry
+  - Pill wording (decided): "All words" then "Hanja only", default first;
+    tooltips carry
     the precision ("Sino-Korean entries, as before" / "includes native
     Korean words").
   - Omnibox (decided): with the toggle on, the omnibox IS the All

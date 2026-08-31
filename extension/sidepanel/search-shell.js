@@ -55,8 +55,8 @@
   // Scope pills (native words ADDENDUM). Copy is SPEC-fixed, including the
   // tooltips; the pill row renders only while the toggle is on.
   var SCOPES = [
-    { value: "hanja", label: "Hanja only", title: "Sino-Korean entries, as before" },
-    { value: "all", label: "All words", title: "Includes native Korean words" }
+    { value: "all", label: "All words", title: "Includes native Korean words" },
+    { value: "hanja", label: "Hanja only", title: "Sino-Korean entries, as before" }
   ];
 
   function textFor(messages, state, detail) {

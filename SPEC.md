@@ -1759,10 +1759,11 @@ whole lookup.
 ### Sidebar and omnibox
 
 - Scope pills render under the search box ONLY while the toggle is on:
-  "Hanja only" and "All words", title-attribute tooltips "Sino-Korean
-  entries, as before" and "Includes native Korean words". All words is
-  the default (user-directed 2026-08-31 QA: turning the toggle on IS
-  choosing the wide dictionary, so "Hanja only" is the narrowing act);
+  "All words" then "Hanja only", default first, title-attribute
+  tooltips "Includes native Korean words" and "Sino-Korean entries, as
+  before". All words is the default (user-directed 2026-08-31 QA:
+  turning the toggle on IS choosing the wide dictionary, so "Hanja
+  only" is the narrowing act);
   the scope RESETS to All words whenever the panel opens and is sticky
   within a panel session. The Hanja-only scope renders exactly today's
   results; the toggle-off state remains the byte-identical one.
