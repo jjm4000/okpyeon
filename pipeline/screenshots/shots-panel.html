@@ -44,6 +44,8 @@
            placeholder="한자 · 한글 · 음절"
            aria-label="Search hanja, a sino-Korean word, or a single syllable"
            autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+    <div id="okp-scope" class="scopebar" role="group" aria-label="Search scope"
+         hidden></div>
   </div>
   <div id="okp-views" class="views">
     <div id="okp-view-search" class="view view--search" data-view="search">
@@ -77,8 +79,8 @@ import { guardDecomp, attachDecomp, attachFoundIn, buildFoundIn, buildFoundInInd
 const params = new URLSearchParams(location.search);
 const view = params.get("view") || "search";
 
-const [hanja, words, variants, decompRaw] = await Promise.all(
-  ["hanja", "words", "variants", "decomp"].map((n) =>
+const [hanja, words, variants, decompRaw, native] = await Promise.all(
+  ["hanja", "words", "variants", "decomp", "native"].map((n) =>
     fetch("/extension/data/" + n + ".json").then((r) => r.json())));
 
 let readingIndex = null;
@@ -86,7 +88,7 @@ const decomp = guardDecomp(decompRaw);
 let foundInIndex = null;
 const getFoundInIndex = () => (foundInIndex ||= buildFoundInIndex(decomp.parts));
 const data = {
-  hanja, words, variants, decomp,
+  hanja, words, variants, decomp, native,
   getReadingIndex: () => (readingIndex ||= buildReadingIndex(hanja)),
 };
 
@@ -121,8 +123,12 @@ function handle(msg) {
   const m = msg || {};
   switch (m.type) {
     case "lookup":
+      // The flags ride through exactly as the worker passes them: interpret
+      // for typed channels, native only when the client's toggle is on.
       return attachFoundIn(
-        attachDecomp(lookup(String(m.text || ""), data), data), getFoundInIndex);
+        attachDecomp(lookup(String(m.text || ""), data,
+          { interpret: m.interpret === true, native: m.native === true }),
+          data), getFoundInIndex);
     case "foundIn":
       return { ok: true, chars: buildFoundIn(String(m.char || ""), getFoundInIndex(), hanja) };
     case "compounds": return { ok: true, compounds: buildFullCompounds(m.char, data) };
