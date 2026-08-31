@@ -1831,6 +1831,60 @@ whole lookup.
   path never requests native.json; single-call-site checks for the new
   section functions.
 
+## Romanized search v2 (ADDENDUM 2026-08-31): function-based, maps retired
+
+Supersedes the map-based clauses of the romanized-search addendum. The
+maps kept failing by omission (native words absent, a guard stripping
+a field only the worker touches, inflected forms unrepresentable), and
+each failure was the same species: the map lacked a string a function
+would have computed. Decided with Jesse across this QA session.
+
+- PARITY RULE (the point of v2): a pure-Latin typed query is
+  de-romanized into hangul candidate STRINGS, and each candidate then
+  behaves exactly like typed hangul: same resolver, same segmentation,
+  same native-table rules, same input-channel restrictions. Romanized
+  input can do whatever hangul input can do, no more and no less
+  (mushihaesseo resolves 무시 the way typing 무시했어 does;
+  deconjugation stays out of scope for BOTH scripts).
+- Forward RR moves to JS: extension/rr.js, a port of pipeline/rr.py
+  producing the same forms family (naive, official with the standard
+  sound changes, the Article 8 transliteration, the ambiguity
+  readings). Anchored in node tests by the same pairs the build used:
+  국민 gungmin, 종로 Jongno, 같이 gachi, 좋고 joko, 신라 Silla,
+  한라산 Hallasan, 학여울 Hangnyeoul, 좋아 joa. One implementation of
+  the phonology, in the language that runs it.
+- The inverse generator is GENEROUS BY DESIGN and the dictionary is
+  the gate: the same rule the Dubeolsik channel has always had (no
+  validity gate; garbage matches nothing). It branches on letter
+  segmentation ambiguities (ae/oe/eu/ui/ng, doubled consonants),
+  sound-change preimages (nasalization, liquids, aspiration merger,
+  palatalization, liaison), and the pinned spelling-habit variants
+  (kukmin, guk-min, oo to u, sh to s), so its acceptance set is a
+  SUPERSET of v1's maps plus expansion. Forward verification NEVER
+  gates candidates at runtime (user-directed: a gate would drop the
+  deliberate habit forgiveness). Forward forms are used for two
+  things only: RANKING (a candidate whose forms contain the query
+  exactly ranks above a habit-loosened one; remaining ties follow the
+  existing frequency rules) and TESTING (below).
+- Bounds: the existing 20-relevant-char input cap, plus SPEC-pinned
+  generator caps (branch width and total candidates) chosen so the
+  worst garbage input degrades by truncation, never by hanging; the
+  caps are test-pinned.
+- Completeness test (replaces map determinism as the safety story): a
+  round-trip property test over every words.json byHangul key and
+  every native.json headword: for each form in forms(word), the
+  generator's candidates for that form include the word. Runs in node
+  against the real data files.
+- Deletions: rr.json (file, emit, load, guardRr), native.json's `rr`
+  block (emit and the guardNative field), the map-merge path in
+  lookup.js, and the mini rr maps in the test-page fakes and staging
+  pages, which import rr.js and the generator instead. pipeline/rr.py
+  retires with the emits once its anchors live in node.
+- Unchanged: the response shape (interpretations still carry
+  kind "rr" with from/to/start), the multi-interpretation rendering
+  rules (su still shows 수 and 녀, 수 first), the Dubeolsik channel,
+  the native flag semantics, and the input-channel rule.
+
 ## Verification expectations
 
 - A: after build, spot-check in the output: 國 has eumhun 나라/국 and compounds;
