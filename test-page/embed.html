@@ -96,6 +96,8 @@
            placeholder="한자 · 한글 · 음절"
            aria-label="Search hanja, a sino-Korean word, or a single syllable"
            autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+    <div id="okp-scope" class="scopebar" role="group" aria-label="Search scope"
+         hidden></div>
   </div>
   <div id="okp-views" class="views">
     <div id="okp-view-search" class="view view--search" data-view="search">
@@ -362,6 +364,9 @@
     // Highlighting the native word 사랑 ("love") turns up only this obscure
     // spelling — the canonical hedging case.
     "舍廊": [{ hangul: "사랑", glosses: ["a detached building; men's quarters"], rare: true }],
+    // The native word 무리 also has this COMMON spelling, so the hanja card
+    // keeps the lead and the native entry rides in its Same sound section.
+    "無理": [{ hangul: "무리", glosses: ["unreasonableness; overexertion"] }],
     "國民": [{ hangul: "국민", glosses: ["the people; citizens of a nation"] }],
     "學生": [{ hangul: "학생", glosses: ["student; pupil"] }],
     "韓國": [{ hangul: "한국", glosses: ["Korea; South Korea"] }],
@@ -583,6 +588,59 @@
       return (CHARS[b].compounds || []).length - (CHARS[a].compounds || []).length;
     });
   });
+
+  // --- Native Korean words (SPEC ADDENDUM 2026-08-31) --------------------
+  // native.json in miniature: keyed by hangul, one entry per POS. Consulted
+  // ONLY when a lookup carries native:true; the read counter lets checks
+  // prove the unflagged path never touches it, and __swapNativeTable stands
+  // in for the file being absent. 하늘 is native-only, 사랑 rides beside the
+  // rare 舍廊, 무리 beside the common 無理, and 처음 carries two POS entries.
+  var NATIVE = {
+    "하늘": [{ pos: "noun", glosses: ["sky", "heaven"] }],
+    "사랑": [{ pos: "noun", glosses: ["love; affection"] }],
+    "무리": [{ pos: "noun", glosses: ["group; crowd; flock"] }],
+    "처음": [
+      { pos: "noun", glosses: ["beginning; first time"] },
+      { pos: "adverb", glosses: ["for the first time"] }
+    ]
+  };
+  var nativeReads = 0;
+
+  // The worker's flagged-lookup join: native words in the text's hangul runs
+  // (greedy longest match, 2-syllable floor) plus the entry sharing any word
+  // match's hangul (how a Han-run selection carries its Same sound entry),
+  // deduped by headword in first-appearance order.
+  function nativeMatchesFor(text, matches) {
+    nativeReads++;
+    var found = [];
+    function claim(word) {
+      if (NATIVE[word] && found.indexOf(word) < 0) found.push(word);
+    }
+    runs(String(text || "").normalize("NFC")).forEach(function (run) {
+      if (run.kind !== "hangul") return;
+      var h = run.s, i = 0;
+      while (i < h.length) {
+        var hit = null;
+        for (var len = Math.min(5, h.length - i); len >= 2; len--) {
+          if (NATIVE[h.substr(i, len)]) { hit = h.substr(i, len); break; }
+        }
+        if (hit) { claim(hit); i += hit.length; } else { i += 1; }
+      }
+    });
+    (matches || []).forEach(function (m) {
+      if (m && m.kind === "word" && m.hangul) claim(m.hangul);
+    });
+    var out = [];
+    found.forEach(function (word) {
+      NATIVE[word].forEach(function (entry) {
+        out.push({
+          kind: "native", word: word,
+          pos: entry.pos, glosses: entry.glosses.slice()
+        });
+      });
+    });
+    return out;
+  }
 
   var HAN = /\p{Script=Han}/u;
   var HANGUL = /[가-힣]/;
@@ -1169,6 +1227,10 @@
     // internal navigation sends.
     __lastInterpret: null,
     __interpretCalls: 0,
+    // Native words ADDENDUM: how many lookups carried native:true, and
+    // whether the LAST one did. The toggle-off checks watch both stay put.
+    __nativeCalls: 0,
+    __lastNative: null,
     __compoundCalls: 0,  // {type:"compounds"} only
     __lastChar: null,
     __failCompounds: false,  // flip on to exercise the retry path
@@ -1196,7 +1258,14 @@
           this.__lastText = msg.text;
           this.__lastInterpret = msg.interpret === true;
           if (msg.interpret === true) this.__interpretCalls++;
+          this.__lastNative = msg.native === true;
+          if (msg.native === true) this.__nativeCalls++;
           resp = lookup(String(msg.text || ""));
+          // SPEC gate: only flagged requests may touch the native table.
+          if (msg.native === true && resp && resp.ok === true) {
+            var nm = nativeMatchesFor(String(msg.text || ""), resp.matches);
+            if (nm.length) resp.nativeMatches = nm;
+          }
         } else if (msg && msg.type === "compounds") {
           this.__compoundCalls++;
           this.__lastChar = msg.char;
@@ -1233,6 +1302,15 @@
       return Promise.resolve(resp);
     },
     __lookup: lookup,
+    // How often the native table has been consulted, and a stand-in for
+    // native.json being absent: checks swap the table out to prove renders
+    // are byte-identical, then put it back.
+    __nativeReads: function () { return nativeReads; },
+    __swapNativeTable: function (table) {
+      var prev = NATIVE;
+      NATIVE = table || {};
+      return prev;
+    },
     __fullCompounds: fullCompounds,
     __usedIn: buildUsedIn,
     __foundIn: buildFoundIn,
@@ -1525,6 +1603,118 @@
       nav.querySelector(".tab--settings").textContent === "Settings",
       sidebar.viewRegistry.map(function (v) { return v.key; }).join(",") +
       " tabs=" + nav.querySelectorAll(".tab").length);
+
+    /* ==================================================================
+     * Native Korean words: the embed scopes (SPEC ADDENDUM 2026-08-31).
+     *
+     * Driven through searchFor's native/scope options directly; the pill
+     * row is the shell's own surface. This block runs BEFORE the first
+     * reinit() on purpose: the hint tap must reach the onScopeChange the
+     * BOOT shell registered at mount time, and mount() is single-mount, so
+     * no later shell can register another.
+     * ================================================================== */
+    function ntvHtml() { return api.query(".view").innerHTML; }
+
+    // --- unflagged searchFor is byte-identical to before the feature ------
+    var ntvReads = fake.__nativeReads();
+    var ntvFlagged = fake.__nativeCalls;
+    await embed.searchFor("사랑");
+    await wait(TAIL);
+    var ntvPlainHtml = ntvHtml();
+    check("an unflagged search renders today's hedged card, no native DOM",
+      !!api.query(".card.hedged") && !api.query(".card.native") &&
+      !api.query(".native-hint") && !api.query(".samesound"),
+      JSON.stringify(api.panelText().slice(0, 40)));
+    var ntvTable = fake.__swapNativeTable(null);
+    await embed.searchFor("사랑");
+    await wait(TAIL);
+    check("...and is byte-identical with the native table absent",
+      ntvHtml() === ntvPlainHtml,
+      "with=" + ntvPlainHtml.length + " without=" + ntvHtml().length);
+    fake.__swapNativeTable(ntvTable);
+    check("no unflagged request carried the flag or read the table",
+      fake.__nativeCalls === ntvFlagged && fake.__lastNative === false &&
+      fake.__nativeReads() === ntvReads,
+      "nativeCalls=" + fake.__nativeCalls + " reads=" + fake.__nativeReads());
+
+    // --- hanja scope: today's DOM plus the quiet cross-scope hint ---------
+    var ntvHanja = await embed.searchFor("무리", { native: true, scope: "hanja" });
+    await wait(TAIL);
+    check("hanja scope reports exactly today's count",
+      ntvHanja.ok === true && ntvHanja.count === 1, JSON.stringify(ntvHanja));
+    check("the request itself was flagged: scope is a render-side filter",
+      fake.__lastNative === true && fake.__nativeCalls === ntvFlagged + 1,
+      "nativeCalls=" + fake.__nativeCalls);
+    check("hanja scope renders today's card plus one hint row at the end",
+      api.query(".word-body .surface").textContent === "無理" &&
+      !api.query(".card.native") && !api.query(".samesound") &&
+      api.queryAll(".entry-row.native-hint.nav").length === 1 &&
+      api.query(".view").lastElementChild === api.query(".native-hint"),
+      "hints=" + api.queryAll(".native-hint").length);
+    check("the hint wording is exact, count emphasised",
+      api.query(".native-hint").textContent === "1 native word in All words" &&
+      api.query(".native-hint b").textContent === "1",
+      JSON.stringify(api.query(".native-hint").textContent));
+
+    // --- the hint tap: same response, All scope, no new lookup ------------
+    var ntvScopeBefore = shellApi.controller().scope();
+    var ntvCallsHint = fake.__calls;
+    api.query(".native-hint").click();
+    await wait(TAIL);
+    check("the tap re-renders the SAME response in All scope",
+      api.query(".word-body .surface").textContent === "無理" &&
+      api.queryAll(".samesound-row .native-tag").length === 1 &&
+      !api.query(".native-hint"),
+      "hints=" + api.queryAll(".native-hint").length);
+    check("...with no new lookup", fake.__calls === ntvCallsHint,
+      "calls " + ntvCallsHint + " → " + fake.__calls);
+    check("...and fires onScopeChange('all') into the mounted shell",
+      ntvScopeBefore === "hanja" && shellApi.controller().scope() === "all",
+      ntvScopeBefore + " → " + shellApi.controller().scope());
+
+    // Two native words in one query pluralise the hint.
+    await embed.searchFor("하늘 사랑", { native: true, scope: "hanja" });
+    await wait(TAIL);
+    check("two native words pluralise the hint",
+      api.query(".native-hint").textContent === "2 native words in All words",
+      JSON.stringify(api.query(".native-hint").textContent));
+
+    // A native-only query in hanja scope is a bare hint under the seal.
+    var ntvSkyHint = await embed.searchFor("하늘", { native: true, scope: "hanja" });
+    await wait(TAIL);
+    check("a hint-only render stays on screen and reports count 0",
+      ntvSkyHint.ok === true && ntvSkyHint.count === 0 && api.isVisible() &&
+      api.cardCount() === 0 &&
+      api.query(".native-hint").textContent === "1 native word in All words",
+      JSON.stringify(ntvSkyHint) + " cards=" + api.cardCount());
+
+    // --- All scope renders per the lead rule and counts native results ----
+    var ntvAll = await embed.searchFor("무리", { native: true, scope: "all" });
+    await wait(TAIL);
+    check("All scope counts native headwords beside today's matches",
+      ntvAll.ok === true && ntvAll.count === 2, JSON.stringify(ntvAll));
+    check("the non-rare spelling still leads, the native word in Same sound",
+      api.query(".word-body .surface").textContent === "無理" &&
+      api.queryAll(".samesound-row").length === 1 && !api.query(".native-hint"),
+      "rows=" + api.queryAll(".samesound-row").length);
+
+    var ntvAllLove = await embed.searchFor("사랑", { native: true, scope: "all" });
+    await wait(TAIL);
+    check("an all-rare word leads native in All scope, hedge retired",
+      !!api.query(".card.native") && !api.query(".card.hedged") &&
+      api.viewKeys().join(",") === "native:사랑" && ntvAllLove.count === 4,
+      api.viewKeys().join(",") + " " + JSON.stringify(ntvAllLove));
+
+    var ntvAllSky = await embed.searchFor("하늘", { native: true, scope: "all" });
+    await wait(TAIL);
+    check("a native-only query is a RESULT in All scope, never empty",
+      ntvAllSky.ok === true && ntvAllSky.count === 1 &&
+      api.query(".card.native .surface").textContent === "하늘",
+      JSON.stringify(ntvAllSky));
+
+    embed.clear();
+    check("clear() drops the native session state with the panel",
+      !api.isVisible());
 
     shell = reinit();
 
@@ -3117,19 +3307,28 @@
     }
 
     var settingsOk = await settingsView.render();
-    check("the shipped schema is the SPEC's five entries, in its two groups",
+    check("the shipped schema is the SPEC's six entries, in its three groups",
       settingsOk === true &&
       settingsView.schema.map(function (e) { return e.group + "/" + e.key + ":" + e.type; })
-        .join(" ") === "Saving/defaultFolderId:folder-select " +
+        .join(" ") === "Search/nativeWords:toggle Saving/defaultFolderId:folder-select " +
         "Anki export/anki.wordFront:select Anki export/anki.wordBack:checkset " +
         "Anki export/anki.charFront:select Anki export/anki.charBack:checkset",
       settingsView.schema.map(function (e) { return e.key; }).join(","));
+    check("the Korean word search row carries the SPEC's exact copy, default off",
+      settingsView.schema[0].label === "Korean word search" &&
+      settingsView.schema[0].description === "Include native Korean words: " +
+        "adds an All words scope to search and the omnibox, and shows native " +
+        "words in selection lookups." &&
+      settingsView.schema[0].default === false &&
+      byId("okp-set-nativeWords").checked === false,
+      JSON.stringify(settingsView.schema[0].label));
     check("the renderer emits one heading per group, in schema order",
-      settingsGroups().length === 2 &&
-      settingsGroups()[0].getAttribute("data-group") === "Saving" &&
-      settingsGroups()[0].querySelector("h2.settings-heading").textContent === "Saving" &&
-      settingsGroups()[1].getAttribute("data-group") === "Anki export" &&
-      settingsGroups()[1].querySelector("h2.settings-heading").textContent ===
+      settingsGroups().length === 3 &&
+      settingsGroups()[0].getAttribute("data-group") === "Search" &&
+      settingsGroups()[0].querySelector("h2.settings-heading").textContent === "Search" &&
+      settingsGroups()[1].getAttribute("data-group") === "Saving" &&
+      settingsGroups()[2].getAttribute("data-group") === "Anki export" &&
+      settingsGroups()[2].querySelector("h2.settings-heading").textContent ===
         "Anki export",
       Array.prototype.map.call(settingsGroups(), function (g) {
         return g.getAttribute("data-group");
@@ -3144,7 +3343,10 @@
           row.querySelector(".settings-label").textContent === entry.label &&
           row.querySelector(".settings-label").getAttribute("for") ===
             settingsView.controlId(entry.key) &&
-          !!control && control.parentNode === row.querySelector(".settings-control");
+          // A toggle's id sits on the checkbox inside its label wrapper, so
+          // the containment test is closest(), not parentNode.
+          !!control &&
+          control.closest(".settings-control") === row.querySelector(".settings-control");
       }),
       "rows=" + settingsRows().length);
     check("controlId flattens a dot-path into one id",
@@ -3238,16 +3440,16 @@
     });
     await settingsView.render();
     check("a new setting is ONE schema entry: new heading, new row, nothing else",
-      settingsGroups().length === 3 &&
-      settingsGroups()[2].getAttribute("data-group") === "Harness" &&
-      settingsGroups()[2].querySelector(".settings-heading").textContent === "Harness" &&
+      settingsGroups().length === 4 &&
+      settingsGroups()[3].getAttribute("data-group") === "Harness" &&
+      settingsGroups()[3].querySelector(".settings-heading").textContent === "Harness" &&
       !!settingsBody.querySelector('.settings-row[data-key="probeSetting"]') &&
       byId("okp-set-probeSetting").value === "a",
       "groups=" + settingsGroups().length + " rows=" + settingsRows().length);
     settingsView.schema.pop();
     await settingsView.render();
     check("removing the entry removes its row and its heading again",
-      settingsGroups().length === 2 && settingsRows().length === 5 &&
+      settingsGroups().length === 3 && settingsRows().length === 6 &&
       !settingsBody.querySelector('.settings-row[data-key="probeSetting"]'),
       "groups=" + settingsGroups().length);
 
@@ -3262,7 +3464,7 @@
     await settingsView.render();
     check("and the controls come straight back, on the values that were written",
       !settingsBody.querySelector(".settings-unavailable") &&
-      settingsRows().length === 5 &&
+      settingsRows().length === 6 &&
       byId("okp-set-anki-wordFront").value === "hangul" &&
       checkedIn("anki.charBack").join(",") === "char,eumhun,lvl",
       checkedIn("anki.charBack").join(","));
@@ -3805,7 +4007,8 @@
     } else {
       var sectionSrc = await (await fetch("../extension/content/content.js")).text();
       ["appendCharHead", "appendVariantNote", "appendWordHead", "appendCharChips",
-        "appendSpellings"].forEach(function (name) {
+        "appendSpellings", "appendSameSoundNatives",
+        "appendSameSoundSpellings"].forEach(function (name) {
         var secDefs = sectionSrc.match(new RegExp("function " + name + "\\s*\\(", "g")) || [];
         var secUses = sectionSrc.match(new RegExp(name + "\\s*\\(", "g")) || [];
         check(name + " is defined once and called once",

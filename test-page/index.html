@@ -361,6 +361,9 @@
     // Highlighting the native word 사랑 ("love") turns up only this obscure
     // spelling — the canonical hedging case.
     "舍廊": [{ hangul: "사랑", glosses: ["a detached building; men's quarters"], rare: true }],
+    // The native word 무리 also has this COMMON spelling, so the hanja card
+    // keeps the lead and the native entry rides in its Same sound section.
+    "無理": [{ hangul: "무리", glosses: ["unreasonableness; overexertion"] }],
     "國民": [{ hangul: "국민", glosses: ["the people; citizens of a nation"] }],
     "學生": [{ hangul: "학생", glosses: ["student; pupil"] }],
     "韓國": [{ hangul: "한국", glosses: ["Korea; South Korea"] }],
@@ -582,6 +585,59 @@
       return (CHARS[b].compounds || []).length - (CHARS[a].compounds || []).length;
     });
   });
+
+  // --- Native Korean words (SPEC ADDENDUM 2026-08-31) --------------------
+  // native.json in miniature: keyed by hangul, one entry per POS. Consulted
+  // ONLY when a lookup carries native:true; the read counter lets checks
+  // prove the unflagged path never touches it, and __swapNativeTable stands
+  // in for the file being absent. 하늘 is native-only, 사랑 rides beside the
+  // rare 舍廊, 무리 beside the common 無理, and 처음 carries two POS entries.
+  var NATIVE = {
+    "하늘": [{ pos: "noun", glosses: ["sky", "heaven"] }],
+    "사랑": [{ pos: "noun", glosses: ["love; affection"] }],
+    "무리": [{ pos: "noun", glosses: ["group; crowd; flock"] }],
+    "처음": [
+      { pos: "noun", glosses: ["beginning; first time"] },
+      { pos: "adverb", glosses: ["for the first time"] }
+    ]
+  };
+  var nativeReads = 0;
+
+  // The worker's flagged-lookup join: native words in the text's hangul runs
+  // (greedy longest match, 2-syllable floor) plus the entry sharing any word
+  // match's hangul (how a Han-run selection carries its Same sound entry),
+  // deduped by headword in first-appearance order.
+  function nativeMatchesFor(text, matches) {
+    nativeReads++;
+    var found = [];
+    function claim(word) {
+      if (NATIVE[word] && found.indexOf(word) < 0) found.push(word);
+    }
+    runs(String(text || "").normalize("NFC")).forEach(function (run) {
+      if (run.kind !== "hangul") return;
+      var h = run.s, i = 0;
+      while (i < h.length) {
+        var hit = null;
+        for (var len = Math.min(5, h.length - i); len >= 2; len--) {
+          if (NATIVE[h.substr(i, len)]) { hit = h.substr(i, len); break; }
+        }
+        if (hit) { claim(hit); i += hit.length; } else { i += 1; }
+      }
+    });
+    (matches || []).forEach(function (m) {
+      if (m && m.kind === "word" && m.hangul) claim(m.hangul);
+    });
+    var out = [];
+    found.forEach(function (word) {
+      NATIVE[word].forEach(function (entry) {
+        out.push({
+          kind: "native", word: word,
+          pos: entry.pos, glosses: entry.glosses.slice()
+        });
+      });
+    });
+    return out;
+  }
 
   var HAN = /\p{Script=Han}/u;
   var HANGUL = /[가-힣]/;
@@ -1168,6 +1224,10 @@
     // internal navigation sends.
     __lastInterpret: null,
     __interpretCalls: 0,
+    // Native words ADDENDUM: how many lookups carried native:true, and
+    // whether the LAST one did. The toggle-off checks watch both stay put.
+    __nativeCalls: 0,
+    __lastNative: null,
     __compoundCalls: 0,  // {type:"compounds"} only
     __lastChar: null,
     __failCompounds: false,  // flip on to exercise the retry path
@@ -1195,7 +1255,14 @@
           this.__lastText = msg.text;
           this.__lastInterpret = msg.interpret === true;
           if (msg.interpret === true) this.__interpretCalls++;
+          this.__lastNative = msg.native === true;
+          if (msg.native === true) this.__nativeCalls++;
           resp = lookup(String(msg.text || ""));
+          // SPEC gate: only flagged requests may touch the native table.
+          if (msg.native === true && resp && resp.ok === true) {
+            var nm = nativeMatchesFor(String(msg.text || ""), resp.matches);
+            if (nm.length) resp.nativeMatches = nm;
+          }
         } else if (msg && msg.type === "compounds") {
           this.__compoundCalls++;
           this.__lastChar = msg.char;
@@ -1232,6 +1299,15 @@
       return Promise.resolve(resp);
     },
     __lookup: lookup,
+    // How often the native table has been consulted, and a stand-in for
+    // native.json being absent: checks swap the table out to prove renders
+    // are byte-identical, then put it back.
+    __nativeReads: function () { return nativeReads; },
+    __swapNativeTable: function (table) {
+      var prev = NATIVE;
+      NATIVE = table || {};
+      return prev;
+    },
     __fullCompounds: fullCompounds,
     __usedIn: buildUsedIn,
     __foundIn: buildFoundIn,
@@ -4556,6 +4632,243 @@
       "cards=" + api.cardCount());
     api.hide();
 
+    /* ==================================================================
+     * Native Korean words: the popup path (SPEC ADDENDUM 2026-08-31).
+     *
+     * The toggle reaches the renderer through setSettings, standing in for
+     * the okpSettings record chrome.storage would carry. Flagged responses
+     * come from the fake worker's native join, and the table itself can be
+     * swapped out to stand in for native.json being absent.
+     * ================================================================== */
+    function sendNative(text) {
+      return fake.sendMessage({ type: "lookup", text: text, native: true });
+    }
+    function viewHtml() { return api.query(".view").innerHTML; }
+
+    api.hide();
+    api.resetPanelSize();
+    api.setSettings(null);
+
+    // --- toggle off: byte-identical, and the table is never read ----------
+    var ntvReadsOff = fake.__nativeReads();
+    var ntvCallsOff = fake.__nativeCalls;
+    api.showAt(anchor, fake.__lookup("사랑").matches, "사랑");
+    await wait(60);
+    var ntvOffHtml = viewHtml();
+    check("toggle off keeps today's hedged card, no native DOM anywhere",
+      !!api.query(".card.hedged") &&
+      api.query(".hedge .label").textContent === "Rare hanja homograph" &&
+      !api.query(".card.native") && !api.query(".samesound") &&
+      !api.query(".native-tag"),
+      JSON.stringify(api.panelText().slice(0, 40)));
+    var ntvTable = fake.__swapNativeTable(null);
+    api.showAt(anchor, fake.__lookup("사랑").matches, "사랑");
+    await wait(60);
+    check("toggle off renders byte-identically with the native table absent",
+      viewHtml() === ntvOffHtml,
+      "with=" + ntvOffHtml.length + " without=" + viewHtml().length);
+    fake.__swapNativeTable(ntvTable);
+    api.setSettings({ nativeWords: false });
+    api.showAt(anchor, fake.__lookup("사랑").matches, "사랑");
+    await wait(60);
+    check("an explicit nativeWords:false renders the very same bytes",
+      viewHtml() === ntvOffHtml, "len=" + viewHtml().length);
+
+    // A drill-down goes through sendLookup: the request must stay unflagged.
+    api.setSettings(null);
+    api.showAt(anchor, fake.__lookup("자본주의").matches, "자본주의");
+    api.query(".part-row").click();
+    await wait(90);
+    check("toggle off: no request carries a native flag",
+      fake.__nativeCalls === ntvCallsOff && fake.__lastNative === false,
+      "nativeCalls=" + fake.__nativeCalls + " last=" + fake.__lastNative);
+    check("toggle off: the native table was never read",
+      fake.__nativeReads() === ntvReadsOff, "reads=" + fake.__nativeReads());
+
+    // Even a response CARRYING nativeMatches renders the same bytes off.
+    var ntvLoveOn = await sendNative("사랑");
+    check("sanity: the harness's flagged lookup did read the table",
+      fake.__nativeReads() === ntvReadsOff + 1 &&
+      ntvLoveOn.nativeMatches.length === 1 &&
+      ntvLoveOn.nativeMatches[0].kind === "native",
+      "reads=" + fake.__nativeReads());
+    api.showAt(anchor, ntvLoveOn.matches, "사랑", undefined, ntvLoveOn.nativeMatches);
+    await wait(60);
+    check("toggle off ignores nativeMatches on the wire, byte for byte",
+      viewHtml() === ntvOffHtml, "len=" + viewHtml().length);
+
+    // --- toggle on: the lead rule, case by case ---------------------------
+    api.setSettings({ nativeWords: true });
+
+    // (a) 무리: the non-rare spelling 無理 keeps the lead.
+    var ntvMuri = await sendNative("무리");
+    check("fixture: flagged 무리 answers 無理 plus one native entry",
+      ntvMuri.matches.length === 1 && ntvMuri.matches[0].canonical === "無理" &&
+      ntvMuri.nativeMatches.length === 1 &&
+      ntvMuri.nativeMatches[0].word === "무리",
+      JSON.stringify(ntvMuri.nativeMatches));
+    api.showAt(anchor, ntvMuri.matches, "무리", undefined, ntvMuri.nativeMatches);
+    await wait(60);
+    check("non-rare hanja leads: the word card renders, no native card",
+      api.viewKeys().join(",") === "word:無理" &&
+      api.query(".word-body .surface").textContent === "無理" &&
+      !api.query(".card.native"),
+      api.viewKeys().join(","));
+    check("the native word is a Same sound row with the NATIVE tag",
+      api.queryAll(".samesound-row").length === 1 &&
+      api.query(".samesound-row .cpd-hangul").textContent === "무리" &&
+      api.query(".samesound-row .native-tag").textContent === "native" &&
+      /: group/.test(api.query(".samesound-row").textContent),
+      JSON.stringify(api.query(".samesound-row").textContent));
+    check("the section closes the word body under its own label",
+      api.query(".word-body").lastChild === api.query(".samesound") &&
+      api.query(".samesound").previousSibling.textContent === "Same sound",
+      api.query(".samesound").previousSibling.textContent);
+
+    var ntvCallsTap = fake.__calls;
+    api.query(".samesound-row").click();
+    await wait(90);
+    check("the row pushes the native card as its OWN view",
+      api.viewDepth() === 2 &&
+      api.viewKeys().join(",") === "word:無理,native:무리" &&
+      !!api.query(".card.native"),
+      api.viewKeys().join(","));
+    check("the drill is literal: one flagged lookup of the hangul",
+      fake.__calls === ntvCallsTap + 1 && fake.__lastText === "무리" &&
+      fake.__lastInterpret === false && fake.__lastNative === true,
+      "calls=" + (fake.__calls - ntvCallsTap) + " text=" + fake.__lastText);
+    check("the crumb label is the hangul itself",
+      api.crumbLabels().join(" › ") === "無理 › 무리",
+      api.crumbLabels().join(" › "));
+    check("the native card: headword, POS chip, NATIVE marker, glosses",
+      api.query(".card.native .surface").textContent === "무리" &&
+      api.query(".card.native .pos-chip").textContent === "Noun" &&
+      api.query(".card.native .native-tag").textContent === "native" &&
+      api.query(".card.native .gloss-text").textContent === "Group; crowd; flock",
+      JSON.stringify(api.panelText().slice(0, 40)));
+    check("its Same sound row is the spelling, in the shared row treatment",
+      api.queryAll(".card.native .samesound-row").length === 1 &&
+      /^무리 \(無理\): /.test(api.query(".card.native .samesound-row").textContent),
+      JSON.stringify(api.query(".card.native .samesound-row").textContent));
+    check("NO star on a native card; the wiki link is the hangul page",
+      !api.query(".card.native .save") &&
+      api.query(".card.native .wiki").getAttribute("href") ===
+        WIKI + encodeURIComponent("무리") + "#Korean",
+      api.query(".card.native .wiki").getAttribute("href"));
+    var ntvCallsBack = fake.__calls;
+    api.queryAll(".crumb")[0].click();
+    await wait(60);
+    check("crumb back restores the hanja-led card without re-querying",
+      api.viewDepth() === 1 &&
+      api.query(".word-body .surface").textContent === "無理" &&
+      fake.__calls === ntvCallsBack,
+      "depth=" + api.viewDepth());
+
+    // (b) 사랑: every spelling rare, so the native card takes the lead.
+    api.showAt(anchor, ntvLoveOn.matches, "사랑", undefined, ntvLoveOn.nativeMatches);
+    await wait(60);
+    check("all-rare hanja hands the lead to the native card",
+      api.viewKeys().join(",") === "native:사랑" && api.cardCount() === 1 &&
+      api.query(".card.native .surface").textContent === "사랑",
+      api.viewKeys().join(",") + " cards=" + api.cardCount());
+    check("hedge retirement: no banner, no hedged card, no hedge note",
+      !api.query(".card.hedged") && api.queryAll(".hedge:not(:empty)").length === 0 &&
+      api.panelText().indexOf("Likely native Korean") < 0,
+      JSON.stringify(api.panelText().slice(0, 40)));
+    var ntvRareRow = api.query(".card.native .samesound-row");
+    check("the rare spelling is a muted Same sound row with the marker",
+      !!ntvRareRow && ntvRareRow.classList.contains("rare") &&
+      /^사랑 \(舍廊\): /.test(ntvRareRow.textContent) &&
+      !!ntvRareRow.querySelector(".cpd-rare") &&
+      getComputedStyle(ntvRareRow.querySelector(".cpd-hangul")).color !==
+        api.panelStyle("color"),
+      JSON.stringify(ntvRareRow && ntvRareRow.textContent));
+    var ntvCallsSpelling = fake.__calls;
+    ntvRareRow.click();
+    await wait(90);
+    check("tapping the spelling opens 舍廊 literally, as its own view",
+      api.viewDepth() === 2 &&
+      api.viewKeys().join(",") === "native:사랑,word:舍廊" &&
+      api.crumbLabels().join(" › ") === "사랑 › 舍廊" &&
+      fake.__calls === ntvCallsSpelling + 1 && fake.__lastText === "舍廊" &&
+      fake.__lastInterpret === false,
+      api.viewKeys().join(",") + " | " + api.crumbLabels().join(" › "));
+    check("the Han-led card renders normally, native row riding back",
+      !api.query(".card.hedged") &&
+      api.query(".word-body .surface").textContent === "舍廊" &&
+      api.queryAll(".samesound-row .native-tag").length === 1,
+      api.query(".word-body .surface").textContent);
+    var ntvCallsBack2 = fake.__calls;
+    api.queryAll(".crumb")[0].click();
+    await wait(60);
+    check("crumb back restores the native card, from cache",
+      api.viewDepth() === 1 && !!api.query(".card.native") &&
+      fake.__calls === ntvCallsBack2,
+      "depth=" + api.viewDepth());
+
+    // (c) 하늘: native-only, where today nothing renders at all.
+    var ntvSky = await sendNative("하늘");
+    check("fixture: 하늘 is native-only",
+      ntvSky.matches.length === 0 && ntvSky.nativeMatches.length === 1,
+      JSON.stringify(ntvSky.nativeMatches));
+    api.showAt(anchor, ntvSky.matches, "하늘", undefined, ntvSky.nativeMatches);
+    await wait(60);
+    check("a native-only selection renders the full native card",
+      api.isVisible() && api.viewKeys().join(",") === "native:하늘" &&
+      api.query(".card.native .surface").textContent === "하늘" &&
+      api.queryAll(".card.native .gloss-text")
+        .map(function (g) { return g.textContent; }).join("|") === "Sky|Heaven",
+      api.viewKeys().join(",") + " cards=" + api.cardCount());
+    check("no empty sections and no star on the native-only card",
+      !api.query(".samesound") &&
+      api.queryAll(".card.native .label").length === 0 &&
+      !api.query(".card.native .save") &&
+      !/undefined|null/.test(api.panelText()),
+      JSON.stringify(api.panelText()));
+    check("the wiki link ends with the hangul page and #Korean",
+      api.query(".card.native .wiki").getAttribute("href") ===
+        WIKI + encodeURIComponent("하늘") + "#Korean",
+      api.query(".card.native .wiki").getAttribute("href"));
+
+    // A multi-POS headword: one POS-chipped gloss block per entry.
+    var ntvFirst = await sendNative("처음");
+    api.showAt(anchor, ntvFirst.matches, "처음", undefined, ntvFirst.nativeMatches);
+    await wait(60);
+    check("several POS render one chipped block each, never one numbering",
+      api.queryAll(".card.native .native-pos").length === 2 &&
+      api.queryAll(".native-pos .pos-chip")
+        .map(function (c) { return c.textContent; }).join(",") === "Noun,Adverb" &&
+      api.queryAll(".glosses.numbered").length === 0,
+      api.queryAll(".native-pos .pos-chip")
+        .map(function (c) { return c.textContent; }).join(","));
+    check("with several POS the head keeps only the NATIVE marker",
+      api.queryAll(".native-meta .pos-chip").length === 0 &&
+      api.query(".native-meta .native-tag").textContent === "native",
+      "headChips=" + api.queryAll(".native-meta .pos-chip").length);
+
+    // A hedged group PLUS a separate native-only headword in one view: the
+    // whole-view shortcut must refuse (it would drop 하늘), and the ordinary
+    // per-group render composes instead: 사랑 still hands its lead to the
+    // native card, 하늘 keeps its own standalone native card beside it.
+    api.showAt(anchor, ntvLoveOn.matches, "하늘 사랑", undefined,
+      ntvSky.nativeMatches.concat(ntvLoveOn.nativeMatches));
+    await wait(60);
+    check("a mixed view keeps every native headword",
+      api.queryAll(".card.native .surface")
+        .map(function (s) { return s.textContent; }).sort().join(",") === "사랑,하늘" &&
+      api.viewKeys().join(",").indexOf("native:") === -1,
+      api.queryAll(".card.native .surface")
+        .map(function (s) { return s.textContent; }).join(",") +
+      " keys=" + api.viewKeys().join(","));
+    check("the hedged group stays native-led in the mixed view too",
+      !api.query(".card.hedged") &&
+      api.queryAll(".samesound-row .cpd-rare").length === 1,
+      "hedged=" + !!api.query(".card.hedged") +
+      " rareRows=" + api.queryAll(".samesound-row .cpd-rare").length);
+
+    api.setSettings(null);
+    api.hide();
+
     /* --- MODULARITY: one definition, one call site (SPEC) ---------------- */
     if (location.protocol === "file:") {
       skip("appendFoundIn is defined once and called once",
@@ -4581,7 +4894,8 @@
     } else {
       var sectionSrc = await (await fetch("../extension/content/content.js")).text();
       ["appendCharHead", "appendVariantNote", "appendWordHead", "appendCharChips",
-        "appendSpellings"].forEach(function (name) {
+        "appendSpellings", "appendSameSoundNatives",
+        "appendSameSoundSpellings"].forEach(function (name) {
         var secDefs = sectionSrc.match(new RegExp("function " + name + "\\s*\\(", "g")) || [];
         var secUses = sectionSrc.match(new RegExp(name + "\\s*\\(", "g")) || [];
         check(name + " is defined once and called once",
