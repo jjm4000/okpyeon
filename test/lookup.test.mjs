@@ -27,6 +27,7 @@ import {
   lookup,
   nativeMaxLenOf,
   MAX_NATIVE_WORD_LEN,
+  RESOLVE_CAP,
   extractRuns,
   segmentRun,
   maxWordLenOf,
@@ -2569,6 +2570,21 @@ test("the generator drives the romanization interpreter", () => {
   assert.deepEqual(interpreted("pyulk"), { ok: true, matches: [] });
 });
 
+test("the resolve-side budget is pinned and only truncates the tail", () => {
+  // The interpreter resolves at most RESOLVE_CAP candidates, taken in the
+  // generator's cheapest-first order. Changing the value is a SPEC change.
+  assert.equal(RESOLVE_CAP, 256);
+  // A query whose generator output exceeds the cap still resolves its real
+  // words: gukminieoteo generates well over RESOLVE_CAP candidates, and the
+  // collapse test below proves 國民 comes through regardless.
+  assert.ok(deromanize("gukminieoteo").length > RESOLVE_CAP);
+  assert.ok(
+    interpreted("gukminieoteo").matches.some(
+      (m) => m.kind === "word" && m.canonical === "國民"
+    )
+  );
+});
+
 test("candidate collapse: coverage classes gate matches and name the root", () => {
   // Class A, the whole candidate is one dictionary entry: `to` (and so the
   // srcText the renderer roots in) is the candidate hangul.
@@ -3551,6 +3567,16 @@ await testAsync("smoke: real native.json resolves 하늘 / 사랑 / 무리 / tog
   // Toggle off: byte-identical to a lookup that never saw the file.
   assert.equal(JSON.stringify(lookup("사랑", all)), JSON.stringify(lookup("사랑", real)));
   assert.equal("nativeMatches" in lookup("사랑", all), false);
+
+  // Resolve-side budget: the degenerate 20-vowel garbage query's FULL
+  // flagged lookup stays under 75ms warm. One unmeasured warmup run first;
+  // the bound is on the capped pipeline, not on v8's first-call JIT cost.
+  const soup = "a".repeat(20);
+  lookup(soup, all, { interpret: true, native: true });
+  const soupStart = performance.now();
+  lookup(soup, all, { interpret: true, native: true });
+  const soupMs = performance.now() - soupStart;
+  assert.ok(soupMs < 75, `20-vowel garbage lookup took ${soupMs.toFixed(1)}ms`);
 
   // Flagged omnibox rows carry the native marker.
   const rows = buildOmniboxSuggestions("하늘", all, { interpret: true, native: true });

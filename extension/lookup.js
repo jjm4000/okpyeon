@@ -890,6 +890,17 @@ function dubeolsikInterpretation(raw, data, native) {
   return interp;
 }
 
+/**
+ * Resolve-side budget (SPEC v2 bounds, follow-up): how many deromanize
+ * candidates the interpreter RESOLVES against the dictionary, taken in the
+ * generator's own cheapest-first order. The generator's caps bound what a
+ * degenerate query can produce (thousands of candidates for 20 vowels);
+ * this one bounds what a lookup pays for them. Truncation sheds only the
+ * contrived tail: every pinned real-data anchor resolves within the first
+ * few dozen candidates.
+ */
+export const RESOLVE_CAP = 256;
+
 /** Coverage classes for the candidate collapse (SPEC v2 policy). */
 const CLASS_WHOLE = 0;    // the whole candidate is one dictionary unit
 const CLASS_COVERED = 1;  // covered end to end by word/native entries
@@ -961,9 +972,18 @@ function rrInterpretation(raw, data, native) {
   const wordTable = (data && data.words && data.words.words) || {};
   const byHangul = (data && data.words && data.words.byHangul) || {};
 
-  // Pass 1: resolve every candidate; only survivors matter.
+  // Pass 1: resolve candidates, in deromanize's cheapest-first order, up to
+  // RESOLVE_CAP of them; only survivors matter. The cap bounds RESOLUTION,
+  // not generation: degenerate vowel soup generates thousands of candidates,
+  // and running the dictionary over all of them is the whole cost of a
+  // garbage keystroke. Real queries resolve their words well inside the cap
+  // (every pinned anchor sits in the first few dozen candidates), so the cap
+  // only ever truncates the contrived tail.
+  const candidates = deromanize(raw);
+  const limit = Math.min(candidates.length, RESOLVE_CAP);
   const survivors = [];
-  for (const { hangul, tier } of deromanize(raw)) {
+  for (let i = 0; i < limit; i += 1) {
+    const { hangul, tier } = candidates[i];
     const matches = buildMatches(hangul, data);
     // Native words ADDENDUM: flagged calls consult the native table for every
     // candidate too, and a native-only candidate still counts as explained.
