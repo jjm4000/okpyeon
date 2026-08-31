@@ -184,10 +184,52 @@ one schema entry plus its feature code:
   Court rules annex; Korean law excludes statutes/rules from copyright, so
   likely clean): deliberately deferred; an optional badge long-term, not part
   of the level taxonomy that shipped
-- General dictionary mode: include native Korean words, not just Sino-Korean
-  (the full Wiktionary Korean extract is already downloaded and parsed at
-  build time, so this is a filter change plus roughly double words.json, and a
-  product-identity decision more than a technical one)
+- Native Korean words (general dictionary mode). Unscheduled, but the
+  design was settled by mockups with Jesse (2026-08-31); when it is
+  scheduled, the SPEC section is written from these decisions:
+  - One settings toggle, OFF by default. Off is byte-identical to today.
+    Native entries live in their own lazily loaded native.json; the
+    Sino lookup path never consults it. Data source is the already
+    parsed Korean extract, so the build cost is a filter and an emit.
+  - Sidebar search gains scope pills, "Hanja" and "All words" (two, not
+    three: a native-only scope reads as "the language" and All is a
+    strict superset anyway). Hanja scope is the default, renders
+    exactly today's results, and the scope resets to Hanja whenever
+    the panel opens; it is sticky only within a panel session. When
+    the other scope has matches the active one lacks, a quiet
+    cross-scope hint row renders after the results; tapping it
+    switches scope for that query. Never an auto-switch, and the hint
+    exists only on the Hanja side.
+  - The selection popup IS affected when the toggle is on: it renders
+    the same identity group as the All words scope. Its one special
+    rule is the default identity: best non-rare hanja spelling, else
+    native, else the rare hanja. So 無理 and 家長 still lead, 사랑
+    leads with the native card, and a native-only selection (하늘),
+    which today shows nothing, renders the full native card.
+  - Cross-identity links are a "Same sound" card section: nav rows in
+    the used-in row's position, pointing both ways (hanja card to the
+    native homograph, native card to the hanja homographs, rare ones
+    muted). Tapping pushes the other card as its own view with a
+    breadcrumb, like every other cross-entity link. The spelling chip
+    row is UNTOUCHED: hanja spellings only, same population as today.
+    Decided for consistency and no special cases over the rejected
+    alternatives: native as a fifth chip (mixes "spellings of this
+    word" with "a different word that sounds the same", and grows chip
+    rows on cards that are chip-less today), whisper cards, disclosure
+    rows, a separate sidebar tab, and a whole-panel mode switch.
+  - The rare-homograph hedge banner retires wherever a native entry
+    exists: the native card leading with the muted rare row states
+    what the banner used to guess. The banner survives only with the
+    toggle off, or for hangul our native data does not cover.
+  - The native card is headword, part of speech, a NATIVE marker,
+    glosses, and the Same sound section. A derived-words section
+    (사랑하다 under 사랑) needs a derivation-link build step that does
+    not exist yet; v1 may ship without it.
+  - Saved words need a native key namespace before native cards get a
+    star; v1 may omit the star from native cards instead.
+  - Still open: pill wording, whether the omnibox joins a scope
+    (lean: omnibox stays hanja-only in v1), and the native.json
+    frequency cutoff.
 - Japanese and Chinese pronunciations on character cards, as an option
   (Unihan kMandarin / kJapaneseOn / kJapaneseKun: data is nearly free, but
   whether cross-language readings belong in a Korean-first tool is uncertain;
