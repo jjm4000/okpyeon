@@ -4,6 +4,26 @@ Working list of planned changes. Ordering within a release is not priority
 order. The next store upload ships whatever is merged and verified when the
 current review clears.
 
+## In progress: phonetic component marker
+
+Started 2026-09-01, same-day spike, mockups, and SPEC addendum
+("Phonetic components"); the addendum holds the full contract. The
+Made of section marks which part gives the character its sound: 請 is
+言 + 靑, and 靑 is there for 청. Detection is build-time from data
+already in the cache: Unihan kPhonetic series-sharing pins 71.9% of
+decomposable chars (sound-drift-proof: 江 강 pins 工 공), eum-match
+tiers can raise that to 80.6% pending a precision spot-check. UI is
+mockup C1: dotted underline on the glyph in the collapsed row at text
+color, a small-caps PHONETIC marker on the expanded row, tooltip
+"靑 gives the character its sound" on both. Rejected on the way:
+marking the semantic part too (the data only pins the phonetic; the
+rest would be inference that fails on oversplit decompositions),
+accent-blue underline (reads as a link), marker text in the collapsed
+row (breaks on four-part characters), and the wording SOUND (in the
+JP/CN small-caps register it could read as labeling a reading;
+PHONETIC names the role, and this audience already reads eumhun and
+on'yomi). No toggle; unpinned characters render exactly as today.
+
 ## 1.2: ready for upload
 
 The 1.1.1 fixes never shipped alone; everything since the v1.1.0 tag

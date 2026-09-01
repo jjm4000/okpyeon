@@ -2128,6 +2128,104 @@ entry is radical-and-stroke trivia), so there is no sense-tagged
 pinyin cross-check; kMandarin, kXHC1983, and kHanyuPinlu are the
 complete zh source set.
 
+## Phonetic components (ADDENDUM 2026-09-01, design settled by mockups)
+
+The Made of section marks which part gives the character its sound:
+the phonetic in a phono-semantic (형성) character. 請 is 言 + 靑, and
+靑 is there for 청. One marked part per character, phonetic only.
+Marking the semantic too (mockup B) was REJECTED: the data pins only
+the phonetic; the semantic would be inferred as "the other part",
+which is false on oversplit multi-part decompositions, and its
+MEANING marker mostly restates the gloss on the same row. The UI
+claims exactly what the build verified, and absence claims NOTHING:
+an unmarked section never implies the character has no phonetic.
+
+### Data rule (build)
+
+- Candidate parts for a char: emitted decomp rows that resolve
+  (directly or via alias target) to a hanja.json char other than the
+  char itself. All eums of both sides participate (readings plus
+  eumhun eums).
+- Three detection tiers, first hit wins per part:
+  1. SERIES: char and part share a kPhonetic series number
+     (Unihan_DictionaryLikeData inside the cached Unihan.zip;
+     values are space-separated tokens, the leading digits of each
+     token are the series id). Survives sound drift: 江 강 pins 工 공.
+  2. EXACT: some eum of the part equals some eum of the char.
+  3. FUZZY: onset and coda match, vowel free (㑂 방 pins 丙 병).
+- Spike-measured (2026-09-01, over the 9,178 chars with usable
+  candidate parts): series pins 71.9%, exact-only adds 6.8%,
+  fuzzy-only 1.9%, union 80.6%. By level: m 57.6% (correctly low,
+  basic chars skew pictograph), h 77.6%, a 87.6%, r 82.0%. Where a
+  char has both a series and an exact-eum part, they agree 97.4%.
+- Tier 1 ships on the spike's evidence. Tiers 2 and 3 are admitted
+  ONLY after a precision spot-check during implementation (sample at
+  least 50 pins per tier; a tier that shows real error beyond the
+  odd curated fix stays out). The outcome and numbers get recorded
+  here.
+- One pin per char: if distinct part glyphs qualify, the best tier
+  wins; still ambiguous within a tier, emit NO pin (35 such chars at
+  the exact tier in the spike). A pinned glyph appearing twice in
+  the part list (樂's 幺) pins the first occurrence.
+- Curated override table in the NOT_RARE discipline for wrong pins
+  the spot-check finds: every override must fire or the build aborts.
+  Overrides can force a part, or force no pin.
+- Korean-made gukja whose 乙 marks the ㄹ coda land in the fuzzy tier
+  (㐚 올). Genuine phonetic devices; they live or die with tier 3's
+  spot-check, not case by case.
+
+### Storage and runtime
+
+- decomp.json gains a sibling map: `"phon": { "請": 1 }`, the char's
+  pinned row INDEX into its own parts array. Emitted only for pinned
+  chars. Build-validated: every index in range and its row clickable
+  (resolves to a dictionary char), so file and index cannot drift
+  (the rare-flag lesson).
+- guardDecomp currently REBUILDS `{v, parts}`, the exact guardNative
+  trap: it must pass `phon` through explicitly, and a node test
+  drives lookup through the guarded shape (the drive-through-the-
+  guard regression pattern).
+- attachDecomp sets `phon: true` on the joined part row at the
+  pinned index, only when that row came out clickable. The renderer
+  reads `p.phon`; the worker stays stateless, nothing lazy: the map
+  rides the decomp file that already always loads.
+
+### UI (mockup C1, user-picked 2026-09-01)
+
+- Collapsed row: the pinned part's glyph in "Made of 言 + 靑" gets a
+  dotted underline at TEXT color (accent blue was mocked and
+  REJECTED: it reads as a link). First occurrence only, matching the
+  pin. No marker text in the collapsed row (mockup C3 rejected: the
+  one-line clamped summary must survive four-part characters).
+- Expanded row: the pinned part's row carries a right-aligned
+  small-caps PHONETIC marker in the sino-marker register (faint,
+  9px, 700, letter-spaced). Wording PHONETIC over SOUND
+  (user-settled): the audience already reads eumhun / on'yomi /
+  pinyin, PHONETIC names the role unambiguously, and SOUND in the
+  JP/CN register could be misread as labeling a reading.
+- Tooltip decode on BOTH cues (title attribute, the sino-line
+  pattern): "靑 gives the character its sound", built from the
+  part's glyph.
+- One section already exists; this is chrome inside appendMadeOf,
+  not a new section function. Applies wherever char cards render;
+  nested component cards inherit their existing size step.
+- No settings toggle (the Made of section has none; the marker rides
+  it) and no Anki field in v1. Unpinned chars render byte-identical
+  to today.
+
+### Tests
+
+- Build: anchors (請 pins 靑; 江 pins 工 through the series tier
+  despite 강/공; a no-pin char stays bare), determinism, override
+  must-fire, ambiguity and per-tier counts reported.
+- Node: guardDecomp phon pass-through driven end to end; attach
+  marks exactly the pinned index and skips an inert pinned row;
+  repeated-glyph chars mark one row.
+- Harness (fixture blocks byte-identical between pages): marker on
+  exactly the pinned row; collapsed underline on the pinned glyph
+  only; tooltips on both cues; unpinned fixture char renders
+  byte-identical to the pre-feature snapshot.
+
 ## Verification expectations
 
 - A: after build, spot-check in the output: 國 has eumhun 나라/국 and compounds;
