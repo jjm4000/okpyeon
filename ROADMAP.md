@@ -258,9 +258,11 @@ release:
 ## 1.0: the first store submission
 
 The base product, submitted to the store before this repository existed.
-There is no v1.0.0 tag: the initial commit (eb46a4f, 2026-08-16) matches
-the 1.0.0 submission plus the three fixes queued as 1.0.1, which then
-shipped inside 1.1.
+There is no v1.0.0 tag: the initial commit (eb46a4f, 2026-08-16) is the
+1.0.0 submission plus three fixes queued as 1.0.1 (the canonical glyph
+on variant char cards, Wiktionary source links, hanja-page link
+targets). 1.0.1 never shipped on its own; those fixes are the "Card
+correctness" bullet of 1.1, the same way 1.1.1 folded into 1.2.
 
 - **Selection lookup.** Highlight hanja, hanzi, or kanji on any page for a
   popup card with the eumhun (나라 국 for 國), readings, English
@@ -284,8 +286,6 @@ shipped inside 1.1.
   pipeline/build.py from kaikki.org Wiktionary extracts and Unicode
   Unihan, with the icons, promo tiles, and store zip produced by the
   same pipeline.
-- The three 1.0.1 fixes: the canonical glyph heads variant char cards,
-  Wiktionary source links on every card, and hanja-page link targets.
 
 ## Later / unscheduled
 
