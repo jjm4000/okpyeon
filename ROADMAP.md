@@ -331,6 +331,17 @@ one schema entry plus its feature code:
   - Open: tier-2 threshold value, whether tier-2 readings render
     identically (lean yes), settings row copy final wording.
 - List views auto-growing taller than card views
+- Korean-language descriptions (settings toggle), aimed at the Korean
+  home market: learners of hanja in Korea, for whom English glosses
+  are the barrier and partly just clutter (a word card's English
+  gloss explains 국민 to someone who knows 국민; the eumhun is
+  already the Korean char gloss). Design space spans hiding English
+  (free), Korean definitions (a data feature: candidate sources are
+  the Korean Wiktionary edition via kaikki, thin but pipeline-shaped,
+  and 우리말샘, CC BY-SA but signup-gated bulk access), and Korean UI
+  chrome. Spike first: coverage of our word and char sets in the ko
+  edition, quality samples, size. The Korean store listing below is
+  this feature's distribution companion.
 - Korean-language store listing
 
 ## Non-goals for now
