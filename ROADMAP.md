@@ -4,36 +4,48 @@ Working list of planned changes. Ordering within a release is not priority
 order. The next store upload ships whatever is merged and verified when the
 current review clears.
 
-## In progress: phonetic component marker
+## Since 1.2: merged on main, not yet released
 
-Started 2026-09-01, same-day spike, mockups, and SPEC addendum
-("Phonetic components"); the addendum holds the full contract. The
-Made of section marks which part gives the character its sound: 請 is
-言 + 靑, and 靑 is there for 청. Detection is build-time from data
-already in the cache: Unihan kPhonetic series-sharing pins 71.9% of
-decomposable chars (sound-drift-proof: 江 강 pins 工 공), eum-match
-tiers can raise that to 80.6% pending a precision spot-check. UI is
-mockup C1: dotted underline on the glyph in the collapsed row at text
-color, a small-caps PHONETIC marker on the expanded row, tooltip
-"靑 gives the character its sound" on both. Rejected on the way:
-marking the semantic part too (the data only pins the phonetic; the
-rest would be inference that fails on oversplit decompositions),
-accent-blue underline (reads as a link), marker text in the collapsed
-row (breaks on four-part characters), and the wording SOUND (in the
-JP/CN small-caps register it could read as labeling a reading;
-PHONETIC names the role, and this audience already reads eumhun and
-on'yomi). No toggle; unpinned characters render exactly as today.
+- **Phonetic component marker.** The Made of section marks which part
+  gives the character its sound: 請 is 言 + 靑, and 靑 is there for 청.
+  The collapsed row dotted-underlines that glyph at text color; its
+  expanded row carries a small-caps PHONETIC marker; both cues carry the
+  tooltip "靑 gives the character its sound". Detection is build-time
+  from data already in the cache and rides decomp.json as a per-char row
+  index: 7,165 characters pinned (78.1% of the 9,178 with a
+  decomposition), 6,550 by Unihan kPhonetic series-sharing (sound-drift
+  proof: 江 강 pins 工 공) and 615 by exact eum match under a rule that a
+  single-stroke part never pins, plus 樂 curated to no pin. Only the
+  phonetic is marked, never the semantic, and an unmarked section claims
+  nothing. No toggle; unpinned cards render exactly as before. The SPEC
+  addendum "Phonetic components" holds the contract and the tier
+  spot-check (exact admitted at ~94% sample precision; a fuzzy onset-coda
+  tier rejected at ~40-50%, since it latched onto semantically central
+  parts whenever the true phonetic was oversplit away). Rejected in
+  mockups: marking both roles, an accent-blue underline (reads as a
+  link), marker text in the collapsed row (breaks on four-part
+  characters), and the wording SOUND (in the JP/CN register it could read
+  as labeling a reading). Suites: node 178, both harness pages five
+  checks richer.
+- **Test pages no longer download files.** embed.html's export checks
+  exercise the real Anki/CSV path, which ends in a download click; the
+  page now cancels that click's default action, so runs stop dropping
+  okpyeon-anki files into Downloads. The checks assert the same things
+  they always did.
+- **Korean-language descriptions: project file.** korean-mode-kickoff.md
+  is the full record of the spikes and decisions for the feature listed
+  under Later below. Documentation only; no code yet.
 
-## 1.2: ready for upload
+## 1.2: shipped
 
-The 1.1.1 fixes never shipped alone; everything since the v1.1.0 tag
-is one release. The manifest reads 1.2.0, the zip builds as
-okpyeon-1.2.0.zip, and the v1.2.0 tag marks the release commit.
-Designed and QA'd with Jesse across 2026-08-31; the SPEC's
-native-words, romanized-v2, and sibling-readings addenda hold the
-full contracts. Suites at merge: node 176, index.html 613,
-embed.html 331, plus the full-population romanization round trip and
-the build's 57 anchors.
+Everything since the v1.1.0 tag went out as one release: the manifest
+reads 1.2.0, the zip built as okpyeon-1.2.0.zip, the v1.2.0 tag marks the
+release commit, and the store listing carries Jesse's own edit of the
+text. Designed and QA'd with Jesse across 2026-08-31; the SPEC's
+native-words, romanized-v2, and sibling-readings addenda hold the full
+contracts. Suites at merge: node 176, index.html 613, embed.html 331,
+plus the full-population romanization round trip and the build's 57
+anchors.
 
 - **Sibling Sino readings.** Two default-off settings (Character
   cards group) add each character's Japanese on'yomi and Mandarin
@@ -243,174 +255,84 @@ release:
   Wiktionary already gives. Simplicity won. If it ever returns, the natural
   home is Anki-export enrichment, not the card.
 
-## Future settings entries
-
-The settings page and `storage` permission now exist, so each of these is
-one schema entry plus its feature code:
-
-- Per-site disable, hover-mode toggle (hover mode itself is further out)
-- Japanese and Chinese pronunciations on character cards (see Later)
-
 ## Later / unscheduled
 
-- Romanized search: maps versus function, RESOLVED THE OTHER WAY
-  (2026-08-31, same day the record below first said "data won"; kept
-  so the reversal is not relitigated either). The maps lost on
-  composition, not on size or correctness: a map can only answer "is
-  this exact string a dictionary word", so romanized input never got
-  the span segmentation hangul input gets, and inflected forms
-  (mushihaesseo) were unrepresentable in principle. Three QA failures
-  in one session were all map-coverage omissions. v2 shipped the
-  function: forward RR ported to JS (equivalence-swept against rr.py,
-  the kept reference implementation, over the full word population), a
-  generous inverse generator gated by the dictionary (the rule the
-  keyboard channel always had), candidate collapse by coverage class,
-  and a measured resolve cap (garbage worst case 57ms warm behind the
-  debounce). rr.json and native.json's rr block are deleted, 1.5 MB
-  lighter. The round-trip completeness test (every word reachable
-  from each of its forms) is the safety story the maps used to
+- **Korean-language descriptions** (a settings option), aimed at the
+  Korean home market: learners of hanja in Korea, for whom English
+  glosses are the barrier and partly just clutter. Fully de-risked by
+  two spikes on 2026-09-01, not yet designed; korean-mode-kickoff.md is
+  the record to read before starting. Decided: the corpus is
+  Urimalsaem (우리말샘, NIKL, CC BY-SA 2.0 KR), fetched from the
+  spellcheck-ko/korean-dict-nikl mirror on GitHub because the official
+  download demands Korean-carrier phone verification; its per-sense
+  hanja-origin fields make matching exact, so homograph contamination
+  is impossible by construction (ko-wiktionary was measured and
+  demoted to reference material). Matching runs in TWO LANES: hanja-
+  origin senses to words.json keys, 고유어 senses to native.json by
+  (hangul, POS), since native homographs exist too (우리 the pronoun
+  beside 우리 the animal pen). ONE CANONICAL ENTRY, TWO LANGUAGES: the
+  Korean glosses are a field on the same entries the English glosses
+  live on, attached worker-side from a lazy sidecar file, so the toggle
+  is a gloss-language pick and English fallback is automatic. Measured
+  coverage: ~92% of Sino words, flat across frequency buckets; native
+  words well covered; only ~2,100 single characters glossed in Korean,
+  and roughly 6,100 to 6,700 chars (two criteria, to reconcile) carry
+  English as their only meaning text, so char cards need eumhun
+  backfill or an English fallback. Remaining design (mockups first):
+  replace or accompany English, char-card treatment, UI chrome
+  language, settings shape, sense selection, coverage fallback.
+- **Korean-language store listing**, the distribution companion of the
+  feature above. Not dashboard-only: the store offers a listing
+  language only for locales the package declares, so it needs
+  `_locales/en` and `_locales/ko` message files, `default_locale` in
+  the manifest, the manifest name and description moved to `__MSG_`
+  keys, and a re-upload; the Korean detailed description and optional
+  Korean screenshots then go in through the dashboard's language
+  dropdown. Korean-browser visitors get the Korean listing, everyone
+  else the English one. Natural to ship in the same release as the
+  Korean descriptions.
+- **Word-level sibling pronunciations** (음악 -> おんがく / yīnyuè), a
+  follow-up to the char-level sino line, analysis recorded 2026-08-31:
+  the two languages are asymmetric in opposite directions. Mandarin is
+  nearly free and mostly correct BECAUSE of the eum alignment: naive
+  per-char pinyin fails on polyphones (音樂 needs yuè, not lè), but the
+  word's hangul names each char's eum and sino.json's aligned pairs
+  select the right pinyin per position; unmodeled tone sandhi is a
+  nicety, not an error. Japanese is the hard side: real readings
+  involve rendaku and sokuon (がっこう), so synthesis from on'yomi is
+  wrong too often to ship; attested kana exist for the ~11k
+  shared-spelling words the bridge corpus already parses, partial
+  coverage with no honest synthesis fallback. Ship shape when
+  designed: zh broadly via alignment, ja attested-only.
+- **Deconjugation for native words.** Native verbs and adjectives are
+  reachable only by their dictionary form (typed search or exact-form
+  selection); a selected 먹었어 finds nothing. Romanized v2's
+  segmentation machinery is the natural host if this is ever built.
+- **Per-site disable**, and a hover mode with its own toggle (hover mode
+  itself is further out). Each is one settings schema entry plus its
+  feature code.
+- Selection support inside `<textarea>`/`<input>`; `all_frames` for
+  iframes.
+- **대법원 인명용 badge** ("usable in given names", ~8,000 chars from the
+  Supreme Court rules annex; Korean law excludes statutes and rules from
+  copyright, so likely clean). Deliberately deferred; an optional badge
+  long-term, not part of the level taxonomy that shipped.
+- List views auto-growing taller than card views.
+
+## Settled questions, kept so they are not relitigated
+
+- **Romanized search: maps versus function.** Resolved for the function
+  on 2026-08-31, the same day an earlier record here said the maps had
+  won. The maps lost on composition, not on size or correctness: a map
+  can only answer "is this exact string a dictionary word", so romanized
+  input never got the span segmentation hangul input gets, and inflected
+  forms (mushihaesseo) were unrepresentable in principle; three QA
+  failures in one session were all map-coverage omissions. v2 shipped
+  the function (see 1.2). The round-trip completeness test, every word
+  reachable from each of its forms, is the safety story the maps used to
   provide by construction.
-- Word-level sibling pronunciations (음악 -> おんがく / yīnyuè), a
-  designed follow-up to the char-level sino line, with the analysis
-  recorded 2026-08-31 so design starts from what the sino build
-  taught: the two languages are asymmetric in opposite directions.
-  Mandarin is nearly free and mostly correct BECAUSE of the eum
-  alignment: naive per-char pinyin fails on polyphones (音樂 needs
-  yuè, not lè), but the word's hangul names each char's eum (음악 =
-  음+악) and sino.json's eum-aligned pairs select the right pinyin
-  per position; unmodeled tone sandhi is a nicety, not an error.
-  Japanese is the hard side: real readings involve rendaku and sokuon
-  (がっこう), so synthesis from on'yomi is wrong too often to ship;
-  attested kana exist for the ~11k shared-spelling words the bridge
-  corpus already parses, which is partial coverage with no honest
-  synthesis fallback. Ship shape when designed: zh broadly via
-  alignment, ja attested-only.
-- Selection support inside `<textarea>`/`<input>`; `all_frames` for iframes
-- 대법원 인명용 badge ("usable in given names", ~8,000 chars from the Supreme
-  Court rules annex; Korean law excludes statutes/rules from copyright, so
-  likely clean): deliberately deferred; an optional badge long-term, not part
-  of the level taxonomy that shipped
-- Sino readings across the sibling languages (design settled with Jesse
-  2026-08-31; queued behind the native-words merge; mockups first):
-  one quiet line on char cards showing the SAME Sino root's sound in
-  Japanese and Mandarin beside the card's eum, so a learner who knows
-  any of the three can ground the other two. Decided:
-  - On'yomi ONLY, never kun: on'yomi is the Sino reading, the sibling
-    of the eum; kun is a native gloss, the analog of the hun the card
-    already shows in Korean. Kun-only jōyō chars (串 丼 咲, 78 of
-    them) correctly get no line: there is no Sino sound to show.
-  - Capped at two readings per language, primary first. 90%+ of
-    covered chars have exactly one; the polyphonic minority (樂, 行,
-    車) genuinely carry multiple Sino morphemes, mirrored in the
-    card's own multi-eum row (악·락), so showing both is the truth
-    (single-reading kMandarin hides the 음악 reading yuè on 16% of
-    school chars).
-  - Two tiers, one mechanism. The mechanism: align common Japanese
-    words' kana (ja kaikki extract, cached) against candidate on'yomi
-    with the regular transforms (sokuon, rendaku), weighted by a ja
-    frequency list, the same method the Korean compound ranking uses.
-    Tier 1: jōyō chars (2,121 of ours; 92% of m, 86% of h; kyūjitai
-    column maps straight onto our canonical forms) keep the canonical
-    jōyō reading set, ORDERED by corpus weight, table order as the
-    tiebreak. Tier 2: beyond jōyō, corpus-attested readings above a
-    pinned threshold (distinct-word count within a frequency band)
-    extend coverage to chars a Japanese-knower actually meets (醤 in
-    醤油), replacing the jōyō cliff with an evidence standard.
-    Mandarin symmetrically: kHanyuPinlu frequencies order, kXHC1983
-    supplies the set, kMandarin the fallback.
-  - Data: jōyō table via the Wikipedia list (CC BY-SA, same pattern
-    and license family as the MOE tier scrape), Unihan already cached
-    and attributed. Emitted payload small (ja on'yomi alone measured
-    36 KB); lazy-loaded behind a default-off settings row per the
-    native.json pattern.
-  - Spike gates before build: alignment anchors (学校 音楽 銀行,
-    jukujikun like 今日 skipped), the validation property that the
-    corpus's top reading is a jōyō reading for ~95% of jōyō chars
-    (exceptions reported), and the measured tier-2 coverage.
-  - Cross-language ORDER ALIGNMENT (decided 2026-08-31): the card's
-    eumhun order is the master, and sibling readings sort to match
-    their correlate's position, so 樂 reads ガク・ラク / yuè·lè
-    because the card says 악 · 락. Japanese aligns by the COMPOUND
-    BRIDGE: shared spelled words (音樂 is 音楽) vote on which eum
-    pairs with which on'yomi, using the planned corpus alignment plus
-    the variants map, evidence only. Mandarin aligns by
-    correspondence scoring over initial and rime classes (ㄹ↔l,
-    ㅇ↔y/w, palatalized ㄱ↔j), ambiguous chars flagged into a curated
-    override table. Unmatched sibling readings trail; an eum with no
-    living sibling (요) contributes no slot. Each reading carries a
-    title tooltip naming its correspondence (악 ↔ ガク ↔ yuè).
-    Anchors: 樂, 行, 車, and 惡 (악↔アク↔è, 오↔オ↔wù); property
-    test: where the bridge and the scorer both speak they must agree,
-    disagreements reported for curation, never silently picked.
-  - Display (decided by mockups 2026-08-31): variant A, one muted
-    sub-line under the card head ("日 ガク · 中 xué"), rendering
-    whenever at least one enabled language has data, half-width when
-    only one does. Two independent default-off settings rows
-    ("Japanese reading" / "Chinese reading") in a Character cards
-    group; with both on the order is fixed, Japanese then Chinese.
-  - Open: tier-2 threshold value, whether tier-2 readings render
-    identically (lean yes), settings row copy final wording.
-- List views auto-growing taller than card views
-- Korean-language descriptions (settings toggle), aimed at the Korean
-  home market: learners of hanja in Korea, for whom English glosses
-  are the barrier and partly just clutter (a word card's English
-  gloss explains 국민 to someone who knows 국민; the eumhun is
-  already the Korean char gloss). Design space spans hiding English
-  (free), Korean definitions (a data feature), and Korean UI chrome.
-  SPIKE RAN 2026-09-01, results:
-  - ko-wiktionary (kaikki, cached, 104k Korean headwords): good
-    lexicographer prose where it matches, head-weighted coverage
-    (85% of f<=5 words by hangul match, 62% by strict hanja-verified
-    match, collapsing to 14% on the untagged tail), 37% of native
-    words, and essentially NO individual-hanja glosses. Payload
-    trivial (0.3-0.9 MB). The engineering risk is homograph
-    contamination, not prose: hangul-only matching attaches 우리 the
-    pronoun to 牛李, so a build must parse per-sense hanja origins.
-  - 우리말샘 (Urimalsaem, NIKL): the better corpus on every axis.
-    1.1M+ headwords, CC BY-SA 2.0 KR (example sentences excluded from
-    the license), and its format carries exact hanja-origin fields
-    (original_language_info), which solves the matching problem
-    outright. Bulk XML download requires a one-time account signup,
-    which is Jesse's to do; that signup is the gate on the good path.
-  - Subtraction finding: hide-English alone is NOT viable for char
-    cards. 6,146 of 9,469 chars (65%) carry English as their only
-    meaning text (103 of the m-level 899, a third of h). A Korean
-    mode needs eumhun backfill or keeps English as the char fallback.
-  - DECIDED 2026-09-01: Urimalsaem primary. The signup gate DISSOLVED:
-    the official flow demands Korean-carrier phone verification, but
-    github.com/spellcheck-ko/korean-dict-nikl legitimately
-    redistributes the full official XML (CC BY-SA 2.0 KR, example
-    sentences excluded as at the source), opendict in 50k-entry
-    chunks of about 78 MB, 1.2M entries, repo refreshed 2026-08-31.
-    VERIFIED by a sampled spike (150k entries, three alphabet
-    slices): original_language_info carries exact hanja origins, so
-    matching happens on the hanja string itself and homograph
-    contamination is impossible by construction. Matching is TWO
-    LANES (user-raised): hanja-origin entries route to words.json
-    keys, and 고유어 entries route to native.json headwords by
-    (hangul, POS), since native homographs exist too (우리 the
-    pronoun beside 우리 the animal pen). Each identity's card gets
-    its own definitions; the Same sound model is the chassis. In-range coverage
-    92.2% of words.json keys, nearly flat across frequency buckets
-    (87-97%), extrapolating to ~25,500 of 27,627; native words
-    well covered; single-hanja entries gloss ~2,100 chars in
-    Korean, so eumhun backfill stays in the design for the rest.
-    Definitions are real lexicography; debris (proper-noun and
-    dialect senses, dual-notation origins) filters on type/pos
-    fields. Example sentences and media live in separable XML
-    subtrees and are excluded from the CC BY-SA grant; dropping
-    them is a one-line filter. Build architecture when scheduled:
-    one-time fetch of the 25 chunks stored gzipped (~195 MB in
-    cache), a preprocess step emitting a small intermediate JSON,
-    build.py consuming only the intermediate. Remaining design:
-    what the Korean-mode card shows (replace or accompany
-    English), sense filtering rules, char backfill, UI chrome
-    language, the settings shape. Mockups next,
-    then design and mockups, with ko-wiktionary demoted to
-    reference material and eumhun backfill for the English-only
-    chars part of the design. The Korean store listing below is this
-    feature's distribution companion.
-- Korean-language store listing
+- **Phonetic marker scope.** Phonetic only, never the semantic; see the
+  entry above and the SPEC addendum for the rejected alternatives.
 
 ## Non-goals for now
 
