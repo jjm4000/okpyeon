@@ -2321,8 +2321,8 @@ korean-mode-kickoff.md; this section is the binding contract.
 - Harness rule: rendering every fixture card and view under `ko` must
   produce NO English word-literal from the message inventory (a sweep
   over the fixture DOM against the en table's values, allowing the
-  fixed tokens: Wiktionary, Anki, GitHub, Okpyeon, CC BY-SA, and
-  romanized reading text). Rendering under `en` is byte-identical to
+  fixed tokens: Wiktionary, 우리말샘, Anki, GitHub, Okpyeon, CC BY-SA,
+  and romanized reading text). Rendering under `en` is byte-identical to
   today. The Korean data file is never fetched under `en`.
 
 ### Korean definitions data
@@ -2369,16 +2369,43 @@ korean-mode-kickoff.md; this section is the binding contract.
 - Emitted file `extension/data/ko.json`:
   ```json
   { "version": 1,
-    "words":   { "學生": ["학예를 배우는 사람.", "학교에 다니면서 공부하는 사람."] },
-    "natives": { "우리|pron": ["말하는 이가 …"] },
-    "chars":   { "學": ["어떤 원리에 따라 조직된 지식의 체계.", "‘학문’의 뜻을 더하는 접미사."] } }
+    "words":   { "學生": { "d": ["학예를 배우는 사람.", "학교에 다니면서 공부하는 사람."], "s": 27143 } },
+    "natives": { "우리|pron": { "d": ["말하는 이가 …"], "s": 12345 } },
+    "chars":   { "學": { "d": ["어떤 원리에 따라 조직된 지식의 체계.", "‘학문’의 뜻을 더하는 접미사."], "s": 67890 } } }
   ```
-  Keys are the canonical keys of the entries they decorate; the build
-  aborts on any key absent from the file it decorates (build-anchored
-  agreement, the rare-flag lesson). Deterministic emit; expected order
-  1 MB raw, well under 0.5 MB gzipped. Coverage report at build:
-  words matched of 27,627 (spike extrapolation ~25,500), natives
-  matched of 15,527, chars glossed (~2,100).
+  `d` is the kept definitions, `s` the Urimalsaem `target_code` of
+  the FIRST kept sense (every `<item>` carries one beside its
+  definition; it is the sense's permanent ID, and the corpus's own
+  `link` field is exactly the URL pattern below, so this costs one
+  integer per entry and no further download). Keys are the canonical
+  keys of the entries they decorate; the build aborts on any key
+  absent from the file it decorates (build-anchored agreement, the
+  rare-flag lesson). Deterministic emit; expected order 1 MB raw,
+  well under 0.5 MB gzipped. Coverage report at build: words matched
+  of 27,627 (spike extrapolation ~25,500), natives matched of 15,527,
+  chars glossed (~2,100).
+- SOURCE LINK (user-settled 2026-09-01): a card's source link points
+  at where the definition on screen came from. Word and native cards
+  showing a Korean definition link "우리말샘 ↗" to
+  `https://opendict.korean.go.kr/dictionary/view?sense_no=<s>`, which
+  opens that exact sense (verified live: 학생's first sense, code
+  27143, renders the entry with pronunciation audio, the example
+  sentence, related words, and a word map, none of which the license
+  lets us ship, which is why the link matters). Cards falling back to
+  English keep "Wiktionary ↗". Char cards keep "Wiktionary ↗" in BOTH
+  languages: readings, hun, compounds, and variants all come from the
+  Wiktionary hanja page, the fuller entry, and the borrowed
+  single-char glosses are covered by the footer and DATA-LICENSE
+  attribution. One link per card, never two (the header is "☆ +
+  link" and the popup is narrow). English mode links nothing to
+  우리말샘, so its byte-identity holds. The link is composed at render
+  time from `s` and the fixed pattern, exactly as the Wiktionary link
+  is composed from the headword; the extension still makes no
+  requests of its own. Build anchors the code per canonical entry
+  (학생's `s` opens a 學生 sense; 우리 the pronoun's opens the
+  pronoun, never the animal pen). Message keys: `link.urimalsaem`
+  ("우리말샘 ↗") and `tooltip.urimalsaem` ("$WORD$의 우리말샘 항목");
+  우리말샘 joins the fixed-token list for the no-English sweep.
 - Runtime: ko.json joins the worker's lazy per-file cache, fetched on
   the first request flagged `ko: true` (client-set when the language
   is 한국어; the worker stays stateless). `attachKo` hangs `ko`
@@ -2509,7 +2536,10 @@ Korean listing; everyone else the English one.
   byte-identity check; no ko.json fetch under `en`; the fallback
   marker on exactly the ko-less fixture entry; the language row
   present and switching live via storage.onChanged; export fields
-  follow the language.
+  follow the language; the source link follows the definition (a
+  Korean-defined word card links 우리말샘 with the fixture's sense
+  code in the URL, the ko-less word card and every char card link
+  Wiktionary, and no 우리말샘 link exists under `en`).
 
 ### Spike record
 
