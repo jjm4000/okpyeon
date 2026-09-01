@@ -356,10 +356,13 @@ one schema entry plus its feature code:
     cards. 6,146 of 9,469 chars (65%) carry English as their only
     meaning text (103 of the m-level 899, a third of h). A Korean
     mode needs eumhun backfill or keeps English as the char fallback.
-  - DECIDED 2026-09-01: Urimalsaem primary. Waiting on the one-time
-    manual step only Jesse can do: an account at
-    opendict.korean.go.kr, then the bulk XML ZIP from the dictionary
-    download page, saved into pipeline/cache/. When the file lands:
+  - DECIDED 2026-09-01: Urimalsaem primary. The signup gate DISSOLVED:
+    the official flow demands Korean-carrier phone verification, but
+    github.com/spellcheck-ko/korean-dict-nikl legitimately
+    redistributes the full official XML (CC BY-SA 2.0 KR, example
+    sentences excluded as at the source), opendict in 50k-entry
+    chunks of about 78 MB, 1M+ entries, repo refreshed 2026-08-31.
+    Next:
     verify its shape and hanja-origin matching on our word set,
     then design and mockups, with ko-wiktionary demoted to
     reference material and eumhun backfill for the English-only
