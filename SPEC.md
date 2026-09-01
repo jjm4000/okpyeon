@@ -2439,8 +2439,12 @@ korean-mode-kickoff.md; this section is the binding contract.
   X's first surviving ordinary sense with X's target_code (7,398 of
   7,518 resolved; the 120 whose target has no surviving sense drop
   like any stub), so 緊密 reads 긴밀하다's definition and links to
-  it, and 緊 is no longer "‘긴하다’의 어근.". Then the first TWO
-  survivors in sense_no order. Anchors: 학생 shows "학예를
+  it, and 緊 is no longer "‘긴하다’의 어근."), and ABBREVIATION
+  SENSES SORT LAST like surnames (‘X’을/를 줄여 이르는 말, ‘X’의
+  약칭, 줄임말, 줄인 말, and the bare "‘X’을 이르는 말." form that
+  held 金's first slot with 금요일; 1,484 routable senses; never
+  dropped, since for some keys the abbreviation is the meaning). Then
+  the first TWO survivors in sense_no order. Anchors: 학생 shows "학예를
   배우는 사람." then "학교에 다니면서 공부하는 사람."; 학교 shows
   exactly ONE sense (the prison slang and the 鶴橋 / 學橋 villages
   are gone); 가족 keeps 家族's first sense only (the play by that

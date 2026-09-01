@@ -1942,6 +1942,17 @@ def verify(hanja_obj, words_obj, variants_obj, decomp_obj=None,
                 json.dumps(ok_d, ensure_ascii=False)[:90],
                 json.dumps(gim_d, ensure_ascii=False)[:60],
                 json.dumps(gang_d, ensure_ascii=False)[:60]))
+        # Abbreviation senses sort last (integrator rule): 金 leads with
+        # the metal, not ‘금요일’을 줄여 이르는 말; 金曜日 itself unaffected.
+        gim0 = (kd(kc, "金") or [""])[0]
+        geum = kd(kw, "金曜日") or [""]
+        add("ko anchor: 金 char first sense is the metal; 金曜日 unaffected",
+            any(x in gim0 for x in ("금속", "원소", "쇠"))
+            and not urimalsaem.sorts_last(gim0)
+            and ("金曜日" not in words_out
+                 or ("金曜日" in kw and not urimalsaem.abbrev_form(geum[0]))),
+            "金 %s | 金曜日 %s" % (json.dumps(kd(kc, "金"), ensure_ascii=False)[:90],
+                                  json.dumps(geum, ensure_ascii=False)[:60]))
         # Root stubs resolve onto the -하다 headword (integrator rule):
         # 緊密 carries 긴밀하다's sense and code, 緊 carries 긴하다's,
         # 緊張 is untouched.

@@ -435,7 +435,11 @@ chunks, 1.73 GiB, one `<item>` per sense. It runs in three steps:
   applies to single characters, whose cards fall back to the hun. The
   Two more orderings: a surname sense ("우리나라 성(姓)의 하나", about
   520 senses corpus-wide) is kept but sorts after every other sense on
-  its key, so 玉 leads with the stone and 姜 still shows the surname;
+  its key, so 玉 leads with the stone and 姜 still shows the surname, and
+  an abbreviation sense ("‘X’를 줄여 이르는 말", 줄임말, 줄인 말, 의 약칭,
+  and a definition that is just "‘금요일’을 이르는 말."; about 1,500
+  senses) sorts last the same way, so 金 leads with the
+  metal (the pointer form "‘X’의 준말." stays a dropped stub);
   and a root stub ("‘긴밀하다’의 어근.", the corpus files the meaning on
   the -하다 headword) is replaced in place by the first surviving sense
   of that headword with its sense code, so 緊密 reads 긴밀하다's

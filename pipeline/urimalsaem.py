@@ -106,6 +106,30 @@ RE_WORD_MARK = re.compile(r"[-^\s]+")
 # 성의 하나" (about 520 senses, all without a cat). The boundary before
 # 성 keeps 굴성의 하나 / 특성의 하나 / 편성의 하나 out.
 RE_SURNAME = re.compile(r"(?:^|\s)성(?:\(姓\))?의 하나")
+# Abbreviation senses (integrator rule) sort last the same way: corpus
+# forms "‘X’를/을 줄여 이르는 말" (about 1,370), "줄임말" (9), "줄인 말"
+# (4), "‘X’의 약칭" (18), and the bare "‘X’을/를 이르는 말." that opens a
+# definition (金 = ‘금요일’을 이르는 말; 달리/높여/낮잡아 이르는 말 are
+# not this form). The pointer form "‘X’의 준말." (about 3,360) stays a
+# cross-reference stub and is dropped.
+ABBREV_FORMS = (
+    ("줄여 이르는 말", re.compile(r"줄여 이르는 말")),
+    ("줄임말", re.compile(r"줄임말")),
+    ("줄인 말", re.compile(r"줄인 말")),
+    ("의 약칭", re.compile(r"의 약칭")),
+    ("‘X’을/를 이르는 말", re.compile(r"^‘[^’]+’(?:을|를) 이르는 말")),
+)
+
+
+def abbrev_form(d):
+    for name, rx in ABBREV_FORMS:
+        if rx.search(d):
+            return name
+    return None
+
+
+def sorts_last(d):
+    return bool(RE_SURNAME.search(d)) or abbrev_form(d) is not None
 # Root stubs (integrator rule): the corpus files the meaning on the -하다
 # headword and leaves "‘긴밀하다’의 어근." on the bare form. Such a sense
 # is replaced by the first surviving ordinary sense of headword X, with
@@ -447,6 +471,10 @@ def preprocess(chunks=None):
                     tier = 2
                     soft["surname (sorted last)"] += 1
                     kept += 1
+                elif abbrev_form(d) is not None:
+                    tier = 2
+                    soft["abbreviation: " + abbrev_form(d)] += 1
+                    kept += 1
                 else:
                     kept += 1
                 rm = RE_ROOT.match(d)
@@ -606,9 +634,10 @@ def ensure_intermediate():
 # ---------------------------------------------------------------- build
 
 def _surname_last(rows):
-    # Stable: a merge of several sources keeps surname senses behind every
-    # non-surname sense (the intermediate already orders each source).
-    return sorted(rows, key=lambda r: bool(RE_SURNAME.search(r[1])))
+    # Stable: a merge of several sources keeps surname and abbreviation
+    # senses behind every other sense (the intermediate already orders
+    # each source).
+    return sorted(rows, key=lambda r: sorts_last(r[1]))
 
 
 def _defs(rows):
