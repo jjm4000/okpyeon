@@ -392,38 +392,30 @@
     return "";
   }
 
-  // The one static block the schema-driven page allows: name, version, a
-  // one-line note. Rendered after the groups so it rides the same seal-room
-  // measurement as everything else.
+  // The one static block the schema-driven page allows: a single sentence in
+  // Etymikon's about-line format (name, version, data note, Source link), so
+  // the two sibling apps read the same. Rendered after the groups so it rides
+  // the same seal-room measurement as everything else.
   function buildAbout() {
     var about = document.createElement("footer");
     about.className = "settings-about";
-    var name = document.createElement("p");
-    name.className = "about-name";
+    var line = document.createElement("p");
+    line.className = "about-line";
+    var version = extensionVersion();
     var wordmark = document.createElement("b");
     wordmark.textContent = "Okpyeon";
-    name.appendChild(wordmark);
-    name.appendChild(document.createTextNode(" 옥편 · 玉篇"));
-    var version = extensionVersion();
-    if (version) {
-      var vspan = document.createElement("span");
-      vspan.className = "about-version";
-      vspan.textContent = "v" + version;
-      name.appendChild(vspan);
-    }
-    about.appendChild(name);
-    var note = document.createElement("p");
-    note.className = "about-note";
-    note.appendChild(document.createTextNode(
-      "An offline hanja dictionary. Data from English Wiktionary (CC BY-SA). "));
+    line.appendChild(wordmark);
+    line.appendChild(document.createTextNode(
+      (version ? " " + version : "") +
+      ". Data from English Wiktionary, CC BY-SA. "));
     var repo = document.createElement("a");
     repo.className = "about-link";
     repo.href = "https://github.com/jjm4000/okpyeon";
     repo.target = "_blank";
     repo.rel = "noreferrer";
     repo.textContent = "GitHub ↗";
-    note.appendChild(repo);
-    about.appendChild(note);
+    line.appendChild(repo);
+    about.appendChild(line);
     return about;
   }
 

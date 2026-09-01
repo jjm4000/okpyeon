@@ -3533,22 +3533,24 @@
         return g.getAttribute("data-group");
       }).join("|"));
 
-    // The about block: the one static footer the schema-driven page allows.
-    // The harness has no chrome.*, so the nameplate renders with NO version
-    // number here; the number is a real-extension-only line by SPEC.
+    // The about block: the one static footer the schema-driven page allows,
+    // a single sentence in Etymikon's about-line format. The harness has no
+    // chrome.*, so the line renders with NO version number here; the number
+    // is a real-extension-only detail by SPEC.
     var aboutBlocks = document.querySelectorAll(".settings-about");
-    check("the settings view ends with exactly one about footer",
+    var aboutLine = aboutBlocks[0] && aboutBlocks[0].querySelector(".about-line");
+    check("the settings view ends with exactly one about line",
       aboutBlocks.length === 1 &&
       aboutBlocks[0] === byId("okp-view-settings").querySelector(".settings-body").lastElementChild &&
-      /Okpyeon 옥편 · 玉篇/.test(aboutBlocks[0].querySelector(".about-name").textContent) &&
-      !aboutBlocks[0].querySelector(".about-version"),
-      JSON.stringify(aboutBlocks[0] && aboutBlocks[0].querySelector(".about-name").textContent));
-    check("the about note carries the data line and the repo link",
-      /English Wiktionary \(CC BY-SA\)/.test(aboutBlocks[0].querySelector(".about-note").textContent) &&
-      aboutBlocks[0].querySelector(".about-link").getAttribute("href") ===
+      /^Okpyeon\. Data from English Wiktionary, CC BY-SA\./.test(aboutLine.textContent) &&
+      !/\d/.test(aboutLine.textContent.replace("GitHub", "")),
+      JSON.stringify(aboutLine && aboutLine.textContent));
+    check("the about line ends with the GitHub link",
+      aboutLine.querySelector(".about-link").getAttribute("href") ===
         "https://github.com/jjm4000/okpyeon" &&
-      aboutBlocks[0].querySelector(".about-link").getAttribute("target") === "_blank",
-      aboutBlocks[0].querySelector(".about-link").getAttribute("href"));
+      aboutLine.querySelector(".about-link").getAttribute("target") === "_blank" &&
+      /GitHub/.test(aboutLine.querySelector(".about-link").textContent),
+      aboutLine.querySelector(".about-link").getAttribute("href"));
     check("every entry renders one row of its own type, its label bound to its control",
       settingsRows().length === settingsView.schema.length &&
       Array.prototype.every.call(settingsRows(), function (row, i) {
