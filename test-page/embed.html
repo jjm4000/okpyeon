@@ -1130,6 +1130,7 @@
   function settingsCopy() {
     return {
       v: settings.v, defaultFolderId: settings.defaultFolderId,
+      language: settings.language,
       anki: {
         wordFront: settings.anki.wordFront,
         wordBack: settings.anki.wordBack.slice(),
@@ -1430,6 +1431,45 @@
     fail: function (which, on) { savedFail[which] = on !== false; }
   };
 
+  /* ---- Korean language mode ADDENDUM: the message tables ------------------ *
+   * The worker's messagesGet, answered from the packaged files themselves so
+   * the ko sweep runs against the real table. fetch() of a relative file
+   * works over http:// only; under file:// the answer is {ok:false}, the
+   * loader keeps its built-in English, and the language checks skip.
+   * -------------------------------------------------------------------- */
+  var messagesCache = Object.create(null);
+  function messagesTable(lang) {
+    var chosen = lang === "ko" ? "ko" : "en";
+    if (!messagesCache[chosen]) {
+      messagesCache[chosen] = fetch("../extension/_locales/" + chosen + "/messages.json")
+        .then(function (res) {
+          if (!res.ok) throw new Error("HTTP " + res.status);
+          return res.json();
+        })
+        .then(function (messages) {
+          return { ok: true, lang: chosen, messages: messages };
+        })
+        .catch(function (e) {
+          delete messagesCache[chosen];
+          return { ok: false, error: String(e) };
+        });
+    }
+    return messagesCache[chosen];
+  }
+
+  // English byte-identity anchors (Korean language mode ADDENDUM): the
+  // outerHTML of three fixture views as the renderer produced them BEFORE
+  // its copy went through the message table (학생 word card, 靴 char card,
+  // 국 reading list; `.more` expanders stripped, since those depend on font
+  // metrics). Captured by rendering the pre-port content.js against this
+  // very fixture in headless Chrome. Equality with a fresh render proves the
+  // English surface is byte-for-byte what it was.
+  var SNAPSHOTS = {
+    word: "<div class=\"card\"><div class=\"hedge\"><\/div><div class=\"word-body\"><div class=\"head\"><div class=\"surface\">學生<\/div><div class=\"headmeta\"><div class=\"hangul\"><span class=\"rnav\" title=\"Look up 학생\" aria-label=\"Look up 학생\" role=\"button\" tabindex=\"0\">학생<\/span><\/div><\/div><button class=\"save save--unknown\" type=\"button\" aria-pressed=\"false\" aria-label=\"Save 學生\" title=\"Save\">☆<\/button><a class=\"wiki\" href=\"https://en.wiktionary.org/wiki/%ED%95%99%EC%83%9D#Korean\" target=\"_blank\" rel=\"noopener noreferrer\" aria-label=\"Wiktionary entry for 학생 (opens in a new tab)\">Wiktionary ↗<\/a><\/div><div class=\"glosses\"><div class=\"gloss\"><div class=\"clampwrap\"><span class=\"gloss-text clamp clamp-2\">Student; pupil<\/span><\/div><\/div><\/div><div class=\"chips\"><span class=\"chip nav\" aria-label=\"學 배울 학\" role=\"button\" tabindex=\"0\"><span class=\"chip-glyph\">學<\/span><span class=\"chip-text\">배울 학<\/span><\/span><span class=\"chip nav\" aria-label=\"生 날 생\" role=\"button\" tabindex=\"0\"><span class=\"chip-glyph\">生<\/span><span class=\"chip-text\">날 생<\/span><\/span><\/div><div class=\"entry-row usedin-row nav\" role=\"button\" tabindex=\"0\"><span class=\"usedin-text\">Used in <b>6<\/b> larger words<\/span><\/div><\/div><div class=\"parts\"><\/div><div class=\"components\"><div class=\"label\">Component hanja<\/div><div class=\"component-list\"><div class=\"card component\"><div class=\"head\"><div class=\"surface\">學<\/div><div class=\"headmeta\"><div class=\"eumhun\"><span class=\"hun\">배울 <\/span><span class=\"rnav\" title=\"Characters read 학\" aria-label=\"Characters read 학\" role=\"button\" tabindex=\"0\">학<\/span><span class=\"edu-badge edu-badge--lvlM\" title=\"MOE curriculum, middle school (중학교용)\" aria-label=\"MOE curriculum, middle school (중학교용)\">Middle school<\/span><\/div><\/div><button class=\"save save--unknown\" type=\"button\" aria-pressed=\"false\" aria-label=\"Save 學\" title=\"Save\">☆<\/button><a class=\"wiki\" href=\"https://en.wiktionary.org/wiki/%E5%AD%B8#Korean\" target=\"_blank\" rel=\"noopener noreferrer\" aria-label=\"Wiktionary entry for 學 (opens in a new tab)\">Wiktionary ↗<\/a><\/div><div class=\"glosses numbered\"><div class=\"gloss\"><span class=\"gloss-num\">1.<\/span><div class=\"clampwrap\"><span class=\"gloss-text clamp clamp-2\">To learn; study<\/span><\/div><\/div><div class=\"gloss\"><span class=\"gloss-num\">2.<\/span><div class=\"clampwrap\"><span class=\"gloss-text clamp clamp-2\">School; learning<\/span><\/div><\/div><\/div><div class=\"label\">Compounds<\/div><div class=\"compounds\"><div class=\"entry-row compound-row nav\" role=\"button\" tabindex=\"0\"><div class=\"clampwrap\"><span class=\"compound clamp clamp-1\"><span class=\"cpd-hangul\">학생<\/span><span class=\"cpd-hanja\"> (學生)<\/span><span class=\"cpd-gloss\">: student<\/span><\/span><\/div><\/div><div class=\"entry-row compound-row nav\" role=\"button\" tabindex=\"0\"><div class=\"clampwrap\"><span class=\"compound clamp clamp-1\"><span class=\"cpd-hangul\">대학<\/span><span class=\"cpd-hanja\"> (大學)<\/span><span class=\"cpd-gloss\">: university<\/span><\/span><\/div><\/div><div class=\"entry-row compound-row nav\" role=\"button\" tabindex=\"0\"><div class=\"clampwrap\"><span class=\"compound clamp clamp-1\"><span class=\"cpd-hangul\">학교<\/span><span class=\"cpd-hanja\"> (學校)<\/span><span class=\"cpd-gloss\">: school<\/span><\/span><\/div><\/div><div class=\"entry-row compound-row nav\" role=\"button\" tabindex=\"0\"><div class=\"clampwrap\"><span class=\"compound clamp clamp-1\"><span class=\"cpd-hangul\">과학<\/span><span class=\"cpd-hanja\"> (科學)<\/span><span class=\"cpd-gloss\">: science<\/span><\/span><\/div><\/div><div class=\"entry-row compound-row\"><div class=\"clampwrap\"><span class=\"compound clamp clamp-1\"><span class=\"cpd-hangul\">학벌<\/span><span class=\"cpd-gloss\">: academic clique<\/span><\/span><\/div><\/div><\/div><button class=\"cpd-more\" type=\"button\">Show 5 more (13)<\/button><button class=\"cpd-more cpd-all\" type=\"button\">Show all (17)<\/button><\/div><div class=\"card component\"><div class=\"head\"><div class=\"surface\">生<\/div><div class=\"headmeta\"><div class=\"eumhun\"><span class=\"hun\">날 <\/span><span class=\"rnav\" title=\"Characters read 생\" aria-label=\"Characters read 생\" role=\"button\" tabindex=\"0\">생<\/span><span class=\"edu-badge edu-badge--lvlM\" title=\"MOE curriculum, middle school (중학교용)\" aria-label=\"MOE curriculum, middle school (중학교용)\">Middle school<\/span><\/div><\/div><button class=\"save save--unknown\" type=\"button\" aria-pressed=\"false\" aria-label=\"Save 生\" title=\"Save\">☆<\/button><a class=\"wiki\" href=\"https://en.wiktionary.org/wiki/%E7%94%9F#Korean\" target=\"_blank\" rel=\"noopener noreferrer\" aria-label=\"Wiktionary entry for 生 (opens in a new tab)\">Wiktionary ↗<\/a><\/div><div class=\"glosses numbered\"><div class=\"gloss\"><span class=\"gloss-num\">1.<\/span><div class=\"clampwrap\"><span class=\"gloss-text clamp clamp-2\">To be born; to live<\/span><\/div><\/div><div class=\"gloss\"><span class=\"gloss-num\">2.<\/span><div class=\"clampwrap\"><span class=\"gloss-text clamp clamp-2\">Raw; fresh<\/span><\/div><\/div><\/div><div class=\"label\">Compounds<\/div><div class=\"compounds\"><div class=\"entry-row compound-row nav\" role=\"button\" tabindex=\"0\"><div class=\"clampwrap\"><span class=\"compound clamp clamp-1\"><span class=\"cpd-hangul\">학생<\/span><span class=\"cpd-hanja\"> (學生)<\/span><span class=\"cpd-gloss\">: student<\/span><\/span><\/div><\/div><div class=\"entry-row compound-row nav\" role=\"button\" tabindex=\"0\"><div class=\"clampwrap\"><span class=\"compound clamp clamp-1\"><span class=\"cpd-hangul\">생일<\/span><span class=\"cpd-hanja\"> (生日)<\/span><span class=\"cpd-gloss\">: birthday<\/span><\/span><\/div><\/div><\/div><\/div><\/div><\/div><\/div>",
+    char: "<div class=\"card\"><div class=\"head\"><div class=\"surface\">靴<\/div><div class=\"headmeta\"><div class=\"eumhun\"><span class=\"hun\">신 <\/span><span class=\"rnav\" title=\"Characters read 화\" aria-label=\"Characters read 화\" role=\"button\" tabindex=\"0\">화<\/span><span class=\"edu-badge edu-badge--lvlR\" title=\"Archaic, specialist, or reading-only (Okpyeon's classification)\" aria-label=\"Archaic, specialist, or reading-only (Okpyeon's classification)\">Rare<\/span><\/div><\/div><button class=\"save save--unknown\" type=\"button\" aria-pressed=\"false\" aria-label=\"Save 靴\" title=\"Save\">☆<\/button><a class=\"wiki\" href=\"https://en.wiktionary.org/wiki/%E9%9D%B4#Korean\" target=\"_blank\" rel=\"noopener noreferrer\" aria-label=\"Wiktionary entry for 靴 (opens in a new tab)\">Wiktionary ↗<\/a><\/div><div class=\"glosses\"><div class=\"gloss\"><div class=\"clampwrap\"><span class=\"gloss-text clamp clamp-2\">Shoe; boot<\/span><\/div><\/div><\/div><div class=\"madeof\"><div class=\"entry-row madeof-row nav\" aria-expanded=\"false\" role=\"button\" tabindex=\"0\"><div class=\"clampwrap\"><span class=\"madeof-text clamp clamp-1\">Made of <span class=\"madeof-glyph\">革<\/span> + <span class=\"madeof-glyph\">亻<\/span> + <span class=\"madeof-glyph\">乚<\/span> + <span class=\"madeof-glyph\">㇒<\/span><\/span><\/div><\/div><div class=\"madeof-list\" hidden=\"\"><div class=\"entry-row madeof-part nav\" role=\"button\" tabindex=\"0\"><span class=\"r-glyph\">革<\/span><div class=\"clampwrap\"><span class=\"r-text clamp clamp-1\"><span class=\"r-eumhun\">가죽 혁<\/span><span class=\"r-gloss\">  leather; hide<\/span><\/span><\/div><\/div><div class=\"entry-row madeof-part nav\" role=\"button\" tabindex=\"0\"><span class=\"r-glyph\">亻<\/span><div class=\"clampwrap\"><span class=\"r-text clamp clamp-1\"><span class=\"r-eumhun\">사람 인<\/span><span class=\"r-gloss\">  person; human being<\/span><\/span><\/div><\/div><div class=\"entry-row madeof-part inert\"><span class=\"r-glyph\">乚<\/span><div class=\"clampwrap\"><span class=\"r-text clamp clamp-1\"><span class=\"madeof-name\">hidden<\/span><\/span><\/div><\/div><div class=\"entry-row madeof-part inert\"><span class=\"r-glyph\">㇒<\/span><div class=\"clampwrap\"><span class=\"r-text clamp clamp-1\"><\/span><\/div><\/div><\/div><\/div><div class=\"label\">Compounds<\/div><div class=\"compounds\"><div class=\"entry-row compound-row nav\" role=\"button\" tabindex=\"0\"><div class=\"clampwrap\"><span class=\"compound clamp clamp-1\"><span class=\"cpd-hangul\">군화<\/span><span class=\"cpd-hanja\"> (軍靴)<\/span><span class=\"cpd-gloss\">: military boots<\/span><\/span><\/div><\/div><\/div><\/div>",
+    reading: "<div class=\"card reading\"><div class=\"reading-title\">5 hanja read <b>국<\/b><\/div><div class=\"reading-list\"><div class=\"reading-row\" role=\"button\" tabindex=\"0\"><span class=\"r-glyph\">國<\/span><span class=\"r-text\"><span class=\"r-eumhun\">나라 국<\/span><span class=\"edu-badge edu-badge--lvlM\" title=\"MOE curriculum, middle school (중학교용)\" aria-label=\"MOE curriculum, middle school (중학교용)\">Middle school<\/span><span class=\"r-gloss\">  country; state; nation<\/span><\/span><\/div><div class=\"reading-row\" role=\"button\" tabindex=\"0\"><span class=\"r-glyph\">局<\/span><span class=\"r-text\"><span class=\"r-eumhun\">판 국<\/span><span class=\"edu-badge edu-badge--lvlH\" title=\"MOE curriculum, high school (고등학교용)\" aria-label=\"MOE curriculum, high school (고등학교용)\">High school<\/span><span class=\"r-gloss\">  bureau; office; situation<\/span><\/span><\/div><div class=\"reading-row\" role=\"button\" tabindex=\"0\"><span class=\"r-glyph\">菊<\/span><span class=\"r-text\"><span class=\"r-eumhun\">국화 국<\/span><span class=\"edu-badge edu-badge--lvlA\" title=\"Beyond the school curriculum; attested in real vocabulary (Okpyeon's classification)\" aria-label=\"Beyond the school curriculum; attested in real vocabulary (Okpyeon's classification)\">Advanced<\/span><span class=\"r-gloss\">  chrysanthemum<\/span><\/span><\/div><div class=\"reading-row\" role=\"button\" tabindex=\"0\"><span class=\"r-glyph\">鞠<\/span><span class=\"r-text\"><span class=\"r-eumhun\">공 국<\/span><span class=\"edu-badge edu-badge--lvlR\" title=\"Archaic, specialist, or reading-only (Okpyeon's classification)\" aria-label=\"Archaic, specialist, or reading-only (Okpyeon's classification)\">Rare<\/span><span class=\"r-gloss\">  leather ball; to rear<\/span><\/span><\/div><div class=\"reading-row\" role=\"button\" tabindex=\"0\"><span class=\"r-glyph\">麴<\/span><span class=\"r-text\"><span class=\"r-eumhun\">누룩 국<\/span><span class=\"edu-badge edu-badge--lvlR\" title=\"Archaic, specialist, or reading-only (Okpyeon's classification)\" aria-label=\"Archaic, specialist, or reading-only (Okpyeon's classification)\">Rare<\/span><span class=\"r-gloss\">  yeast; malt<\/span><\/span><\/div><\/div><\/div>"
+  };
+
   globalThis.__hanjaHoverTestRuntime = {
     __isStub: true,
     __calls: 0,          // dictionary sendMessage — proves "back" doesn't re-query
@@ -1462,11 +1502,16 @@
     __openTabCalls: 0,
     __lastOpenTabUrl: null,
     __failOpenTab: false,
+    // {type:"messagesGet"} (Korean language mode ADDENDUM), answered from
+    // the packaged files; see messagesTable.
+    __messagesCalls: 0,
     sendMessage: function (msg, cb) {
       // Dictionary traffic only. The saved store keeps its own counters, so
       // every "this view was served from cache" proof stays a statement about
       // LOOKUPS and does not quietly start counting savedCheck round-trips.
-      if (!(msg && SAVED_TYPES[msg.type] === 1)) this.__calls++;
+      if (!(msg && (SAVED_TYPES[msg.type] === 1 || msg.type === "messagesGet"))) {
+        this.__calls++;
+      }
       var resp;
       try {
         if (msg && msg.type === "lookup") {
@@ -1517,6 +1562,9 @@
           resp = this.__failOpenTab
             ? { ok: false, error: "url rejected" }
             : { ok: true };
+        } else if (msg && msg.type === "messagesGet") {
+          this.__messagesCalls++;
+          resp = messagesTable(msg.lang);
         } else if (msg && SAVED_TYPES[msg.type] === 1) {
           resp = savedMessage(msg);
         } else {
@@ -1553,7 +1601,10 @@
     __fullCompounds: fullCompounds,
     __usedIn: buildUsedIn,
     __foundIn: buildFoundIn,
-    __savedStore: savedStore
+    __savedStore: savedStore,
+    // The message tables and the English byte-identity anchors.
+    __messages: messagesTable,
+    __snapshots: SNAPSHOTS
   };
 })();
 </script>
@@ -1675,6 +1726,7 @@
 
 <!-- The real side panel boot chain, in the real order. The two view
      scripts self-register, which is what puts the nav row on the page. -->
+<script src="../extension/i18n.js"></script>
 <script src="../extension/sidepanel/boot.js"></script>
 <script src="../extension/content/content.js"></script>
 <script src="../extension/sidepanel/search-shell.js"></script>
@@ -3710,44 +3762,46 @@
     }
 
     var settingsOk = await settingsView.render();
-    check("the shipped schema is the SPEC's eight entries, in its four groups",
+    check("the shipped schema is the SPEC's nine entries, in its five groups",
       settingsOk === true &&
       settingsView.schema.map(function (e) { return e.group + "/" + e.key + ":" + e.type; })
-        .join(" ") === "Search/nativeWords:toggle " +
+        .join(" ") === "Language/language:select Search/nativeWords:toggle " +
         "Character cards/jaReadings:toggle Character cards/zhReadings:toggle " +
         "Saving/defaultFolderId:folder-select " +
         "Anki export/anki.wordFront:select Anki export/anki.wordBack:checkset " +
         "Anki export/anki.charFront:select Anki export/anki.charBack:checkset",
       settingsView.schema.map(function (e) { return e.key; }).join(","));
     check("the native word search row carries the SPEC's exact copy, default off",
-      settingsView.schema[0].label === "Native Korean word search" &&
-      settingsView.schema[0].description === "Adds native Korean words to " +
+      settingsView.schema[1].label === "Native Korean word search" &&
+      settingsView.schema[1].description === "Adds native Korean words to " +
         "the dictionary. Search shows all words, and highlighting a native " +
         "word on a page shows its meaning." &&
-      settingsView.schema[0].default === false &&
-      byId("okp-set-nativeWords").checked === false,
-      JSON.stringify(settingsView.schema[0].label));
-    check("the readings rows carry the SPEC's exact copy, both default off",
-      settingsView.schema[1].label === "Japanese reading" &&
-      settingsView.schema[1].description ===
-        "Shows the character's on'yomi reading, in katakana." &&
       settingsView.schema[1].default === false &&
-      byId("okp-set-jaReadings").checked === false &&
-      settingsView.schema[2].label === "Chinese reading" &&
+      byId("okp-set-nativeWords").checked === false,
+      JSON.stringify(settingsView.schema[1].label));
+    check("the readings rows carry the SPEC's exact copy, both default off",
+      settingsView.schema[2].label === "Japanese reading" &&
       settingsView.schema[2].description ===
-        "Shows the character's Mandarin reading, in pinyin." &&
+        "Shows the character's on'yomi reading, in katakana." &&
       settingsView.schema[2].default === false &&
+      byId("okp-set-jaReadings").checked === false &&
+      settingsView.schema[3].label === "Chinese reading" &&
+      settingsView.schema[3].description ===
+        "Shows the character's Mandarin reading, in pinyin." &&
+      settingsView.schema[3].default === false &&
       byId("okp-set-zhReadings").checked === false,
-      JSON.stringify(settingsView.schema[1].label + " / " +
-        settingsView.schema[2].label));
+      JSON.stringify(settingsView.schema[2].label + " / " +
+        settingsView.schema[3].label));
     check("the renderer emits one heading per group, in schema order",
-      settingsGroups().length === 4 &&
-      settingsGroups()[0].getAttribute("data-group") === "Search" &&
-      settingsGroups()[0].querySelector("h2.settings-heading").textContent === "Search" &&
-      settingsGroups()[1].getAttribute("data-group") === "Character cards" &&
-      settingsGroups()[2].getAttribute("data-group") === "Saving" &&
-      settingsGroups()[3].getAttribute("data-group") === "Anki export" &&
-      settingsGroups()[3].querySelector("h2.settings-heading").textContent ===
+      settingsGroups().length === 5 &&
+      settingsGroups()[0].getAttribute("data-group") === "Language" &&
+      settingsGroups()[0].querySelector("h2.settings-heading").textContent === "Language" &&
+      settingsGroups()[1].getAttribute("data-group") === "Search" &&
+      settingsGroups()[1].querySelector("h2.settings-heading").textContent === "Search" &&
+      settingsGroups()[2].getAttribute("data-group") === "Character cards" &&
+      settingsGroups()[3].getAttribute("data-group") === "Saving" &&
+      settingsGroups()[4].getAttribute("data-group") === "Anki export" &&
+      settingsGroups()[4].querySelector("h2.settings-heading").textContent ===
         "Anki export",
       Array.prototype.map.call(settingsGroups(), function (g) {
         return g.getAttribute("data-group");
@@ -3762,7 +3816,7 @@
     check("the settings view ends with exactly one about line",
       aboutBlocks.length === 1 &&
       aboutBlocks[0] === byId("okp-view-settings").querySelector(".settings-body").lastElementChild &&
-      /^Okpyeon\. Data from English Wiktionary, CC BY-SA\./.test(aboutLine.textContent) &&
+      /^Okpyeon\. Data from English Wiktionary and Urimalsaem, CC BY-SA\. /.test(aboutLine.textContent) &&
       !/\d/.test(aboutLine.textContent.replace("GitHub", "")),
       JSON.stringify(aboutLine && aboutLine.textContent));
     check("the about line ends with the GitHub link",
@@ -3808,10 +3862,11 @@
       "roomy=" + settingsSealView.classList.contains("view--roomy"));
     var sealFrame = document.querySelector(".panel-frame");
     var sealFrameH = sealFrame.style.height;
-    // 1040, not 880: the Character cards group (sibling Sino readings
-    // ADDENDUM) made the settings column a heading and two rows taller
-    // again, and the check is about the tall case.
-    sealFrame.style.height = "1040px";
+    // 1200, not 1040: the Language group (Korean language mode ADDENDUM)
+    // made the settings column a heading and a described select row taller
+    // again (1040 had replaced 880 for the Character cards group), and the
+    // check is about the tall case.
+    sealFrame.style.height = "1200px";
     await settingsView.render();
     await wait(250);
     check("a taller panel has room under the settings and the seal shows",
@@ -3902,16 +3957,16 @@
     });
     await settingsView.render();
     check("a new setting is ONE schema entry: new heading, new row, nothing else",
-      settingsGroups().length === 5 &&
-      settingsGroups()[4].getAttribute("data-group") === "Harness" &&
-      settingsGroups()[4].querySelector(".settings-heading").textContent === "Harness" &&
+      settingsGroups().length === 6 &&
+      settingsGroups()[5].getAttribute("data-group") === "Harness" &&
+      settingsGroups()[5].querySelector(".settings-heading").textContent === "Harness" &&
       !!settingsBody.querySelector('.settings-row[data-key="probeSetting"]') &&
       byId("okp-set-probeSetting").value === "a",
       "groups=" + settingsGroups().length + " rows=" + settingsRows().length);
     settingsView.schema.pop();
     await settingsView.render();
     check("removing the entry removes its row and its heading again",
-      settingsGroups().length === 4 && settingsRows().length === 8 &&
+      settingsGroups().length === 5 && settingsRows().length === 9 &&
       !settingsBody.querySelector('.settings-row[data-key="probeSetting"]'),
       "groups=" + settingsGroups().length);
 
@@ -3926,7 +3981,7 @@
     await settingsView.render();
     check("and the controls come straight back, on the values that were written",
       !settingsBody.querySelector(".settings-unavailable") &&
-      settingsRows().length === 8 &&
+      settingsRows().length === 9 &&
       byId("okp-set-anki-wordFront").value === "hangul" &&
       checkedIn("anki.charBack").join(",") === "char,eumhun,lvl",
       checkedIn("anki.charBack").join(","));
@@ -4527,6 +4582,300 @@
         accessors.length === 1 && !bypasses.length,
         "accessors=" + accessors.length + " bypasses=" + bypasses.length);
     }
+
+    /* ==================================================================
+     * Korean language mode (SPEC ADDENDUM 2026-09-01), sidebar surface.
+     *
+     * The loader precedes the boot chain; English is the built-in table
+     * and renders byte-for-byte what it did before the port (the same
+     * snapshots index.html checks: embed cards are the same markup); the
+     * Language row is the first settings entry; a storage change to
+     * 한국어 re-renders every surface; and under 한국어 no English copy
+     * survives anywhere in the page.
+     * ================================================================== */
+    var i18n = globalThis.__okpyeonI18n;
+    store.reset();
+    sidebar.showView("search");
+    shell = reinit();
+    await wait(TAIL);
+    check("the message-table loader precedes the boot chain, English active",
+      !!i18n && typeof i18n.t === "function" && i18n.language() === "en");
+
+    function snapshotOf(text, sel) {
+      api.showAt({ left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0 },
+        fake.__lookup(text).matches);
+      var clone = api.query(sel).cloneNode(true);
+      Array.prototype.slice.call(clone.querySelectorAll(".more")).forEach(function (b) {
+        b.parentNode.removeChild(b);
+      });
+      return clone.outerHTML;
+    }
+    function firstDiff(a, b) {
+      var i = 0;
+      while (i < a.length && a[i] === b[i]) i++;
+      return "at " + i + ": " + JSON.stringify(b.slice(Math.max(0, i - 40), i + 60));
+    }
+    [["word", "학생", ".view > .card", "the 學生 word card"],
+     ["char", "靴", ".top-chars > .card", "the 靴 char card"],
+     ["reading", "국", ".card.reading", "the 국 reading list"]].forEach(function (s) {
+      var html = snapshotOf(s[1], s[2]);
+      check("EN byte-identity: " + s[3] + " renders exactly the pre-port snapshot",
+        html === fake.__snapshots[s[0]], firstDiff(fake.__snapshots[s[0]], html));
+    });
+    embed.clear();
+
+    // --- the Language row -------------------------------------------------
+    sidebar.showView("settings");
+    await settingsView.render();
+    var langEntry = settingsView.schema[0];
+    check("the Language row is the first entry, in its own group at the top, a two-value select",
+      !!langEntry && langEntry.key === "language" && langEntry.type === "select" &&
+      langEntry.group === "Language" && langEntry.label === "Language" &&
+      langEntry.description === "Menus, cards, and definitions" &&
+      langEntry.options.map(function (o) { return o.value + "=" + o.label; }).join("|") ===
+        "en=English|ko=한국어" &&
+      settingsGroups()[0].getAttribute("data-group") === "Language" &&
+      byId("okp-set-language").tagName === "SELECT" &&
+      byId("okp-set-language").value === "en",
+      JSON.stringify(langEntry && [langEntry.key, langEntry.group, langEntry.label]));
+    check("schema copy is message keys behind live text getters, never a literal",
+      langEntry.labelKey === "language.label" && langEntry.groupKey === "group.language" &&
+      !!Object.getOwnPropertyDescriptor(langEntry, "label").get &&
+      settingsView.schema.every(function (e) {
+        return typeof e.labelKey === "string" && typeof e.groupKey === "string";
+      }));
+
+    var enTable = await fake.__messages("en");
+    var koTable = await fake.__messages("ko");
+    if (!enTable.ok || !koTable.ok) {
+      skip("a storage change to 한국어 re-renders every surface, and the KO sweep",
+        "file:// blocks fetching the message tables; serve the repo over http://");
+    } else {
+      // No English message may survive: text nodes and attributes against
+      // the English values exactly, and each element's own text against
+      // the templates with their slots wild. Values the two tables share
+      // are the fixed tokens (Wiktionary, Anki, CSV, GitHub, Okpyeon).
+      var sweepExact = Object.create(null);
+      var sweepTemplates = [];
+      Object.keys(enTable.messages).forEach(function (key) {
+        var value = enTable.messages[key].message;
+        if (!value) return;
+        if (koTable.messages[key] && koTable.messages[key].message === value) return;
+        if (/\$[A-Z_]+\$/.test(value)) {
+          sweepTemplates.push(new RegExp("^" + value.split(/\$[A-Z_]+\$/).map(function (part) {
+            return part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+          }).join("[\\s\\S]+") + "$"));
+        } else {
+          sweepExact[value] = key;
+        }
+      });
+      // Data, not copy: stored folder names (the fixture's f0 is "Saved", an
+      // English message too), dictionary text, and the option lists built
+      // from folders. Elements under these carry data and are not swept.
+      var DATA_SELECTOR = ".saved-primary, .saved-secondary, .saved-gloss, " +
+        ".saved-folder-name, .gloss-text, .cpd-gloss, .r-gloss, .p-gloss, .madeof-name, " +
+        ".interp-from, .savebubble-folder option, #okp-saved-filter option, " +
+        "#okp-saved-move option, #okp-set-defaultFolderId option";
+      function isData(text) {
+        return store.state().folders.some(function (f) { return f.name === text; });
+      }
+      function inData(node) {
+        var el = node.nodeType === 1 ? node : node.parentNode;
+        return !!(el && el.closest && el.closest(DATA_SELECTOR));
+      }
+      function englishIn(text) {
+        var s = String(text == null ? "" : text).trim();
+        if (!s || isData(s)) return false;
+        if (sweepExact[s]) return true;
+        for (var i = 0; i < sweepTemplates.length; i++) {
+          if (sweepTemplates[i].test(s)) return true;
+        }
+        return false;
+      }
+      function sweep(root, where) {
+        var found = [];
+        if (!root) return found;
+        var nodes = [root].concat(Array.prototype.slice.call(root.querySelectorAll("*")));
+        nodes.forEach(function (node) {
+          if (inData(node)) return;
+          ["title", "aria-label", "placeholder"].forEach(function (attr) {
+            if (node.hasAttribute(attr) && englishIn(node.getAttribute(attr))) {
+              found.push(where + " " + attr + "=" + JSON.stringify(node.getAttribute(attr)));
+            }
+          });
+          if (englishIn(node.textContent)) {
+            found.push(where + " <" + node.tagName.toLowerCase() + "> " +
+              JSON.stringify(node.textContent.trim().slice(0, 60)));
+          }
+        });
+        var walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+        var textNode;
+        while ((textNode = walker.nextNode())) {
+          var text = textNode.nodeValue.trim();
+          if (text && sweepExact[text] && !isData(text) && !inData(textNode)) {
+            found.push(where + " text " + JSON.stringify(text));
+          }
+        }
+        return found;
+      }
+      function aboutText() {
+        var line = document.querySelector(".settings-about .about-line");
+        return line ? line.textContent : "";
+      }
+
+      // The select writes the setting like any other control.
+      var langSel = byId("okp-set-language");
+      langSel.value = "ko";
+      fireChange(langSel);
+      await wait(TAIL);
+      check("the Language select writes through the worker, and the view follows at once",
+        store.state().settings.language === "ko" && i18n.language() === "ko",
+        "stored=" + store.state().settings.language + " active=" + i18n.language());
+
+      // The storage path on its own: English put back silently, then the
+      // change record every other surface hears.
+      await i18n.setLanguage("en");
+      await wait(TAIL);
+      check("sanity: English again, tabs included",
+        i18n.language() === "en" && nav.querySelector(".tab--saved").textContent === "Saved");
+      var applied = await sidebar.handleStorageChanged(
+        { okpSettings: { newValue: store.state().settings } }, "local");
+      await wait(TAIL);
+      check("a storage change to 한국어 re-renders every surface in Korean",
+        applied === true && i18n.language() === "ko" &&
+        nav.querySelector(".tab--search").textContent === "검색" &&
+        nav.querySelector(".tab--saved").textContent === "저장" &&
+        nav.querySelector(".tab--settings").textContent === "설정" &&
+        nav.querySelector(".tab--settings").title === "저장 및 내보내기 설정" &&
+        settingsGroups()[0].getAttribute("data-group") === "언어" &&
+        settingsGroups()[0].querySelector(".settings-heading").textContent === "언어" &&
+        byId("okp-set-language").value === "ko" &&
+        brand.title === "玉篇 찾기" &&
+        input.getAttribute("aria-label") === "한자, 한자어, 또는 한 글자를 검색",
+        "applied=" + applied + " lang=" + i18n.language() + " tabs=" +
+          Array.prototype.map.call(nav.querySelectorAll(".tab"), function (b) {
+            return b.textContent;
+          }).join(",") + " group=" + settingsGroups()[0].getAttribute("data-group"));
+      check("the settings copy is Korean down to the toggle text and the about line",
+        byId("okp-set-nativeWords").parentNode.querySelector("span").textContent === "사용" &&
+        settingsBody.querySelector('.settings-row[data-key="nativeWords"] .settings-label')
+          .textContent === "고유어 검색" &&
+        settingsGroups()[4].getAttribute("data-group") === "Anki 내보내기" &&
+        aboutText() === "Okpyeon. 자료: 영어 위키낱말사전, 우리말샘 (CC BY-SA). GitHub ↗",
+        JSON.stringify(aboutText()));
+      check("a storage change that says nothing about the language reads as English",
+        (await sidebar.handleStorageChanged({ okpSaved: { newValue: 1 } }, "local")) === false &&
+        i18n.language() === "ko");
+
+      var violations = sweep(app, "settings");
+
+      // The saved view: rows, folder bands, the count line, each inline form.
+      store.reset();
+      await send({ type: "savedToggle", kind: "word", key: "國民" });
+      await send({ type: "savedToggle", kind: "char", key: "國" });
+      var koFolder = await send({ type: "folderCreate", name: "Exam words" });
+      var koStudent = await send({ type: "savedToggle", kind: "word", key: "學生" });
+      await send({ type: "savedMove", ids: [koStudent.item.id], folderId: koFolder.folder.id });
+      await send({ type: "savedToggle", kind: "char", key: "㐀" });
+      sidebar.showView("saved");
+      await savedView.refresh();
+      await wait(TAIL);
+      check("the saved view's chrome is Korean",
+        byId("okp-saved-new").textContent === "새 폴더" &&
+        byId("okp-saved-filter").options[0].textContent === "전체 (4)" &&
+        byId("okp-saved-move").options[0].textContent === "폴더로 이동…" &&
+        byId("okp-saved-actions").querySelector(".saved-count").textContent === "표시된 4개 전체" &&
+        byId("okp-saved-list").querySelector(".saved-missing").textContent === "사전에서 사라진 항목",
+        byId("okp-saved-bar").textContent + " | " + byId("okp-saved-actions").textContent);
+      violations = violations.concat(sweep(app, "saved list"));
+      byId("okp-saved-new").click();
+      violations = violations.concat(sweep(byId("okp-saved-bar"), "saved new-folder form"));
+      byId("okp-saved-bar").querySelector(".saved-name-cancel").click();
+      byId("okp-saved-filter").value = koFolder.folder.id;
+      fireChange(byId("okp-saved-filter"));
+      byId("okp-saved-delete").click();
+      check("the folder delete confirmation names the folder and the target in Korean",
+        byId("okp-saved-bar").querySelector(".saved-confirm-text").textContent ===
+          "‘Exam words’ 폴더를 삭제할까요? 항목 1개는 ‘Saved’ 폴더로 옮겨집니다.",
+        byId("okp-saved-bar").querySelector(".saved-confirm-text").textContent);
+      violations = violations.concat(sweep(byId("okp-saved-bar"), "saved delete-folder confirm"));
+      byId("okp-saved-bar").querySelector(".saved-confirm-no").click();
+      byId("okp-saved-filter").value = "";
+      fireChange(byId("okp-saved-filter"));
+      byId("okp-saved-remove").click();
+      check("the batch delete confirmation is Korean",
+        byId("okp-saved-actions").querySelector(".saved-confirm-text").textContent === "4개를 삭제할까요?",
+        byId("okp-saved-actions").querySelector(".saved-confirm-text").textContent);
+      violations = violations.concat(sweep(byId("okp-saved-actions"), "saved delete confirm"));
+      byId("okp-saved-actions").querySelector(".saved-confirm-no").click();
+      byId("okp-saved-export").click();
+      violations = violations.concat(sweep(byId("okp-saved-actions"), "saved export choice"));
+      byId("okp-saved-actions").querySelector(".saved-export-cancel").click();
+      store.reset();
+      await savedView.refresh();
+      check("the empty state is Korean and keeps the ☆",
+        byId("okp-saved-list").querySelector(".saved-empty").textContent ===
+          "아직 저장한 항목이 없습니다. 카드의 ☆을 눌러 저장하세요.",
+        byId("okp-saved-list").textContent);
+      violations = violations.concat(sweep(app, "saved empty"));
+
+      // The search view: the three state lines, the pills, and the cards.
+      sidebar.showView("search");
+      // reinit() hands the shell no scope box, so the pills need it named.
+      shell = reinit({ nativeEnabled: true, scopeBox: document.getElementById("okp-scope") });
+      await wait(TAIL);
+      check("the empty-state line and the scope pills are Korean",
+        status.textContent === "한자, 한국어 단어, 또는 한 글자를 검색하세요." &&
+        Array.prototype.map.call(document.querySelectorAll(".scope-pill"), function (b) {
+          return b.textContent + "/" + b.title;
+        }).join("|") === "전체 단어/고유어 포함|한자만/한자어만",
+        JSON.stringify(status.textContent));
+      violations = violations.concat(sweep(app, "search empty"));
+      // 하늘 is the fixture's no-match query with native words off.
+      shell.setNativeEnabled(false);
+      await shell.search("하늘");
+      check("the no-result line is Korean, with the query in Korean quotes",
+        shell.state() === "none" && status.textContent === "‘하늘’ 항목이 없습니다.",
+        shell.state() + " " + JSON.stringify(status.textContent));
+      fake.__failLookup = true;
+      await shell.search("국민");
+      check("the failure line is Korean",
+        status.textContent === "검색에 실패했습니다. 다시 시도하세요.", JSON.stringify(status.textContent));
+      fake.__failLookup = false;
+      await shell.search("학생");
+      await wait(TAIL);
+      violations = violations.concat(sweep(app, "search results chrome"));
+      violations = violations.concat(sweep(api.query(".view"), "학생 cards"));
+      check("the cards under 한국어 carry Korean chrome",
+        api.query(".usedin-row").textContent === "더 긴 단어 6개에 쓰임" &&
+        api.query(".components .label").textContent === "구성 한자" &&
+        api.query(".edu-badge").textContent === "중학" &&
+        api.query(".cpd-more").textContent === "5개 더 보기 (13)" &&
+        api.query(".cpd-all").textContent === "전체 보기 (17)",
+        api.query(".usedin-row").textContent + " | " + api.query(".cpd-more").textContent);
+      check("KO sweep: no English copy anywhere in the page under 한국어",
+        violations.length === 0, violations.length + " hits: " + violations.slice(0, 6).join(" | "));
+
+      // Back to English through the same storage path.
+      await send({ type: "settingsSet", patch: { language: "en" } });
+      applied = await sidebar.handleStorageChanged(
+        { okpSettings: { newValue: store.state().settings } }, "local");
+      await wait(TAIL);
+      check("a storage change back to English re-renders in English again",
+        applied === true && i18n.language() === "en" &&
+        nav.querySelector(".tab--search").textContent === "Search" &&
+        nav.querySelector(".tab--saved").textContent === "Saved" &&
+        nav.querySelector(".tab--settings").textContent === "Settings" &&
+        api.query(".usedin-row").textContent === "Used in 6 larger words" &&
+        brand.title === "Look up 玉篇",
+        "lang=" + i18n.language() + " row=" + api.query(".usedin-row").textContent);
+      shell = reinit();
+      await wait(TAIL);
+      check("and the English state line is back",
+        status.textContent === "Search hanja, a Korean word, or a syllable.",
+        JSON.stringify(status.textContent));
+    }
+    store.reset();
 
     // Leave the page in a usable state for manual poking.
     tabsSpy.reset();

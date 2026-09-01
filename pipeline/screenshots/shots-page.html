@@ -264,12 +264,15 @@ globalThis.__hanjaHoverTestRuntime = {
   },
 };
 
-await new Promise((res, rej) => {
-  const s = document.createElement("script");
-  s.src = "/extension/content/content.js";
-  s.onload = res; s.onerror = rej;
-  document.head.appendChild(s);
-});
+// The message-table loader first, as the manifest's content_scripts list has it.
+for (const src of ["/extension/i18n.js", "/extension/content/content.js"]) {
+  await new Promise((res, rej) => {
+    const s = document.createElement("script");
+    s.src = src;
+    s.onload = res; s.onerror = rej;
+    document.head.appendChild(s);
+  });
+}
 
 const api = globalThis.__hanjaHover;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

@@ -29,109 +29,152 @@
   var sidebar = globalThis.__okpyeonSidebar;
   if (!sidebar || typeof sidebar.registerView !== "function") return;
 
+  // Copy comes through the message-table loader (i18n.js), which loads
+  // before this script on every surface; keys stand in on a page without it.
+  var I18N = globalThis.__okpyeonI18n || null;
+
+  function t(key, subs) {
+    return I18N ? I18N.t(key, subs) : String(key);
+  }
+
   /* ------------------------------------------------------------------ *
    * The schema
    *
    * Entry: {
-   *   key,         // dot-path into the settings object; also the control's id
-   *   group,       // heading it renders under; groups appear in schema order
-   *   type,        // "select" | "checkset" | "folder-select" | "toggle"
-   *   label,       // the visible label
-   *   description, // optional second line under the label, muted
-   *   options,     // [{value, label}] — omitted by folder-select, which
-   *                //   resolves its options from the worker's folders at
-   *                //   render time, and by toggle, which has none
-   *   default      // what a settings object without the key reads as
+   *   key,            // dot-path into the settings object; also the control's id
+   *   groupKey,       // message key of the heading it renders under; groups
+   *                   //   appear in schema order
+   *   type,           // "select" | "checkset" | "folder-select" | "toggle"
+   *   labelKey,       // message key of the visible label
+   *   descriptionKey, // optional: message key of the muted second line
+   *   options,        // [{value, labelKey}] — omitted by folder-select, which
+   *                   //   resolves its options from the worker's folders at
+   *                   //   render time, and by toggle, which has none
+   *   default         // what a settings object without the key reads as
    * }
+   *
+   * Copy is a KEY, never text (SPEC "Korean language mode"). withText()
+   * gives each entry the matching plain property (group, label, description,
+   * an option's label) as a getter over the loader, so the renderer and the
+   * harness read finished text in the active language. An entry with a
+   * literal group or label and no key (the harness's probe) still works: a
+   * getter is installed only where a key is given.
    * ------------------------------------------------------------------ */
 
+  function withText(spec) {
+    [["group", "groupKey"], ["label", "labelKey"], ["description", "descriptionKey"]]
+      .forEach(function (pair) {
+        if (typeof spec[pair[1]] !== "string") return;
+        Object.defineProperty(spec, pair[0], {
+          enumerable: true,
+          get: function () { return t(spec[pair[1]]); }
+        });
+      });
+    if (Array.isArray(spec.options)) spec.options = spec.options.map(withText);
+    return spec;
+  }
+
   var SETTINGS_SCHEMA = [
+    // Language (SPEC): one control, first group, drives chrome and
+    // definitions together. The two option labels are each language's own
+    // name and are the same in both tables.
+    {
+      key: "language",
+      groupKey: "group.language",
+      type: "select",
+      labelKey: "language.label",
+      descriptionKey: "language.sub",
+      options: [
+        { value: "en", labelKey: "language.en" },
+        { value: "ko", labelKey: "language.ko" }
+      ],
+      default: "en"
+    },
     {
       key: "nativeWords",
-      group: "Search",
+      groupKey: "group.search",
       type: "toggle",
-      label: "Native Korean word search",
-      description: "Adds native Korean words to the dictionary. Search shows " +
-        "all words, and highlighting a native word on a page shows its meaning.",
+      labelKey: "nativeWords.label",
+      descriptionKey: "nativeWords.sub",
       default: false
     },
     {
       key: "jaReadings",
-      group: "Character cards",
+      groupKey: "group.charCards",
       type: "toggle",
-      label: "Japanese reading",
-      description: "Shows the character's on'yomi reading, in katakana.",
+      labelKey: "jaReadings.label",
+      descriptionKey: "jaReadings.sub",
       default: false
     },
     {
       key: "zhReadings",
-      group: "Character cards",
+      groupKey: "group.charCards",
       type: "toggle",
-      label: "Chinese reading",
-      description: "Shows the character's Mandarin reading, in pinyin.",
+      labelKey: "zhReadings.label",
+      descriptionKey: "zhReadings.sub",
       default: false
     },
     {
       key: "defaultFolderId",
-      group: "Saving",
+      groupKey: "group.saving",
       type: "folder-select",
-      label: "By default, newly saved items go to",
+      labelKey: "defaultFolder.label",
       default: "f0"
     },
     {
       key: "anki.wordFront",
-      group: "Anki export",
+      groupKey: "group.anki",
       type: "select",
-      label: "Word cards: front",
+      labelKey: "anki.wordFront",
       options: [
-        { value: "hanja", label: "Hanja" },
-        { value: "hangul", label: "Hangul" }
+        { value: "hanja", labelKey: "anki.field.hanja" },
+        { value: "hangul", labelKey: "anki.field.hangul" }
       ],
       default: "hanja"
     },
     {
       key: "anki.wordBack",
-      group: "Anki export",
+      groupKey: "group.anki",
       type: "checkset",
-      label: "Word cards: back",
+      labelKey: "anki.wordBack",
       options: [
-        { value: "hanja", label: "Hanja" },
-        { value: "hangul", label: "Hangul" },
-        { value: "defs", label: "Definitions" }
+        { value: "hanja", labelKey: "anki.field.hanja" },
+        { value: "hangul", labelKey: "anki.field.hangul" },
+        { value: "defs", labelKey: "anki.field.defs" }
       ],
       default: ["hangul", "defs"]
     },
     {
       key: "anki.charFront",
-      group: "Anki export",
+      groupKey: "group.anki",
       type: "select",
-      label: "Character cards: front",
+      labelKey: "anki.charFront",
       options: [
-        { value: "char", label: "Character" },
-        { value: "eumhun", label: "Eum-hun" }
+        { value: "char", labelKey: "anki.field.char" },
+        { value: "eumhun", labelKey: "anki.field.eumhun" }
       ],
       default: "char"
     },
     {
       key: "anki.charBack",
-      group: "Anki export",
+      groupKey: "group.anki",
       type: "checkset",
-      label: "Character cards: back",
+      labelKey: "anki.charBack",
       options: [
-        { value: "char", label: "Character" },
-        { value: "eumhun", label: "Eum-hun" },
-        { value: "readings", label: "Readings" },
-        { value: "defs", label: "Definitions" },
-        { value: "lvl", label: "Level" },
+        { value: "char", labelKey: "anki.field.char" },
+        { value: "eumhun", labelKey: "anki.field.eumhun" },
+        { value: "readings", labelKey: "anki.field.readings" },
+        { value: "defs", labelKey: "anki.field.defs" },
+        { value: "lvl", labelKey: "anki.field.lvl" },
         // Sibling Sino readings: always offered, default unchecked, and
         // independent of the jaReadings/zhReadings display toggles. The
         // checkset is its own per-field choice.
-        { value: "ja", label: "Japanese reading" },
-        { value: "zh", label: "Chinese reading" }
+        { value: "ja", labelKey: "anki.field.ja" },
+        { value: "zh", labelKey: "anki.field.zh" }
       ],
       default: ["eumhun", "defs"]
     }
-  ];
+  ].map(withText);
 
   /* ------------------------------------------------------------------ *
    * Worker access — the same probe sidepanel.js uses.
@@ -233,7 +276,12 @@
   function write(entry, value) {
     return sendToWorker({ type: "settingsSet", patch: buildPatch(entry.key, value) })
       .then(function (res) {
-        if (res && res.ok === true && res.settings) settings = res.settings;
+        if (res && res.ok === true && res.settings) {
+          settings = res.settings;
+          // The language takes effect from the answer itself, ahead of the
+          // storage event every other surface waits for.
+          if (I18N) I18N.setLanguage(settings.language);
+        }
         return res;
       });
   }
@@ -315,7 +363,7 @@
     input.id = controlId(entry.key);
     input.checked = currentValue(entry) === true;
     var text = document.createElement("span");
-    text.textContent = "Enabled";
+    text.textContent = t("toggle.enabled");
     label.appendChild(input);
     label.appendChild(text);
     input.addEventListener("change", function () { write(entry, input.checked); });
@@ -351,7 +399,7 @@
     if (!available) {
       var note = document.createElement("p");
       note.className = "settings-unavailable";
-      note.textContent = "Settings are not available in this browser session.";
+      note.textContent = t("settings.unavailable");
       body.appendChild(note);
       return 0;
     }
@@ -416,26 +464,38 @@
   // The one static block the schema-driven page allows: a single sentence in
   // Etymikon's about-line format (name, version, data note, Source link), so
   // the two sibling apps read the same. Rendered after the groups so it rides
-  // the same seal-room measurement as everything else.
+  // the same seal-room measurement as everything else. The message carries
+  // the sentence; the wordmark and the link are its two built slots, and a
+  // page with no version (the harness, the staging replica) uses the
+  // message without that slot.
   function buildAbout() {
     var about = document.createElement("footer");
     about.className = "settings-about";
     var line = document.createElement("p");
     line.className = "about-line";
     var version = extensionVersion();
-    var wordmark = document.createElement("b");
-    wordmark.textContent = "Okpyeon";
-    line.appendChild(wordmark);
-    line.appendChild(document.createTextNode(
-      (version ? " " + version : "") +
-      ". Data from English Wiktionary, CC BY-SA. "));
-    var repo = document.createElement("a");
-    repo.className = "about-link";
-    repo.href = "https://github.com/jjm4000/okpyeon";
-    repo.target = "_blank";
-    repo.rel = "noreferrer";
-    repo.textContent = "GitHub ↗";
-    line.appendChild(repo);
+    var build = {
+      WORDMARK: function (text) {
+        var wordmark = document.createElement("b");
+        wordmark.textContent = text;
+        return wordmark;
+      },
+      GITHUB: function (text) {
+        var repo = document.createElement("a");
+        repo.className = "about-link";
+        repo.href = "https://github.com/jjm4000/okpyeon";
+        repo.target = "_blank";
+        repo.rel = "noreferrer";
+        repo.textContent = text;
+        return repo;
+      }
+    };
+    var subs = { WORDMARK: t("wordmark"), VERSION: version, GITHUB: t("link.github") };
+    if (I18N) {
+      I18N.render(line, version ? "about" : "about.noVersion", subs, build);
+    } else {
+      line.textContent = t("about");
+    }
     about.appendChild(line);
     return about;
   }
@@ -499,10 +559,18 @@
    * Registration
    * ------------------------------------------------------------------ */
 
+  // A language change rebuilds the page: every label is a getter over the
+  // loader, so one render is the whole of it.
+  if (I18N) {
+    I18N.onChange(function () {
+      if (body) render();
+    });
+  }
+
   sidebar.registerView({
     key: "settings",
-    label: "Settings",
-    title: "Saving and export settings",
+    labelKey: "tab.settings",
+    titleKey: "title.settings",
     mount: function (container) {
       root = container;
       // The jade seal is a permanent fixture of this view (user-directed),

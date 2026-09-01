@@ -34,20 +34,29 @@
 (function () {
   "use strict";
 
+  // Copy comes through the message-table loader (i18n.js), which loads
+  // before this script on every surface; keys stand in on a page without it.
+  var I18N = globalThis.__okpyeonI18n || null;
+
+  function t(key, subs) {
+    return I18N ? I18N.t(key, subs) : String(key);
+  }
+
   // Long enough that a burst of keystrokes collapses into one lookup, short
   // enough that the result feels like it arrived with the last character.
   var DEBOUNCE_MS = 200;
 
   // Every state is ONE short line: the popup is sized to its content, so a
   // multi-line hint would make an empty search look like a reserved panel.
+  // Read at call time, so the line follows the language setting.
   var DEFAULT_MESSAGES = {
     // Shown before anything has been typed.
-    empty: "Search hanja, a Korean word, or a syllable.",
+    empty: function () { return t("search.empty"); },
     // The search ran and the dictionary had nothing. Receives the query.
-    none: function (query) { return "No entry for “" + query + "”."; },
-    // The service worker failed or went away. Quiet and retryable — the next
+    none: function (query) { return t("search.none", { QUERY: query }); },
+    // The service worker failed or went away. Quiet and retryable: the next
     // keystroke (or Enter) simply tries again.
-    error: "Lookup failed — try again."
+    error: function () { return t("search.error"); }
   };
 
   var current = null; // one shell per page; see init()
@@ -55,8 +64,8 @@
   // Scope pills (native words ADDENDUM). Copy is SPEC-fixed, including the
   // tooltips; the pill row renders only while the toggle is on.
   var SCOPES = [
-    { value: "all", label: "All words", title: "Includes native Korean words" },
-    { value: "hanja", label: "Hanja only", title: "Sino-Korean entries, as before" }
+    { value: "all", labelKey: "scope.all", titleKey: "scope.all.title" },
+    { value: "hanja", labelKey: "scope.hanja", titleKey: "scope.hanja.title" }
   ];
 
   function textFor(messages, state, detail) {
@@ -141,8 +150,6 @@
           var button = document.createElement("button");
           button.type = "button";
           button.className = "scope-pill scope-pill--" + SCOPES[i].value;
-          button.textContent = SCOPES[i].label;
-          button.title = SCOPES[i].title;
           button.setAttribute("data-scope", SCOPES[i].value);
           button.addEventListener("click", (function (value) {
             return function () { pickScope(value); };
@@ -151,7 +158,10 @@
           pillButtons.push(button);
         }
       }
+      // Text on every pass, not only at build: a language change re-runs this.
       for (var j = 0; j < pillButtons.length; j++) {
+        pillButtons[j].textContent = t(SCOPES[j].labelKey);
+        pillButtons[j].title = t(SCOPES[j].titleKey);
         var active = pillButtons[j].getAttribute("data-scope") === scope;
         pillButtons[j].classList.toggle("scope-pill--active", active);
         pillButtons[j].setAttribute("aria-pressed", active ? "true" : "false");
@@ -209,8 +219,13 @@
     api.mount(results, { onScopeChange: syncScope });
     renderPills();
 
+    // What the state line was last given, so a language change can restate
+    // the same state in the new language.
+    var lastDetail;
+
     function setState(next, detail) {
       state = next;
+      lastDetail = detail;
       var text = textFor(messages, next, detail);
       if (status) {
         status.textContent = text;
@@ -324,6 +339,14 @@
 
     var ready = initial ? search(initial) : Promise.resolve({ ok: true, count: 0 });
 
+    // Language change: the pills and the state line are the shell's only
+    // copy; the cards below re-render through the embed's own listener.
+    function relabel() {
+      renderPills();
+      setState(state, lastDetail);
+    }
+    var unsubscribeLanguage = I18N ? I18N.onChange(relabel) : null;
+
     var controller = {
       search: search,
       searchSoon: searchSoon,
@@ -338,6 +361,7 @@
         if (destroyed) return;
         destroyed = true;
         cancelPending();
+        if (unsubscribeLanguage) unsubscribeLanguage();
         input.removeEventListener("input", onInput);
         input.removeEventListener("compositionend", onCompositionEnd);
         input.removeEventListener("keydown", onKeyDown);

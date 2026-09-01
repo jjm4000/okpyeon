@@ -1,0 +1,767 @@
+{
+  "appName": {
+    "message": "Okpyeon: Hanja Popup Dictionary"
+  },
+  "appDesc": {
+    "message": "A study tool for Korean learners. Highlight hanja, hanzi, or kanji to read them in Korean, or a hangul word to see its hanja."
+  },
+  "level_m": {
+    "message": "Middle school"
+  },
+  "level_h": {
+    "message": "High school"
+  },
+  "level_a": {
+    "message": "Advanced"
+  },
+  "level_r": {
+    "message": "Rare"
+  },
+  "marker_ja": {
+    "message": "JP"
+  },
+  "marker_zh": {
+    "message": "CN"
+  },
+  "marker_rare": {
+    "message": "rare"
+  },
+  "marker_native": {
+    "message": "native"
+  },
+  "marker_phonetic": {
+    "message": "PHONETIC"
+  },
+  "marker_noKorean": {
+    "message": ""
+  },
+  "section_compounds": {
+    "message": "Compounds"
+  },
+  "section_componentHanja": {
+    "message": "Component hanja"
+  },
+  "section_componentWords": {
+    "message": "Component words"
+  },
+  "section_sameSound": {
+    "message": "Same sound"
+  },
+  "row_madeOf": {
+    "message": "Made of $PARTS$",
+    "placeholders": {
+      "parts": {
+        "content": "$1"
+      }
+    }
+  },
+  "row_partOf_one": {
+    "message": "Part of $COUNT$ character",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "row_partOf_other": {
+    "message": "Part of $COUNT$ characters",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "row_usedIn_one": {
+    "message": "Used in $COUNT$ larger word",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "row_usedIn_other": {
+    "message": "Used in $COUNT$ larger words",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "button_showMore": {
+    "message": "Show $PAGE$ more ($COUNT$)",
+    "placeholders": {
+      "page": {
+        "content": "$1"
+      },
+      "count": {
+        "content": "$2"
+      }
+    }
+  },
+  "button_showAll": {
+    "message": "Show all ($COUNT$)",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "hedge_label": {
+    "message": "Rare hanja homograph"
+  },
+  "hedge_note": {
+    "message": "Likely native Korean. This hanja spelling is obscure."
+  },
+  "hint_nativeInAll_one": {
+    "message": "$COUNT$ native word in All words",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "hint_nativeInAll_other": {
+    "message": "$COUNT$ native words in All words",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "interp_keyboard": {
+    "message": "(keyboard)"
+  },
+  "tooltip_phonetic": {
+    "message": "$GLYPH$ gives the character its sound",
+    "placeholders": {
+      "glyph": {
+        "content": "$1"
+      }
+    }
+  },
+  "tooltip_wiktionary": {
+    "message": "Wiktionary entry for $WORD$ (opens in a new tab)",
+    "placeholders": {
+      "word": {
+        "content": "$1"
+      }
+    }
+  },
+  "bubble_savedTo": {
+    "message": "Saved to"
+  },
+  "bubble_create": {
+    "message": "Create"
+  },
+  "bubble_cancel": {
+    "message": "Cancel"
+  },
+  "bubble_remove": {
+    "message": "Remove"
+  },
+  "level_m_title": {
+    "message": "MOE curriculum, middle school (중학교용)"
+  },
+  "level_h_title": {
+    "message": "MOE curriculum, high school (고등학교용)"
+  },
+  "level_a_title": {
+    "message": "Beyond the school curriculum; attested in real vocabulary (Okpyeon's classification)"
+  },
+  "level_r_title": {
+    "message": "Archaic, specialist, or reading-only (Okpyeon's classification)"
+  },
+  "button_more": {
+    "message": "more"
+  },
+  "button_less": {
+    "message": "less"
+  },
+  "link_wiktionary": {
+    "message": "Wiktionary ↗"
+  },
+  "link_opened": {
+    "message": "Opened ↗"
+  },
+  "star_save": {
+    "message": "Save $WORD$",
+    "placeholders": {
+      "word": {
+        "content": "$1"
+      }
+    }
+  },
+  "star_remove": {
+    "message": "Remove $WORD$",
+    "placeholders": {
+      "word": {
+        "content": "$1"
+      }
+    }
+  },
+  "star_title_save": {
+    "message": "Save"
+  },
+  "star_title_saved": {
+    "message": "Saved"
+  },
+  "bubble_saved": {
+    "message": "Saved"
+  },
+  "bubble_folder": {
+    "message": "Folder"
+  },
+  "bubble_newFolder": {
+    "message": "New folder…"
+  },
+  "bubble_createFailed": {
+    "message": "Could not create that folder"
+  },
+  "tooltip_reading": {
+    "message": "Characters read $SYLLABLE$",
+    "placeholders": {
+      "syllable": {
+        "content": "$1"
+      }
+    }
+  },
+  "tooltip_lookup": {
+    "message": "Look up $WORD$",
+    "placeholders": {
+      "word": {
+        "content": "$1"
+      }
+    }
+  },
+  "aria_nativeWord": {
+    "message": "$WORD$, native Korean word",
+    "placeholders": {
+      "word": {
+        "content": "$1"
+      }
+    }
+  },
+  "crumb_usedIn": {
+    "message": "Used in"
+  },
+  "crumb_partOf": {
+    "message": "Part of"
+  },
+  "title_usedIn_one": {
+    "message": "$COUNT$ word contains $WORD$",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      },
+      "word": {
+        "content": "$2"
+      }
+    }
+  },
+  "title_usedIn_other": {
+    "message": "$COUNT$ words contain $WORD$",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      },
+      "word": {
+        "content": "$2"
+      }
+    }
+  },
+  "title_partOf_one": {
+    "message": "$COUNT$ character contains $GLYPH$",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      },
+      "glyph": {
+        "content": "$2"
+      }
+    }
+  },
+  "title_partOf_other": {
+    "message": "$COUNT$ characters contain $GLYPH$",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      },
+      "glyph": {
+        "content": "$2"
+      }
+    }
+  },
+  "title_reading": {
+    "message": "$COUNT$ hanja read $SYLLABLE$",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      },
+      "syllable": {
+        "content": "$2"
+      }
+    }
+  },
+  "reading_showAll": {
+    "message": "Show all $COUNT$",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "reading_showAll_aria": {
+    "message": "Show all $COUNT$ hanja read $SYLLABLE$",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      },
+      "syllable": {
+        "content": "$2"
+      }
+    }
+  },
+  "crumb_showAll": {
+    "message": "Show all $COUNT$ steps of the trail",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "tooltip_sino_both": {
+    "message": "$EUM$ ↔ $JA$ ↔ $ZH$",
+    "placeholders": {
+      "eum": {
+        "content": "$1"
+      },
+      "ja": {
+        "content": "$2"
+      },
+      "zh": {
+        "content": "$3"
+      }
+    }
+  },
+  "tooltip_sino_ja": {
+    "message": "$EUM$ ↔ $JA$",
+    "placeholders": {
+      "eum": {
+        "content": "$1"
+      },
+      "ja": {
+        "content": "$2"
+      }
+    }
+  },
+  "tooltip_sino_zh": {
+    "message": "$EUM$ ↔ $ZH$",
+    "placeholders": {
+      "eum": {
+        "content": "$1"
+      },
+      "zh": {
+        "content": "$2"
+      }
+    }
+  },
+  "tab_search": {
+    "message": "Search"
+  },
+  "tab_saved": {
+    "message": "Saved"
+  },
+  "tab_settings": {
+    "message": "Settings"
+  },
+  "title_search": {
+    "message": "Search hanja and words"
+  },
+  "title_saved": {
+    "message": "Saved words and characters"
+  },
+  "title_settings": {
+    "message": "Saving and export settings"
+  },
+  "search_empty": {
+    "message": "Search hanja, a Korean word, or a syllable."
+  },
+  "search_none": {
+    "message": "No entry for “$QUERY$”.",
+    "placeholders": {
+      "query": {
+        "content": "$1"
+      }
+    }
+  },
+  "search_error": {
+    "message": "Lookup failed. Try again."
+  },
+  "scope_all": {
+    "message": "All words"
+  },
+  "scope_hanja": {
+    "message": "Hanja only"
+  },
+  "scope_all_title": {
+    "message": "Includes native Korean words"
+  },
+  "scope_hanja_title": {
+    "message": "Sino-Korean entries, as before"
+  },
+  "about": {
+    "message": "$WORDMARK$ $VERSION$. Data from English Wiktionary and Urimalsaem, CC BY-SA. $GITHUB$",
+    "placeholders": {
+      "wordmark": {
+        "content": "$1"
+      },
+      "version": {
+        "content": "$2"
+      },
+      "github": {
+        "content": "$3"
+      }
+    }
+  },
+  "about_noVersion": {
+    "message": "$WORDMARK$. Data from English Wiktionary and Urimalsaem, CC BY-SA. $GITHUB$",
+    "placeholders": {
+      "wordmark": {
+        "content": "$1"
+      },
+      "github": {
+        "content": "$2"
+      }
+    }
+  },
+  "wordmark": {
+    "message": "Okpyeon"
+  },
+  "link_github": {
+    "message": "GitHub ↗"
+  },
+  "page_title": {
+    "message": "Okpyeon: Hanja search"
+  },
+  "brand_title": {
+    "message": "Look up 玉篇"
+  },
+  "brand_aria": {
+    "message": "Okpyeon: look up 玉篇"
+  },
+  "nav_aria": {
+    "message": "Views"
+  },
+  "input_placeholder": {
+    "message": "한자 · 한글 · 음절"
+  },
+  "input_aria": {
+    "message": "Search hanja, a sino-Korean word, or a single syllable"
+  },
+  "scope_aria": {
+    "message": "Search scope"
+  },
+  "folder_default": {
+    "message": "Saved"
+  },
+  "omnibox_suggestion": {
+    "message": "Search Okpyeon for <match>%s</match>"
+  },
+  "saved_filter": {
+    "message": "Filter by folder"
+  },
+  "saved_newFolder": {
+    "message": "New folder"
+  },
+  "saved_rename": {
+    "message": "Rename"
+  },
+  "saved_delete": {
+    "message": "Delete"
+  },
+  "saved_selectAll": {
+    "message": "Select all"
+  },
+  "saved_folderName": {
+    "message": "Folder name"
+  },
+  "saved_newFolderName": {
+    "message": "New folder name"
+  },
+  "saved_create": {
+    "message": "Create"
+  },
+  "saved_save": {
+    "message": "Save"
+  },
+  "saved_cancel": {
+    "message": "Cancel"
+  },
+  "saved_close": {
+    "message": "Close"
+  },
+  "saved_failed": {
+    "message": "That did not work."
+  },
+  "saved_all": {
+    "message": "All ($COUNT$)",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "saved_unavailable": {
+    "message": "Saved words are not available in this browser session."
+  },
+  "saved_emptyFolder": {
+    "message": "This folder is empty."
+  },
+  "saved_emptyAll": {
+    "message": "Nothing saved yet. Tap the ☆ on a card to save it."
+  },
+  "saved_moveTo": {
+    "message": "Move to…"
+  },
+  "saved_moved": {
+    "message": "Moved $COUNT$ to $FOLDER$",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      },
+      "folder": {
+        "content": "$2"
+      }
+    }
+  },
+  "saved_deleteN_one": {
+    "message": "Delete $COUNT$ item?",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "saved_deleteN_other": {
+    "message": "Delete $COUNT$ items?",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "saved_export": {
+    "message": "Export"
+  },
+  "saved_exportN": {
+    "message": "Export $COUNT$ as",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "saved_anki": {
+    "message": "Anki"
+  },
+  "anki_desc": {
+    "message": "Anki tab-separated import file"
+  },
+  "saved_csv": {
+    "message": "CSV"
+  },
+  "csv_desc": {
+    "message": "Spreadsheet with every field"
+  },
+  "saved_exportUnavailable": {
+    "message": "Export is not available."
+  },
+  "saved_newFolder_title": {
+    "message": "Create a folder"
+  },
+  "saved_rename_title": {
+    "message": "Rename this folder"
+  },
+  "saved_delete_title": {
+    "message": "Delete this folder"
+  },
+  "saved_nameNeeded": {
+    "message": "A folder needs a name."
+  },
+  "saved_deleteFolder": {
+    "message": "Delete $FOLDER$?",
+    "placeholders": {
+      "folder": {
+        "content": "$1"
+      }
+    }
+  },
+  "saved_deleteFolderN_one": {
+    "message": "Delete $FOLDER$? $COUNT$ item moves to $TARGET$.",
+    "placeholders": {
+      "folder": {
+        "content": "$1"
+      },
+      "count": {
+        "content": "$2"
+      },
+      "target": {
+        "content": "$3"
+      }
+    }
+  },
+  "saved_deleteFolderN_other": {
+    "message": "Delete $FOLDER$? $COUNT$ items move to $TARGET$.",
+    "placeholders": {
+      "folder": {
+        "content": "$1"
+      },
+      "count": {
+        "content": "$2"
+      },
+      "target": {
+        "content": "$3"
+      }
+    }
+  },
+  "saved_select": {
+    "message": "Select $ITEM$",
+    "placeholders": {
+      "item": {
+        "content": "$1"
+      }
+    }
+  },
+  "saved_selectFolder": {
+    "message": "Select everything in $FOLDER$",
+    "placeholders": {
+      "folder": {
+        "content": "$1"
+      }
+    }
+  },
+  "saved_missing": {
+    "message": "no longer in the dictionary"
+  },
+  "saved_move_aria": {
+    "message": "Move the selection to a folder"
+  },
+  "saved_folder": {
+    "message": "folder"
+  },
+  "saved_deleteSelection_title": {
+    "message": "Delete the selection"
+  },
+  "saved_exportSelection_title": {
+    "message": "Export the selection"
+  },
+  "saved_selected": {
+    "message": "$COUNT$ selected",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "saved_allShown": {
+    "message": "all $COUNT$ shown",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "group_language": {
+    "message": "Language"
+  },
+  "language_label": {
+    "message": "Language"
+  },
+  "language_sub": {
+    "message": "Menus, cards, and definitions"
+  },
+  "group_search": {
+    "message": "Search"
+  },
+  "nativeWords_label": {
+    "message": "Native Korean word search"
+  },
+  "nativeWords_sub": {
+    "message": "Adds native Korean words to the dictionary. Search shows all words, and highlighting a native word on a page shows its meaning."
+  },
+  "group_charCards": {
+    "message": "Character cards"
+  },
+  "jaReadings_label": {
+    "message": "Japanese reading"
+  },
+  "jaReadings_sub": {
+    "message": "Shows the character's on'yomi reading, in katakana."
+  },
+  "zhReadings_label": {
+    "message": "Chinese reading"
+  },
+  "zhReadings_sub": {
+    "message": "Shows the character's Mandarin reading, in pinyin."
+  },
+  "group_saving": {
+    "message": "Saving"
+  },
+  "defaultFolder_label": {
+    "message": "By default, newly saved items go to"
+  },
+  "anki_wordFront": {
+    "message": "Word cards: front"
+  },
+  "anki_wordBack": {
+    "message": "Word cards: back"
+  },
+  "anki_charFront": {
+    "message": "Character cards: front"
+  },
+  "anki_charBack": {
+    "message": "Character cards: back"
+  },
+  "anki_field_hanja": {
+    "message": "Hanja"
+  },
+  "anki_field_hangul": {
+    "message": "Hangul"
+  },
+  "anki_field_defs": {
+    "message": "Definitions"
+  },
+  "anki_field_char": {
+    "message": "Character"
+  },
+  "anki_field_eumhun": {
+    "message": "Eum-hun"
+  },
+  "anki_field_readings": {
+    "message": "Readings"
+  },
+  "anki_field_lvl": {
+    "message": "Level"
+  },
+  "anki_field_ja": {
+    "message": "Japanese reading"
+  },
+  "anki_field_zh": {
+    "message": "Chinese reading"
+  },
+  "group_anki": {
+    "message": "Anki export"
+  },
+  "language_en": {
+    "message": "English"
+  },
+  "language_ko": {
+    "message": "한국어"
+  },
+  "toggle_enabled": {
+    "message": "Enabled"
+  },
+  "settings_unavailable": {
+    "message": "Settings are not available in this browser session."
+  }
+}

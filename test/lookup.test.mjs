@@ -1595,6 +1595,7 @@ test("normalizeSettings fills the SPEC defaults and drops unknown tokens", () =>
     assert.deepEqual(normalizeSettings(junk), {
       v: 1,
       defaultFolderId: "f0",
+      language: "en",
       nativeWords: false,
       jaReadings: false,
       zhReadings: false,
@@ -2235,6 +2236,7 @@ await testAsync("the router carries every SPEC message type", async () => {
     "settingsGet",
     "settingsSet",
     "savedExport",
+    "messagesGet",
   ];
   assert.deepEqual(Object.keys(MESSAGE_HANDLERS).sort(), types.slice().sort());
   // Routed saved messages reach the storage guard, not a crash.
@@ -4393,6 +4395,483 @@ await testAsync("round trip: deromanize(f) contains w for every f in forms(w), F
   console.log(
     `      (${wordSet.size} words, ${checked} forms, ${Date.now() - started}ms, all round-trip)`
   );
+});
+
+// ---------------------------------------------------------------------------
+// Korean language mode: the message-table loader, the tables, the setting
+// ---------------------------------------------------------------------------
+
+console.log("\ni18n.js");
+
+const readJson = async (rel) => JSON.parse(await readFile(new URL(rel, import.meta.url), "utf8"));
+const EN_FILE = await readJson("../extension/_locales/en/messages.json");
+const KO_FILE = await readJson("../extension/_locales/ko/messages.json");
+const flatten = (table) =>
+  Object.fromEntries(Object.entries(table).map(([k, v]) => [k, v.message]));
+
+// The loader is a classic script; in Node its one effect is the global.
+await import("../extension/i18n.js");
+const I18N = globalThis.__okpyeonI18n;
+
+test("i18n: t() substitutes placeholders, picks the English plural by COUNT, never throws", () => {
+  I18N.reset();
+  assert.equal(I18N.language(), "en");
+  assert.equal(I18N.t("level.m"), "Middle school");
+  assert.equal(I18N.t("row.partOf", { COUNT: 1 }), "Part of 1 character");
+  assert.equal(I18N.t("row.partOf", { COUNT: 2 }), "Part of 2 characters");
+  assert.equal(I18N.t("row.partOf", { COUNT: 0 }), "Part of 0 characters");
+  assert.equal(I18N.t("button.showMore", { PAGE: 5, COUNT: 13 }), "Show 5 more (13)");
+  assert.equal(I18N.t("search.none", { QUERY: "x" }), "No entry for “x”.");
+  assert.equal(I18N.t("saved.deleteFolderN", { FOLDER: "Verbs", COUNT: 1, TARGET: "Saved" }),
+    "Delete Verbs? 1 item moves to Saved.");
+  // An unfilled slot stays visible rather than going blank.
+  assert.equal(I18N.t("star.save"), "Save $WORD$");
+  assert.equal(I18N.t("star.save", { WORD: undefined }), "Save $WORD$");
+  // Missing key: the key itself. Junk keys: no throw.
+  assert.equal(I18N.t("no.such.key"), "no.such.key");
+  assert.equal(I18N.t(undefined), "undefined");
+  assert.equal(I18N.t(null), "null");
+  assert.equal(I18N.t("level.m", null), "Middle school");
+  assert.deepEqual(I18N.segments("title.reading", { COUNT: 5, SYLLABLE: "국" }), [
+    { name: "COUNT", value: "5" },
+    { text: " hanja read " },
+    { name: "SYLLABLE", value: "국" },
+  ]);
+});
+
+test("i18n: init(table, lang) installs and activates; missing keys fall back to English, then the key", () => {
+  I18N.reset();
+  const fired = [];
+  I18N.onChange((lang) => fired.push(lang));
+  // Chrome's file shape, with a file-form key.
+  I18N.init({ row_partOf: { message: "한자 $COUNT$자에 쓰임" } }, "ko");
+  assert.equal(I18N.language(), "ko");
+  assert.equal(I18N.t("row.partOf", { COUNT: 1 }), "한자 1자에 쓰임");
+  assert.equal(I18N.t("row.partOf", { COUNT: 7 }), "한자 7자에 쓰임");
+  assert.equal(I18N.t("level.m"), "Middle school", "English fills a hole in the active table");
+  assert.equal(I18N.t("no.such.key"), "no.such.key");
+  // A flat map with dotted keys lands on the same slots.
+  I18N.init({ "level.m": "중학" }, "ko");
+  assert.equal(I18N.t("level.m"), "중학");
+  assert.deepEqual(fired, ["ko"], "one change event per activation, none for a re-install");
+  I18N.reset();
+  assert.equal(I18N.language(), "en");
+  assert.equal(I18N.t("level.m"), "Middle school");
+});
+
+await testAsync("i18n: setLanguage() loads through the configured source; a stale answer never wins", async () => {
+  I18N.reset();
+  const loads = [];
+  I18N.configure({
+    load: (lang) => {
+      loads.push(lang);
+      return Promise.resolve(lang === "ko" ? KO_FILE : null);
+    },
+  });
+  const fired = [];
+  I18N.onChange((lang) => fired.push(lang));
+  assert.equal(await I18N.setLanguage("ko"), true);
+  assert.equal(I18N.language(), "ko");
+  assert.equal(I18N.t("tab.search"), "검색");
+  assert.equal(I18N.t("row.usedIn", { COUNT: 3 }), "더 긴 단어 3개에 쓰임");
+  // Cached: switching back and forth loads nothing more.
+  assert.equal(await I18N.setLanguage("en"), true);
+  assert.equal(await I18N.setLanguage("ko"), true);
+  assert.deepEqual(loads, ["ko"]);
+  assert.deepEqual(fired, ["ko", "en", "ko"]);
+  // Unknown language: English, no load.
+  assert.equal(await I18N.setLanguage("fr"), true);
+  assert.equal(I18N.language(), "en");
+  assert.deepEqual(loads, ["ko"]);
+
+  // No table available: English stands, and the promise says so.
+  I18N.reset();
+  I18N.configure({ load: () => Promise.resolve(null) });
+  assert.equal(await I18N.setLanguage("ko"), false);
+  assert.equal(I18N.language(), "en");
+  I18N.configure({ load: () => Promise.reject(new Error("boom")) });
+  assert.equal(await I18N.setLanguage("ko"), false);
+  assert.equal(I18N.language(), "en");
+
+  // Race: ko requested, en requested before ko's table arrives.
+  I18N.reset();
+  let release;
+  I18N.configure({ load: () => new Promise((resolve) => { release = resolve; }) });
+  const slow = I18N.setLanguage("ko");
+  assert.equal(await I18N.setLanguage("en"), true);
+  release(KO_FILE);
+  assert.equal(await slow, true, "resolves to whether the WANTED language is active");
+  assert.equal(I18N.language(), "en", "the stale ko answer is stored, not applied");
+  assert.equal(await I18N.setLanguage("ko"), true, "and the stored table serves the next switch");
+  I18N.reset();
+});
+
+test("i18n: render() composes one text node per run and one element per built slot", () => {
+  I18N.reset();
+  const doc = { createTextNode: (text) => ({ node: "text", text }) };
+  globalThis.document = doc;
+  try {
+    const parent = () => {
+      const kids = [];
+      return { kids, appendChild: (n) => kids.push(n) };
+    };
+    const b = (value) => ({ node: "b", text: value });
+    let p = parent();
+    I18N.render(p, "row.usedIn", { COUNT: 6 }, { COUNT: b });
+    assert.deepEqual(p.kids, [
+      { node: "text", text: "Used in " },
+      { node: "b", text: "6" },
+      { node: "text", text: " larger words" },
+    ]);
+    p = parent();
+    I18N.render(p, "title.reading", { COUNT: 5, SYLLABLE: "국" }, { SYLLABLE: b });
+    assert.deepEqual(p.kids, [
+      { node: "text", text: "5 hanja read " },
+      { node: "b", text: "국" },
+    ]);
+    p = parent();
+    I18N.render(p, "row.partOf", { COUNT: 1 });
+    assert.deepEqual(p.kids, [{ node: "text", text: "Part of 1 character" }]);
+    p = parent();
+    I18N.render(p, "about.noVersion", { WORDMARK: "Okpyeon", GITHUB: "GitHub ↗" },
+      { WORDMARK: b, GITHUB: (text) => ({ node: "a", text }) });
+    assert.deepEqual(p.kids, [
+      { node: "b", text: "Okpyeon" },
+      { node: "text", text: ". Data from English Wiktionary and Urimalsaem, CC BY-SA. " },
+      { node: "a", text: "GitHub ↗" },
+    ]);
+  } finally {
+    delete globalThis.document;
+  }
+});
+
+test("i18n: the built-in English table is _locales/en/messages.json, verbatim", () => {
+  assert.deepEqual(I18N.builtin(), flatten(EN_FILE));
+});
+
+test("messages.json: Chrome-valid names, declared placeholders, and ko covers en", () => {
+  const FIXED = new Set([
+    "link_wiktionary", "tooltip_sino_both", "tooltip_sino_ja", "tooltip_sino_zh",
+    "wordmark", "link_github", "input_placeholder", "saved_anki", "saved_csv",
+    "language_en", "language_ko",
+  ]);
+  for (const [name, table] of [["en", EN_FILE], ["ko", KO_FILE]]) {
+    const lower = new Set();
+    for (const [key, entry] of Object.entries(table)) {
+      assert.match(key, /^[A-Za-z0-9_@]+$/, `${name}: ${key} is not a Chrome message name`);
+      assert.ok(!lower.has(key.toLowerCase()), `${name}: ${key} collides case-insensitively`);
+      lower.add(key.toLowerCase());
+      assert.equal(typeof entry.message, "string", `${name}: ${key} has no message`);
+      const used = [...entry.message.matchAll(/\$([A-Za-z][A-Za-z0-9_]*)\$/g)].map((m) => m[1]);
+      for (const p of used) {
+        assert.ok(entry.placeholders && entry.placeholders[p.toLowerCase()],
+          `${name}: ${key} uses $${p}$ without declaring it`);
+      }
+      if (entry.placeholders) {
+        for (const p of Object.keys(entry.placeholders)) {
+          assert.ok(used.some((u) => u.toLowerCase() === p), `${name}: ${key} declares unused ${p}`);
+        }
+      }
+      // Nothing an English speaker would read as machine text, either way.
+      assert.doesNotMatch(entry.message, /—/, `${name}: ${key} carries an em dash`);
+    }
+  }
+  const base = (key) => key.replace(/_(one|other)$/, "");
+  for (const key of Object.keys(EN_FILE)) {
+    assert.ok(KO_FILE[base(key)], `ko lacks ${base(key)}`);
+  }
+  for (const key of Object.keys(KO_FILE)) {
+    assert.ok(EN_FILE[key] || (EN_FILE[`${key}_one`] && EN_FILE[`${key}_other`]), `en lacks ${key}`);
+    assert.doesNotMatch(key, /_(one|other)$/, `ko has no plural forms: ${key}`);
+    if (EN_FILE[key] && EN_FILE[key].message === KO_FILE[key].message) {
+      assert.ok(FIXED.has(key), `${key} is untranslated: ${JSON.stringify(KO_FILE[key].message)}`);
+    }
+  }
+  // The manifest's two, plus the ko description under the store's cap.
+  assert.equal(EN_FILE.appName.message, "Okpyeon: Hanja Popup Dictionary");
+  assert.equal(KO_FILE.appName.message, "옥편: 한자 팝업 사전");
+  assert.ok(KO_FILE.appDesc.message.length <= 132);
+});
+
+await testAsync("every message key the surfaces read exists in the English table", async () => {
+  const sources = [
+    "../extension/content/content.js",
+    "../extension/sidepanel/sidepanel.js",
+    "../extension/sidepanel/search-shell.js",
+    "../extension/sidepanel/saved-view.js",
+    "../extension/sidepanel/settings-view.js",
+  ];
+  const keys = new Set([
+    // Composed at run time from a zone or a condition, so not scannable.
+    "level.m", "level.h", "level.a", "level.r",
+    "level.m.title", "level.h.title", "level.a.title", "level.r.title",
+    "about", "about.noVersion",
+    // Read by the worker (background.js), which is not scanned.
+    "folder.default", "omnibox.suggestion", "marker.rare", "marker.native",
+  ]);
+  // A key ends in a word character: `t("level." + zone)` is composed above.
+  const KEY = "([A-Za-z][A-Za-z0-9.]*[A-Za-z0-9])";
+  const patterns = [
+    new RegExp(`\\bt\\(\\s*"${KEY}"`, "g"),
+    new RegExp(`\\bt\\(\\s*[^,()]+\\?\\s*"${KEY}"\\s*:\\s*"${KEY}"`, "g"),
+    new RegExp(`\\btRender\\([^,]+,\\s*"${KEY}"`, "g"),
+    new RegExp(`\\b(?:labelKey|titleKey|groupKey|descriptionKey):\\s*"${KEY}"`, "g"),
+  ];
+  let scanned = 0;
+  for (const rel of sources) {
+    const src = await readFile(new URL(rel, import.meta.url), "utf8");
+    for (const re of patterns) {
+      for (const m of src.matchAll(re)) {
+        for (const key of m.slice(1)) if (key) { keys.add(key); scanned += 1; }
+      }
+    }
+  }
+  assert.ok(scanned > 120, `only ${scanned} key uses scanned`);
+  const en = flatten(EN_FILE);
+  for (const key of keys) {
+    const fk = I18N.fileKey(key);
+    assert.ok(fk in en || (`${fk}_one` in en && `${fk}_other` in en), `no English message for ${key}`);
+  }
+  // The manifest reads its two through Chrome's own mechanism.
+  const manifest = await readJson("../extension/manifest.json");
+  assert.equal(manifest.name, "__MSG_appName__");
+  assert.equal(manifest.description, "__MSG_appDesc__");
+  assert.equal(manifest.default_locale, "en");
+  assert.deepEqual(manifest.content_scripts[0].js, ["i18n.js", "content/content.js"]);
+});
+
+test("settings: language normalizes to en | ko, default en", () => {
+  assert.equal(DEFAULT_SETTINGS.language, "en");
+  assert.equal(normalizeSettings(null).language, "en");
+  assert.equal(normalizeSettings({ language: "ko" }).language, "ko");
+  assert.equal(normalizeSettings({ language: "en" }).language, "en");
+  for (const junk of ["fr", "KO", "", 7, null, true, ["ko"]]) {
+    assert.equal(normalizeSettings({ language: junk }).language, "en", JSON.stringify(junk));
+  }
+});
+
+await testAsync("first run: the language derives from the browser UI language once, then never again", async () => {
+  const { languageForUi, handleSettingsGet, handleSettingsSet } =
+    await import("../extension/background.js");
+  assert.equal(languageForUi("ko"), "ko");
+  assert.equal(languageForUi("ko-KR"), "ko");
+  assert.equal(languageForUi("KO"), "ko");
+  assert.equal(languageForUi("en-US"), "en");
+  assert.equal(languageForUi("kok"), "en", "Konkani is not Korean");
+  assert.equal(languageForUi(""), "en");
+  assert.equal(languageForUi(undefined), "en");
+
+  const area = () => {
+    const store = {};
+    return {
+      store,
+      get: async (key) => ({ [key]: store[key] }),
+      set: async (obj) => { Object.assign(store, obj); },
+    };
+  };
+  const stub = (ui, local) => {
+    globalThis.chrome = { i18n: { getUILanguage: () => ui }, storage: { local } };
+  };
+  try {
+    // Korean browser, no record: derived and persisted on the first read.
+    const koArea = area();
+    stub("ko-KR", koArea);
+    let res = await handleSettingsGet();
+    assert.equal(res.ok, true);
+    assert.equal(res.settings.language, "ko");
+    assert.equal(koArea.store.okpSettings.language, "ko", "persisted, not just answered");
+    // The browser language changing later changes nothing.
+    stub("en-US", koArea);
+    res = await handleSettingsGet();
+    assert.equal(res.settings.language, "ko");
+    // English browser, no record.
+    const enArea = area();
+    stub("en-US", enArea);
+    res = await handleSettingsGet();
+    assert.equal(res.settings.language, "en");
+    assert.equal(enArea.store.okpSettings.language, "en");
+    // An existing record without the field is an existing user: English,
+    // whatever the browser says.
+    const oldArea = area();
+    oldArea.store.okpSettings = { v: 1, defaultFolderId: "f0" };
+    stub("ko-KR", oldArea);
+    res = await handleSettingsGet();
+    assert.equal(res.settings.language, "en");
+    // The setting writes like any other and survives normalization.
+    res = await handleSettingsSet({ language: "ko" });
+    assert.equal(res.settings.language, "ko");
+    assert.equal(oldArea.store.okpSettings.language, "ko");
+    res = await handleSettingsSet({ language: "xx" });
+    assert.equal(res.settings.language, "en");
+    // No chrome.i18n at all: the navigator, then English.
+    const bareArea = area();
+    globalThis.chrome = { storage: { local: bareArea } };
+    res = await handleSettingsGet();
+    assert.equal(res.settings.language, "en");
+  } finally {
+    delete globalThis.chrome;
+  }
+});
+
+await testAsync("messagesGet: served from the packaged file, cached per locale, unavailable without a runtime", async () => {
+  const { handleMessagesGet, MESSAGE_HANDLERS, MESSAGE_LANGUAGES } =
+    await import("../extension/background.js");
+  assert.deepEqual(MESSAGE_LANGUAGES, ["en", "ko"]);
+  assert.deepEqual(await handleMessagesGet("ko"), { ok: false, error: "messages unavailable" });
+  assert.deepEqual(await MESSAGE_HANDLERS.messagesGet({ type: "messagesGet", lang: "ko" }),
+    { ok: false, error: "messages unavailable" });
+
+  const fetched = [];
+  const realFetch = globalThis.fetch;
+  globalThis.chrome = { runtime: { getURL: (path) => `chrome-extension://okp/${path}` } };
+  globalThis.fetch = async (url) => {
+    fetched.push(url);
+    const m = /_locales\/(\w+)\/messages\.json$/.exec(url);
+    const table = m && m[1] === "ko" ? KO_FILE : m && m[1] === "en" ? EN_FILE : null;
+    return { ok: table !== null, status: table ? 200 : 404, json: async () => table };
+  };
+  try {
+    let res = await handleMessagesGet("ko");
+    assert.equal(res.ok, true);
+    assert.equal(res.lang, "ko");
+    assert.equal(res.messages.tab_search.message, "검색");
+    res = await handleMessagesGet("ko");
+    assert.deepEqual(fetched, ["chrome-extension://okp/_locales/ko/messages.json"], "cached");
+    res = await handleMessagesGet("fr");
+    assert.equal(res.lang, "en", "an unknown language is served as English");
+    assert.equal(res.messages.tab_search.message, "Search");
+    res = await handleMessagesGet(undefined);
+    assert.equal(res.lang, "en");
+    assert.equal(fetched.length, 2);
+  } finally {
+    globalThis.fetch = realFetch;
+    delete globalThis.chrome;
+  }
+});
+
+test("omnibox rows carry the marker labels they are given; English without them", () => {
+  const en = buildOmniboxSuggestions("우리 국민", data);
+  const ko = buildOmniboxSuggestions("우리 국민", data, { labels: { rare: "희귀", native: "고유어" } });
+  assert.match(en.find((r) => r.content === "牛李").description, /· rare<\/dim>$/);
+  assert.match(ko.find((r) => r.content === "牛李").description, /· 희귀<\/dim>$/);
+  assert.deepEqual(ko.map((r) => r.content), en.map((r) => r.content), "labels change no order");
+  const nativeEn = buildOmniboxSuggestions("하늘", nativeData, { native: true });
+  const nativeKo = buildOmniboxSuggestions("하늘", nativeData, {
+    native: true,
+    labels: { native: "고유어" },
+  });
+  assert.match(nativeEn.find((r) => r.content === "하늘").description, /native<\/dim>$/);
+  assert.match(nativeKo.find((r) => r.content === "하늘").description, /고유어<\/dim>$/);
+  // Junk labels read as absent.
+  assert.deepEqual(buildOmniboxSuggestions("우리 국민", data, { labels: { rare: 7 } }), en);
+  assert.deepEqual(buildOmniboxSuggestions("우리 국민", data, { labels: "no" }), en);
+});
+
+// A fetch stand-in for the worker's packaged-file reads: the two message
+// tables answer, everything else is a 404.
+const fetchTables = (log) => async (url) => {
+  if (log) log.push(url);
+  const m = /_locales\/(\w+)\/messages\.json$/.exec(url);
+  const table = m && m[1] === "ko" ? KO_FILE : m && m[1] === "en" ? EN_FILE : null;
+  return { ok: table !== null, status: table ? 200 : 404, json: async () => table };
+};
+const fakeArea = () => {
+  const store = {};
+  return {
+    store,
+    get: async (key) => ({ [key]: store[key] }),
+    set: async (obj) => { Object.assign(store, obj); },
+  };
+};
+
+await testAsync("first run: the default folder takes the language's name from the table, once", async () => {
+  const { handleSavedToggle, handleSettingsSet, defaultFolderName } =
+    await import("../extension/background.js");
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = fetchTables();
+  const stub = (ui, local, withRuntime = true) => {
+    globalThis.chrome = { i18n: { getUILanguage: () => ui }, storage: { local } };
+    if (withRuntime) {
+      globalThis.chrome.runtime = { getURL: (path) => `chrome-extension://okp/${path}` };
+    }
+  };
+  try {
+    // Korean browser, nothing stored: both records are created, the folder
+    // named from the ko table, and persisted.
+    const koArea = fakeArea();
+    stub("ko-KR", koArea);
+    let res = await handleSavedToggle("char", "國");
+    assert.equal(res.ok, true);
+    assert.deepEqual(res.folders, [{ id: "f0", name: "저장됨" }]);
+    assert.equal(koArea.store.okpSaved.folders[0].name, "저장됨");
+    assert.equal(koArea.store.okpSettings.language, "ko");
+    // Data from then on: switching the language renames nothing.
+    await handleSettingsSet({ language: "en" });
+    res = await handleSavedToggle("char", "民");
+    assert.deepEqual(res.folders, [{ id: "f0", name: "저장됨" }]);
+    // English browser: "Saved", as before.
+    const enArea = fakeArea();
+    stub("en-US", enArea);
+    res = await handleSavedToggle("char", "國");
+    assert.deepEqual(res.folders, [{ id: "f0", name: "Saved" }]);
+    // An existing record under a Korean browser is never touched.
+    const oldArea = fakeArea();
+    oldArea.store.okpSaved = { v: 1, folders: [{ id: "f0", name: "Saved" }], items: [] };
+    stub("ko-KR", oldArea);
+    res = await handleSavedToggle("char", "國");
+    assert.deepEqual(res.folders, [{ id: "f0", name: "Saved" }]);
+    // No packaged table reachable: the English default stands.
+    stub("ko-KR", fakeArea(), false);
+    res = await handleSavedToggle("char", "國");
+    assert.deepEqual(res.folders, [{ id: "f0", name: "Saved" }]);
+    assert.equal(await defaultFolderName("ko"), "Saved");
+    assert.equal(await defaultFolderName("en"), "Saved");
+  } finally {
+    globalThis.fetch = realFetch;
+    delete globalThis.chrome;
+  }
+});
+
+await testAsync("omnibox copy follows the stored language; the English fallbacks are the en table's", async () => {
+  const { omniboxCopy, OMNIBOX_FALLBACK } = await import("../extension/background.js");
+  assert.deepEqual({ ...OMNIBOX_FALLBACK }, {
+    description: EN_FILE.omnibox_suggestion.message,
+    rare: EN_FILE.marker_rare.message,
+    native: EN_FILE.marker_native.message,
+  });
+  // No chrome at all: English.
+  assert.deepEqual(await omniboxCopy(), { ...OMNIBOX_FALLBACK });
+  const realFetch = globalThis.fetch;
+  const fetched = [];
+  globalThis.fetch = fetchTables(fetched);
+  const stub = (settings) => {
+    const local = fakeArea();
+    if (settings !== undefined) local.store.okpSettings = settings;
+    globalThis.chrome = {
+      runtime: { getURL: (path) => `chrome-extension://okp/${path}` },
+      storage: { local },
+    };
+  };
+  try {
+    stub({ v: 1, language: "ko" });
+    assert.deepEqual(await omniboxCopy(), {
+      description: KO_FILE.omnibox_suggestion.message,
+      rare: "희귀",
+      native: "고유어",
+    });
+    assert.equal(KO_FILE.omnibox_suggestion.message, "옥편에서 <match>%s</match> 검색");
+    stub({ v: 1, language: "en" });
+    assert.deepEqual(await omniboxCopy(), { ...OMNIBOX_FALLBACK });
+    stub({ v: 1, language: "xx" });
+    assert.deepEqual(await omniboxCopy(), { ...OMNIBOX_FALLBACK });
+    stub(undefined);
+    assert.deepEqual(await omniboxCopy(), { ...OMNIBOX_FALLBACK });
+    // The tables are the cached messagesGet ones: one fetch per language.
+    assert.deepEqual(fetched.filter((u) => /_locales/.test(u)).length <= 2, true);
+  } finally {
+    globalThis.fetch = realFetch;
+    delete globalThis.chrome;
+  }
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

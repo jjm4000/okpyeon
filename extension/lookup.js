@@ -1358,10 +1358,13 @@ function charSuggestion(char, hun, eum, gloss, lvl) {
  *
  * @param {string} text raw omnibox input
  * @param {{hanja?:object, words?:object, variants?:object, native?:object}} data parsed data files
- * @param {{interpret?:boolean, native?:boolean}} [options] same input-channel
- *        rule as lookup(); the omnibox IS a typed channel, so background.js
- *        passes `interpret`. `native: true` (native words ADDENDUM) draws the
- *        rows from the All-scope result set, native entries included.
+ * @param {{interpret?:boolean, native?:boolean, labels?:{rare?:string, native?:string}}} [options]
+ *        same input-channel rule as lookup(); the omnibox IS a typed channel,
+ *        so background.js passes `interpret`. `native: true` (native words
+ *        ADDENDUM) draws the rows from the All-scope result set, native
+ *        entries included. `labels` (Korean language mode ADDENDUM) are the
+ *        two markers the dimmed tails carry, in the stored language;
+ *        background.js reads them from the message table. Absent, English.
  * @returns {Array<{content:string, description:string}>}
  */
 export function buildOmniboxSuggestions(text, data, options) {
@@ -1373,6 +1376,11 @@ export function buildOmniboxSuggestions(text, data, options) {
     const opts = options !== null && typeof options === "object" ? options : {};
     const interpret = opts.interpret === true;
     const native = opts.native === true;
+    const given = opts.labels !== null && typeof opts.labels === "object" ? opts.labels : {};
+    const labels = {
+      rare: typeof given.rare === "string" ? given.rare : "rare",
+      native: typeof given.native === "string" ? given.native : "native",
+    };
     const interps = interpret ? buildInterpretations(text, data, { native }) : [];
     const groups =
       interps.length > 0
@@ -1421,7 +1429,7 @@ export function buildOmniboxSuggestions(text, data, options) {
           content: match.canonical,
           description: describe(match.canonical, match.hangul, [
             gloss,
-            match.rare === true ? "rare" : "",
+            match.rare === true ? labels.rare : "",
           ]),
         });
       } else if (match.kind === "native") {
@@ -1431,7 +1439,7 @@ export function buildOmniboxSuggestions(text, data, options) {
         const gloss = Array.isArray(match.glosses) ? match.glosses[0] : "";
         push({
           content: match.word,
-          description: describe(match.word, "", [gloss, "native"]),
+          description: describe(match.word, "", [gloss, labels.native]),
         });
       } else if (match.kind === "char") {
         const pair = Array.isArray(match.eumhun) ? match.eumhun[0] : null;

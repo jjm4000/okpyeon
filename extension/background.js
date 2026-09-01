@@ -16,6 +16,8 @@ import {
   toErrorMessage,
 } from "./lookup.js";
 import {
+  DEFAULT_FOLDER_ID,
+  DEFAULT_FOLDER_NAME,
   buildAnkiTsv,
   buildCsv,
   checkKeys,
@@ -647,14 +649,80 @@ async function readKey(area, key) {
   return got !== null && typeof got === "object" ? got[key] : undefined;
 }
 
-/** Read + normalize the saved state. Storage is only rewritten on a change. */
+/**
+ * Read + normalize the saved state. Storage is only rewritten on a change.
+ *
+ * Korean language mode ADDENDUM: on first run (no record at all) the default
+ * folder is created under the stored language's name (folder.default in the
+ * message table; "Saved" in English) and persisted. It is data from then on:
+ * a later language change never renames it, and an existing record is never
+ * touched.
+ */
 async function readSaved(area) {
-  return normalizeSavedState(await readKey(area, SAVED_KEY));
+  const raw = await readKey(area, SAVED_KEY);
+  if (raw === undefined || raw === null) {
+    const settings = await readSettings(area);
+    const state = normalizeSavedState({
+      folders: [{ id: DEFAULT_FOLDER_ID, name: await defaultFolderName(settings.language) }],
+    });
+    await writeSaved(area, state);
+    return state;
+  }
+  return normalizeSavedState(raw);
 }
 
-/** Read + normalize settings, resetting a default folder that no longer exists. */
+/** The default folder's name for a language, "Saved" when the table cannot be read. */
+export async function defaultFolderName(language) {
+  return messageText(language, "folder_default", DEFAULT_FOLDER_NAME);
+}
+
+/**
+ * Korean language mode ADDENDUM: the first-run language. Korean when the
+ * browser's UI language is `ko` or `ko-*`, else English. Pure; exported for
+ * the tests, which hand it stubbed languages.
+ */
+export function languageForUi(uiLanguage) {
+  return typeof uiLanguage === "string" && /^ko(?:[-_]|$)/i.test(uiLanguage) ? "ko" : "en";
+}
+
+/** The browser's UI language, guarded: chrome.i18n first, navigator second. */
+function uiLanguage() {
+  try {
+    if (typeof chrome !== "undefined" && chrome.i18n &&
+        typeof chrome.i18n.getUILanguage === "function") {
+      const lang = chrome.i18n.getUILanguage();
+      if (typeof lang === "string" && lang !== "") return lang;
+    }
+  } catch {
+    // Fall through to the navigator.
+  }
+  try {
+    if (typeof navigator !== "undefined" && typeof navigator.language === "string") {
+      return navigator.language;
+    }
+  } catch {
+    // No browser at all (Node).
+  }
+  return "";
+}
+
+/**
+ * Read + normalize settings, resetting a default folder that no longer exists.
+ *
+ * Korean language mode ADDENDUM: when NO record exists yet (first run), the
+ * record is created here with the language derived from the browser, and
+ * persisted, so every surface reads the same answer from then on. A stored
+ * record is never re-derived: an old record without the field reads as "en"
+ * through normalizeSettings, which is what it showed before.
+ */
 async function readSettings(area, savedState) {
-  return normalizeSettings(await readKey(area, SETTINGS_KEY), savedState);
+  const raw = await readKey(area, SETTINGS_KEY);
+  if (raw === undefined || raw === null) {
+    const settings = normalizeSettings({ language: languageForUi(uiLanguage()) }, savedState);
+    await writeSettings(area, settings);
+    return settings;
+  }
+  return normalizeSettings(raw, savedState);
 }
 
 function writeSaved(area, state) {
@@ -832,6 +900,77 @@ export async function handleSettingsSet(patch) {
   });
 }
 
+// ---------------------------------------------------------------------------
+// Korean language mode ADDENDUM: the message tables.
+//
+// A content script cannot fetch chrome-extension:// files that are not
+// web_accessible_resources, and that list is not widened for this. So the
+// worker fetches _locales/<lang>/messages.json once per locale, caches it,
+// and serves it to every surface through one message. Unknown languages
+// answer with English rather than an error.
+// ---------------------------------------------------------------------------
+
+/** The locales a table exists for; anything else is served as "en". */
+export const MESSAGE_LANGUAGES = ["en", "ko"];
+
+/** Message-table cache: lang -> Promise<object>. A rejection is not kept. */
+const messagesCache = new Map();
+
+function loadMessages(lang) {
+  if (!messagesCache.has(lang)) {
+    const pending = fetch(chrome.runtime.getURL(`_locales/${lang}/messages.json`))
+      .then((res) => {
+        if (!res.ok) throw new Error(`messages ${lang}: HTTP ${res.status}`);
+        return res.json();
+      })
+      .then((raw) => {
+        if (raw === null || typeof raw !== "object") throw new Error(`messages ${lang}: not an object`);
+        return raw;
+      });
+    messagesCache.set(lang, pending);
+    pending.catch(() => messagesCache.delete(lang));
+  }
+  return messagesCache.get(lang);
+}
+
+/**
+ * One message from the packaged table, in file-key form, for the worker's
+ * own copy (the default folder name, the omnibox rows). The fallback stands
+ * in where the table cannot be read: Node, or a broken install.
+ */
+async function messageText(language, key, fallback) {
+  if (typeof chrome === "undefined" || !chrome.runtime ||
+      typeof chrome.runtime.getURL !== "function" || typeof fetch !== "function") {
+    return fallback;
+  }
+  try {
+    const table = await loadMessages(MESSAGE_LANGUAGES.includes(language) ? language : "en");
+    const entry = table[key];
+    const text = entry && typeof entry.message === "string" ? entry.message.trim() : "";
+    return text !== "" ? text : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+/**
+ * {type:"messagesGet", lang} → the raw messages.json table for that locale,
+ * in Chrome's own {key: {message, placeholders}} shape.
+ * @returns {Promise<{ok:true, lang:string, messages:object}|{ok:false, error:string}>}
+ */
+export async function handleMessagesGet(lang) {
+  const chosen = MESSAGE_LANGUAGES.includes(lang) ? lang : "en";
+  if (typeof chrome === "undefined" || !chrome.runtime ||
+      typeof chrome.runtime.getURL !== "function" || typeof fetch !== "function") {
+    return { ok: false, error: "messages unavailable" };
+  }
+  try {
+    return { ok: true, lang: chosen, messages: await loadMessages(chosen) };
+  } catch (err) {
+    return { ok: false, error: toErrorMessage(err) };
+  }
+}
+
 /**
  * Sibling Sino readings ADDENDUM: whether an export needs sino.json at all.
  * True exactly when the charBack checkset carries a reading language; the
@@ -906,6 +1045,7 @@ export const MESSAGE_HANDLERS = {
   settingsSet: (m) => handleSettingsSet(m.patch),
   savedExport: (m) =>
     handleSavedExport({ ids: m.ids, folderIds: m.folderIds, all: m.all }, m.format),
+  messagesGet: (m) => handleMessagesGet(m.lang),
 };
 
 /** The routed handler for a message, or null when nothing handles it. */
@@ -1047,31 +1187,75 @@ async function readNativeToggle() {
  */
 let omniboxNative = false;
 
+/**
+ * Korean language mode ADDENDUM: the stored language, read raw like the
+ * native toggle. Anything but a known language reads as English.
+ */
+async function readStoredLanguage() {
+  const area = storageArea();
+  if (area === null) return "en";
+  try {
+    const got = await area.get(SETTINGS_KEY);
+    const settings = got !== null && typeof got === "object" ? got[SETTINGS_KEY] : undefined;
+    const language = settings !== null && typeof settings === "object" ? settings.language : "";
+    return MESSAGE_LANGUAGES.includes(language) ? language : "en";
+  } catch {
+    return "en";
+  }
+}
+
+/**
+ * The omnibox's copy, in the stored language: the default suggestion's
+ * description (%s and <match> are Chrome's omnibox markup) and the two
+ * markers the row tails carry. The fallbacks are the English table's own
+ * values (a Node test pins them equal), for when the packaged table cannot
+ * be read.
+ */
+export const OMNIBOX_FALLBACK = Object.freeze({
+  description: "Search Okpyeon for <match>%s</match>",
+  rare: "rare",
+  native: "native",
+});
+
+export async function omniboxCopy() {
+  const language = await readStoredLanguage();
+  return {
+    description: await messageText(language, "omnibox_suggestion", OMNIBOX_FALLBACK.description),
+    rare: await messageText(language, "marker_rare", OMNIBOX_FALLBACK.rare),
+    native: await messageText(language, "marker_native", OMNIBOX_FALLBACK.native),
+  };
+}
+
 // Search popup ADDENDUM (omnibox keyword "hj"). Guarded like the listener
 // above so this module still imports cleanly in Node.
 if (typeof chrome !== "undefined" && chrome.omnibox && chrome.omnibox.onInputChanged) {
-  // Set once at wiring time, not per keystroke. %s is the user's input; the
-  // surrounding text is the only markup, so nothing needs escaping here.
-  chrome.omnibox.setDefaultSuggestion({
-    description: "Search Okpyeon for <match>%s</match>",
-  });
+  // English at wiring time, so a suggestion line exists before the first
+  // keystroke; each keystroke then re-sets it in the stored language.
+  chrome.omnibox.setDefaultSuggestion({ description: OMNIBOX_FALLBACK.description });
 
   chrome.omnibox.onInputChanged.addListener((text, suggest) => {
     (async () => {
       try {
         omniboxNative = await readNativeToggle();
+        const copy = await omniboxCopy();
+        chrome.omnibox.setDefaultSuggestion({ description: copy.description });
+        const labels = { rare: copy.rare, native: copy.native };
         const data = await getData();
         if (!omniboxNative) {
           // The omnibox is a typed channel, so it always interprets. Toggle
           // off: exactly the pre-addendum call, native.json never fetched.
-          suggest(buildOmniboxSuggestions(text, data, { interpret: true }));
+          suggest(buildOmniboxSuggestions(text, data, { interpret: true, labels }));
           return;
         }
         // Toggle on: the omnibox IS the All words search. A missing
         // native.json degrades to an empty table, not to no suggestions.
         const native = await getNative().catch(() => guardNative(null));
         suggest(
-          buildOmniboxSuggestions(text, { ...data, native }, { interpret: true, native: true })
+          buildOmniboxSuggestions(text, { ...data, native }, {
+            interpret: true,
+            native: true,
+            labels,
+          })
         );
       } catch {
         // Data unavailable (offline install, mid-update): no rows, no noise.

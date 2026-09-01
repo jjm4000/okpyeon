@@ -29,10 +29,20 @@ export const WORD_FIELDS = ["hanja", "hangul", "defs"];
  */
 export const CHAR_FIELDS = ["char", "eumhun", "readings", "defs", "lvl", "ja", "zh"];
 
+/**
+ * Korean language mode ADDENDUM: the languages the message tables exist for
+ * (extension/_locales/<lang>/messages.json). Anything else normalizes to "en".
+ */
+export const LANGUAGES = ["en", "ko"];
+
 /** SPEC defaults for `okpSettings`. */
 export const DEFAULT_SETTINGS = Object.freeze({
   v: SETTINGS_VERSION,
   defaultFolderId: DEFAULT_FOLDER_ID,
+  // Korean language mode ADDENDUM: the worker derives the first-run value
+  // from the browser language when no record exists yet; this is only what
+  // an existing record without the field reads as.
+  language: "en",
   // Native words ADDENDUM: off is byte-identical to today on every surface.
   nativeWords: false,
   // Sibling Sino readings ADDENDUM: two independent toggles, both off is
@@ -218,6 +228,7 @@ export function normalizeSettings(raw, savedState) {
   return {
     v: SETTINGS_VERSION,
     defaultFolderId,
+    language: oneOf(src.language, LANGUAGES, DEFAULT_SETTINGS.language),
     // Anything that is not literally `true` reads as off, so hand-edited junk
     // can never switch the native surfaces on by accident.
     nativeWords: src.nativeWords === true,

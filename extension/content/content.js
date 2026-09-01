@@ -94,6 +94,33 @@
   var IS_STUB = !HAS_CHROME_RUNTIME;
 
   /* ------------------------------------------------------------------ *
+   * Copy
+   *
+   * Every user-facing string is a message key read through the loader in
+   * i18n.js (SPEC "Korean language mode"), which the manifest and every
+   * extension page load before this script. A page that loaded this script
+   * alone still renders, with the keys standing in for the copy.
+   * ------------------------------------------------------------------ */
+
+  var I18N = globalThis.__okpyeonI18n || null;
+
+  function t(key, subs) {
+    return I18N ? I18N.t(key, subs) : String(key);
+  }
+
+  // Message text into DOM: a placeholder named in `build` becomes that
+  // builder's element; everything else is one text node per run.
+  function tRender(parent, key, subs, build) {
+    if (I18N) return I18N.render(parent, key, subs, build);
+    parent.appendChild(document.createTextNode(String(key)));
+    return parent;
+  }
+
+  function bold(text) {
+    return el("b", null, text);
+  }
+
+  /* ------------------------------------------------------------------ *
    * Embed mode
    *
    * A host page (the search popup page, or its test harness) sets
@@ -136,27 +163,13 @@
   var RESIZE_DEBOUNCE = 120; // a drag has no end event; settle after a pause
   var FLASH_MS = 600;        // eumhun chip → component card orientation flash
   // Character level taxonomy: every char entry carries exactly one `lvl`, and
-  // every char card head / reading row shows exactly one chip for it. Plain
-  // English on the chip; the Korean and the provenance live in the tooltip.
-  // The a/r titles name Okpyeon as the classifier on purpose — that boundary
-  // is our editorial judgment, not a ministry's, and the tooltip should say so.
+  // every char card head / reading row shows exactly one chip for it. The
+  // chip text is message key level.<zone>, the tooltip level.<zone>.title;
+  // the a/r tooltips name Okpyeon as the classifier on purpose (that boundary
+  // is our editorial judgment, not a ministry's), and "attested", not
+  // "common": the build-time predicate admits a character on a single
+  // attested compound.
   var LVL_ORDER = ["m", "h", "a", "r"];
-  var LVL_LABEL = {
-    m: "Middle school",
-    h: "High school",
-    a: "Advanced",
-    r: "Rare"
-  };
-  var LVL_TITLE = {
-    m: "MOE curriculum, middle school (중학교용)",
-    h: "MOE curriculum, high school (고등학교용)",
-    // "attested", not "common": the build-time predicate admits a character
-    // on a single attested compound, so "common" would overclaim what was
-    // actually measured.
-    a: "Beyond the school curriculum; attested in real vocabulary " +
-       "(Okpyeon's classification)",
-    r: "Archaic, specialist, or reading-only (Okpyeon's classification)"
-  };
   var SCROLL_SETTLE_MS = 700; // smooth-scroll watchdog (see revealCharCard)
 
   var CSS = [
@@ -1243,6 +1256,27 @@
     return settingsCache;
   }
 
+  /* ---- Language (SPEC "Korean language mode") --------------------------- *
+   * The language rides the settings record like every toggle: read at boot,
+   * kept fresh by the storage listener. Switching to Korean costs one worker
+   * round trip for the table, so the re-render waits for the loader's own
+   * change event rather than the storage event.
+   * -------------------------------------------------------------------- */
+
+  function applyLanguage(record) {
+    if (!I18N) return;
+    I18N.setLanguage(record && typeof record.language === "string" ? record.language : "en");
+  }
+
+  if (I18N) {
+    I18N.onChange(function () {
+      if (!visible || !viewStack.length) return;
+      saveCurrentViewState();
+      renderCurrentView();
+      refreshLayout();
+    });
+  }
+
   /* ---- Native Korean words (SPEC ADDENDUM 2026-08-31) ------------------- *
    * One settings toggle gates everything. Off must be byte-identical to
    * today on both axes: requests carry no `native` field at all, and no
@@ -1393,13 +1427,13 @@
   // The label always states what the button will do next, read off the body.
   function syncMoreButton(button, body) {
     var expanded = body.classList.contains("expanded");
-    var label = expanded ? "less" : "more";
+    var label = t(expanded ? "button.less" : "button.more");
     if (button.textContent !== label) button.textContent = label;
     button.setAttribute("aria-expanded", expanded ? "true" : "false");
   }
 
   function makeMoreButton(body) {
-    var button = el("button", "more", "more");
+    var button = el("button", "more", t("button.more"));
     button.type = "button";
     syncMoreButton(button, body);
     button.addEventListener("click", function (ev) {
@@ -1456,8 +1490,6 @@
     return t ? WIKI_BASE + encodeURIComponent(t) + "#Korean" : "";
   }
 
-  var WIKI_IDLE_LABEL = "Wiktionary ↗";
-  var WIKI_OPENED_LABEL = "Opened ↗";
   var WIKI_FLASH_MS = 1200;
 
   // Plain clicks never switch tabs, on ANY surface. Two reasons converge:
@@ -1482,27 +1514,26 @@
   function appendWikiLink(head, title) {
     var url = wiktionaryUrl(title);
     if (!url) return null;
-    var link = el("a", "wiki", WIKI_IDLE_LABEL);
+    var link = el("a", "wiki", t("link.wiktionary"));
     // The href/target/rel stay real: a MODIFIED click is still handled by the
     // browser, and the link must remain a link for middle-click-paste, "copy
     // link address", and assistive tech.
     link.href = url;
     link.target = "_blank";
     link.rel = "noopener noreferrer";
-    link.setAttribute("aria-label",
-      "Wiktionary entry for " + title + " (opens in a new tab)");
+    link.setAttribute("aria-label", t("tooltip.wiktionary", { WORD: title }));
     link.addEventListener("mousedown", function (ev) { ev.stopPropagation(); });
 
-    // Restoring to a CAPTURED previous label would latch on "Opened ↗"
+    // Restoring to a CAPTURED previous label would latch on the opened label
     // permanently if a second click landed inside the flash window; the idle
-    // label is a constant, so restore to that and let a re-click just extend.
+    // label is fixed copy, so restore to that and let a re-click just extend.
     var restoreTimer = null;
     function flashOpened() {
-      link.textContent = WIKI_OPENED_LABEL;
+      link.textContent = t("link.opened");
       if (restoreTimer) clearTimeout(restoreTimer);
       restoreTimer = setTimeout(function () {
         restoreTimer = null;
-        link.textContent = WIKI_IDLE_LABEL;
+        link.textContent = t("link.wiktionary");
       }, WIKI_FLASH_MS);
     }
 
@@ -1633,9 +1664,9 @@
     star.classList.toggle("save--on", saved);
     star.textContent = saved ? STAR_ON : STAR_OFF;
     star.setAttribute("aria-pressed", saved ? "true" : "false");
-    var label = (saved ? "Remove " : "Save ") + star.hhSaveKey;
-    star.setAttribute("aria-label", label);
-    star.title = saved ? "Saved" : "Save";
+    star.setAttribute("aria-label",
+      t(saved ? "star.remove" : "star.save", { WORD: star.hhSaveKey }));
+    star.title = t(saved ? "star.title.saved" : "star.title.save");
   }
 
   // A render pass builds its cards synchronously, so a microtask is exactly
@@ -1726,8 +1757,8 @@
     star.hhSaveKind = identity.kind;
     star.hhSaveKey = identity.key;
     star.setAttribute("aria-pressed", "false");
-    star.setAttribute("aria-label", "Save " + identity.key);
-    star.title = "Save";
+    star.setAttribute("aria-label", t("star.save", { WORD: identity.key }));
+    star.title = t("star.title.save");
     star.addEventListener("mousedown", function (ev) { ev.stopPropagation(); });
     star.addEventListener("click", function (ev) {
       ev.preventDefault();
@@ -1822,8 +1853,8 @@
 
     var node = el("div", "savebubble");
     node.setAttribute("role", "dialog");
-    node.setAttribute("aria-label", "Saved");
-    node.appendChild(el("span", "savebubble-title", "Saved to"));
+    node.setAttribute("aria-label", t("bubble.saved"));
+    node.appendChild(el("span", "savebubble-title", t("bubble.savedTo")));
 
     // The folder row swaps between two states in place: the select, and the
     // name input that creates a folder the reader does not have yet. Both are
@@ -1840,7 +1871,7 @@
     function renderFolderSelect() {
       clearNode(folderRow);
       var select = el("select", "savebubble-folder");
-      select.setAttribute("aria-label", "Folder");
+      select.setAttribute("aria-label", t("bubble.folder"));
       folders.forEach(function (folder) {
         var option = el("option", "", nonEmptyString(folder.name) || folder.id);
         option.value = folder.id;
@@ -1848,7 +1879,7 @@
         select.appendChild(option);
       });
       // Always last: the folder that does not exist yet.
-      var creator = el("option", "", "New folder…");
+      var creator = el("option", "", t("bubble.newFolder"));
       creator.value = NEW_FOLDER_OPTION;
       select.appendChild(creator);
       if (!item) select.disabled = true;
@@ -1869,8 +1900,8 @@
       clearNode(folderRow);
       var input = el("input", "savebubble-name");
       input.type = "text";
-      input.placeholder = "Folder name";
-      input.setAttribute("aria-label", "New folder name");
+      input.placeholder = t("saved.folderName");
+      input.setAttribute("aria-label", t("saved.newFolderName"));
       var error = el("div", "savebubble-error");
       var busy = false;
 
@@ -1884,7 +1915,7 @@
             // What counts as a usable name is the worker's rule, not ours, so
             // its complaint is what the reader sees and the input stays put.
             error.textContent = (result && nonEmptyString(result.error)) ||
-              "Could not create that folder";
+              t("bubble.createFailed");
             input.focus({ preventScroll: true });
             return;
           }
@@ -1898,14 +1929,14 @@
         });
       }
 
-      var confirm = el("button", "savebubble-create", "Create");
+      var confirm = el("button", "savebubble-create", t("bubble.create"));
       confirm.type = "button";
       confirm.addEventListener("click", function (ev) {
         ev.preventDefault();
         ev.stopPropagation();
         create();
       });
-      var cancel = el("button", "savebubble-cancel", "Cancel");
+      var cancel = el("button", "savebubble-cancel", t("bubble.cancel"));
       cancel.type = "button";
       cancel.addEventListener("click", function (ev) {
         ev.preventDefault();
@@ -1933,7 +1964,7 @@
 
     renderFolderSelect();
 
-    var remove = el("button", "savebubble-remove", "Remove");
+    var remove = el("button", "savebubble-remove", t("bubble.remove"));
     remove.type = "button";
     remove.addEventListener("click", function (ev) {
       ev.preventDefault();
@@ -2011,7 +2042,7 @@
   }
 
   function syllableChip(syllable) {
-    return navChip(syllable, "Characters read " + syllable);
+    return navChip(syllable, t("tooltip.reading", { SYLLABLE: syllable }));
   }
 
   // The eumhun line as ELEMENTS instead of one string: the eum of each entry
@@ -2080,7 +2111,7 @@
     // re-points the chip at the swapped-in spelling's hangul.
     if (hangul) {
       var hangulLine = el("div", "hangul");
-      hangulLine.appendChild(navChip(hangul, "Look up " + hangul, function () {
+      hangulLine.appendChild(navChip(hangul, t("tooltip.lookup", { WORD: hangul }), function () {
         navigateToHangul(hangul);
       }));
       meta.appendChild(hangulLine);
@@ -2168,18 +2199,18 @@
       var row = el("div", "entry-row samesound-row nav");
       var text = el("span", "compound");
       text.appendChild(el("span", "cpd-hangul", word));
-      text.appendChild(el("span", "native-tag", "native"));
+      text.appendChild(el("span", "native-tag", t("marker.native")));
       var gloss = asArray(entry.glosses).map(nonEmptyString).filter(Boolean)[0] || "";
       if (gloss) text.appendChild(el("span", "cpd-gloss", ": " + gloss));
       row.appendChild(clampWrap(text, 1));
       row.setAttribute("aria-label",
-        word + ", native Korean word" + (gloss ? ": " + gloss : ""));
+        t("aria.nativeWord", { WORD: word }) + (gloss ? ": " + gloss : ""));
       // A push, never an in-place swap: the native card is its own view.
       makeNavRow(row, function () { pushNativeView(word); });
       box.appendChild(row);
     });
     if (!box.firstChild) return;
-    body.appendChild(el("div", "label", "Same sound"));
+    body.appendChild(el("div", "label", t("section.sameSound")));
     body.appendChild(box);
   }
 
@@ -2263,10 +2294,7 @@
 
     var row = el("div", "entry-row usedin-row nav");
     var text = el("span", "usedin-text");
-    text.appendChild(document.createTextNode("Used in "));
-    text.appendChild(el("b", null, String(count)));
-    text.appendChild(document.createTextNode(
-      count === 1 ? " larger word" : " larger words"));
+    tRender(text, "row.usedIn", { COUNT: count }, { COUNT: bold });
     row.appendChild(text);
 
     var busy = false;
@@ -2283,7 +2311,7 @@
         if (!words || !words.length) return;
         pushView({
           key: "usedin:" + word,
-          label: "Used in",
+          label: t("crumb.usedIn"),
           matches: [{ kind: "usedin", word: word, rows: words }]
         });
       });
@@ -2301,9 +2329,8 @@
 
     var card = el("div", "card usedin");
     var title = el("div", "reading-title");
-    title.appendChild(document.createTextNode(
-      rows.length + (rows.length === 1 ? " word contains " : " words contain ")));
-    title.appendChild(el("b", null, nonEmptyString(m.word)));
+    tRender(title, "title.usedIn", { COUNT: rows.length, WORD: nonEmptyString(m.word) },
+      { WORD: bold });
     card.appendChild(title);
 
     var list = el("div", "usedin-list");
@@ -2339,7 +2366,7 @@
       state.partsList.appendChild(row);
     });
     if (state.partsList.firstChild) {
-      state.partsBox.appendChild(el("div", "label", "Component words"));
+      state.partsBox.appendChild(el("div", "label", t("section.componentWords")));
       state.partsBox.appendChild(state.partsList);
     }
   }
@@ -2377,9 +2404,8 @@
     state.card.classList.toggle("hedged", hedged);
     clearNode(state.hedgeBox);
     if (hedged) {
-      state.hedgeBox.appendChild(el("div", "label", "Rare hanja homograph"));
-      state.hedgeBox.appendChild(el("div", "hedge-note",
-        "Likely native Korean. This hanja spelling is obscure."));
+      state.hedgeBox.appendChild(el("div", "label", t("hedge.label")));
+      state.hedgeBox.appendChild(el("div", "hedge-note", t("hedge.note")));
     }
     fillWordBody(state.body, m, state.natives);
     renderParts(state);
@@ -2403,7 +2429,7 @@
       if (i === 0) chip.classList.add("sel");
       if (m.rare === true) {
         chip.classList.add("rare");
-        chip.appendChild(el("sup", "chip-rare", "rare"));
+        chip.appendChild(el("sup", "chip-rare", t("marker.rare")));
       }
       chip.addEventListener("click", function (ev) {
         ev.preventDefault();
@@ -2469,7 +2495,7 @@
     if (entries.length === 1 && entries[0].pos) {
       line.appendChild(el("span", "pos-chip", capitalizeSense(entries[0].pos)));
     }
-    line.appendChild(el("span", "native-tag", "native"));
+    line.appendChild(el("span", "native-tag", t("marker.native")));
     meta.appendChild(line);
     head.appendChild(meta);
     // Korean native entries live at the hangul title, which is exactly what
@@ -2515,7 +2541,7 @@
       if (row) box.appendChild(row);
     });
     if (!box.firstChild) return;
-    card.appendChild(el("div", "label", "Same sound"));
+    card.appendChild(el("div", "label", t("section.sameSound")));
     card.appendChild(box);
   }
 
@@ -2617,12 +2643,9 @@
   function buildScopeHint(count) {
     var row = el("div", "entry-row native-hint nav");
     var text = el("span", "native-hint-text");
-    text.appendChild(el("b", null, String(count)));
-    text.appendChild(document.createTextNode(
-      (count === 1 ? " native word" : " native words") + " in All words"));
+    tRender(text, "hint.nativeInAll", { COUNT: count }, { COUNT: bold });
     row.appendChild(text);
-    row.setAttribute("aria-label",
-      count + (count === 1 ? " native word" : " native words") + " in All words");
+    row.setAttribute("aria-label", t("hint.nativeInAll", { COUNT: count }));
     makeNavRow(row, switchEmbedScope);
     return row;
   }
@@ -2666,8 +2689,8 @@
     // The heading counts the SYLLABLE's characters, not the rows below it, so
     // a capped group still says how many there are.
     var title = el("div", "reading-title");
-    title.appendChild(document.createTextNode(candidates.length + " hanja read "));
-    title.appendChild(el("b", null, syllable));
+    tRender(title, "title.reading", { COUNT: candidates.length, SYLLABLE: syllable },
+      { SYLLABLE: bold });
     card.appendChild(title);
 
     var shown = (preview === true && candidates.length > READING_PREVIEW)
@@ -2701,11 +2724,10 @@
       // are the ordinary ones, and the view it lands on is uncapped.
       var more = el("div", "entry-row reading-more nav");
       var text = el("span", "reading-more-text");
-      text.appendChild(document.createTextNode("Show all "));
-      text.appendChild(el("b", null, String(candidates.length)));
+      tRender(text, "reading.showAll", { COUNT: candidates.length }, { COUNT: bold });
       more.appendChild(text);
       more.setAttribute("aria-label",
-        "Show all " + candidates.length + " hanja read " + syllable);
+        t("reading.showAll.aria", { COUNT: candidates.length, SYLLABLE: syllable }));
       makeNavRow(more, syllable);
       card.appendChild(more);
     }
@@ -2732,7 +2754,7 @@
         // old corpus during the edu/eduT → lvl migration: pre-migration data
         // simply shows no chips rather than wrong ones.
         return m.lvl === zone &&
-          { label: LVL_LABEL[zone], title: LVL_TITLE[zone] };
+          { label: t("level." + zone), title: t("level." + zone + ".title") };
       }
     };
   }
@@ -2908,6 +2930,15 @@
       return "";
     }
 
+    // One message per shape, since a missing half is a missing separator too.
+    function sinoTitle(eum, jaReading, zhReading) {
+      if (jaReading && zhReading) {
+        return t("tooltip.sino.both", { EUM: eum, JA: jaReading, ZH: zhReading });
+      }
+      if (jaReading) return t("tooltip.sino.ja", { EUM: eum, JA: jaReading });
+      return t("tooltip.sino.zh", { EUM: eum, ZH: zhReading });
+    }
+
     var line = el("div", "sino-line");
     function appendSegment(marker, pairs, isJa) {
       line.appendChild(el("span", "sino-marker", marker));
@@ -2918,18 +2949,16 @@
           var other = eumMatch(isJa ? zh : ja, pair.eum);
           var jaReading = isJa ? pair.reading : other;
           var zhReading = isJa ? other : pair.reading;
-          span.title = [pair.eum, jaReading, zhReading]
-            .filter(Boolean)
-            .join(" ↔ ");
+          span.title = sinoTitle(pair.eum, jaReading, zhReading);
         }
         line.appendChild(span);
       });
     }
-    if (showJa.length) appendSegment("JP", showJa, true);
+    if (showJa.length) appendSegment(t("marker.ja"), showJa, true);
     if (showJa.length && showZh.length) {
       line.appendChild(el("span", "sino-sep", "·"));
     }
-    if (showZh.length) appendSegment("CN", showZh, false);
+    if (showZh.length) appendSegment(t("marker.zh"), showZh, false);
     card.appendChild(line);
   }
 
@@ -2980,18 +3009,25 @@
     var box = el("div", "madeof");
     var row = el("div", "entry-row madeof-row nav");
     var text = el("span", "madeof-text");
-    text.appendChild(document.createTextNode("Made of "));
-    parts.forEach(function (p, i) {
-      if (i) text.appendChild(document.createTextNode(" + "));
-      var glyph = el("span", "madeof-glyph", nonEmptyString(p.g));
-      // Phonetic components: the flag rides exactly one joined row, so the
-      // loop marks one span even when the pinned glyph repeats. Unflagged
-      // rows get no new markup of any kind.
-      if (p.phon === true) {
-        glyph.classList.add("phon");
-        glyph.title = nonEmptyString(p.g) + " gives the character its sound";
+    // The glyph run is the message's $PARTS$ slot, so the label can precede
+    // or follow it per language.
+    tRender(text, "row.madeOf", { PARTS: "" }, {
+      PARTS: function () {
+        var run = document.createDocumentFragment();
+        parts.forEach(function (p, i) {
+          if (i) run.appendChild(document.createTextNode(" + "));
+          var glyph = el("span", "madeof-glyph", nonEmptyString(p.g));
+          // Phonetic components: the flag rides exactly one joined row, so the
+          // loop marks one span even when the pinned glyph repeats. Unflagged
+          // rows get no new markup of any kind.
+          if (p.phon === true) {
+            glyph.classList.add("phon");
+            glyph.title = t("tooltip.phonetic", { GLYPH: nonEmptyString(p.g) });
+          }
+          run.appendChild(glyph);
+        });
+        return run;
       }
-      text.appendChild(glyph);
     });
     row.appendChild(clampWrap(text, 1));
     row.setAttribute("aria-expanded", "false");
@@ -3022,8 +3058,8 @@
       // it. Only a flagged row renders it; a worker flag lands only on rows
       // that resolved, so an inert row can never carry one.
       if (p.phon === true) {
-        var marker = el("span", "phon-marker", "PHONETIC");
-        marker.title = nonEmptyString(p.g) + " gives the character its sound";
+        var marker = el("span", "phon-marker", t("marker.phonetic"));
+        marker.title = t("tooltip.phonetic", { GLYPH: nonEmptyString(p.g) });
         part.appendChild(marker);
       }
       // Literal navigation, like every other row: a part is a character, never
@@ -3069,10 +3105,7 @@
 
     var row = el("div", "entry-row foundin-row nav");
     var text = el("span", "foundin-text");
-    text.appendChild(document.createTextNode("Part of "));
-    text.appendChild(el("b", null, String(count)));
-    text.appendChild(document.createTextNode(
-      count === 1 ? " character" : " characters"));
+    tRender(text, "row.partOf", { COUNT: count }, { COUNT: bold });
     row.appendChild(text);
 
     var busy = false;
@@ -3089,7 +3122,7 @@
         if (!chars || !chars.length) return;
         pushView({
           key: "foundin:" + char,
-          label: "Part of",
+          label: t("crumb.partOf"),
           matches: [{ kind: "foundin", char: char, rows: chars }]
         });
       });
@@ -3108,9 +3141,8 @@
 
     var card = el("div", "card foundin");
     var title = el("div", "reading-title");
-    title.appendChild(document.createTextNode(
-      rows.length + (rows.length === 1 ? " character contains " : " characters contain ")));
-    title.appendChild(el("b", null, nonEmptyString(m.char)));
+    tRender(title, "title.partOf", { COUNT: rows.length, GLYPH: nonEmptyString(m.char) },
+      { GLYPH: bold });
     card.appendChild(title);
 
     var list = el("div", "reading-list");
@@ -3155,7 +3187,7 @@
     if (gloss) text.appendChild(el("span", "cpd-gloss", ": " + gloss));
     if (c.rare === true) {
       row.classList.add("rare");
-      text.appendChild(el("sup", "cpd-rare", "rare"));
+      text.appendChild(el("sup", "cpd-rare", t("marker.rare")));
     }
     row.appendChild(clampWrap(text, 1));
 
@@ -3223,7 +3255,7 @@
     var remaining = char ? Math.max(0, total - shownCount) : 0;
 
     if (!rowCount && !remaining) return;
-    card.appendChild(el("div", "label", "Compounds"));
+    card.appendChild(el("div", "label", t("section.compounds")));
     card.appendChild(box);
     if (!remaining) return;
 
@@ -3244,9 +3276,9 @@
         if (allButton.parentNode) allButton.parentNode.removeChild(allButton);
         return;
       }
-      button.textContent =
-        "Show " + Math.min(COMPOUND_PAGE, remaining) + " more (" + remaining + ")";
-      allButton.textContent = "Show all (" + indexTotal + ")";
+      button.textContent = t("button.showMore",
+        { PAGE: Math.min(COMPOUND_PAGE, remaining), COUNT: remaining });
+      allButton.textContent = t("button.showAll", { COUNT: indexTotal });
       // If the index turned out to hold more than the single-page estimate,
       // the auto-reveal path must surface the controls again.
       button.hidden = false;
@@ -3322,7 +3354,7 @@
         syncButton();
         pushView({
           key: "cpds:" + char,
-          label: "Used in",
+          label: t("crumb.usedIn"),
           matches: [{ kind: "usedin", word: char, rows: list }]
         });
       });
@@ -3443,7 +3475,7 @@
     row.appendChild(document.createTextNode(" → "));
     row.appendChild(el("span", "interp-to", to));
     if (interpretation.kind === "dubeolsik") {
-      row.appendChild(document.createTextNode(" (keyboard)"));
+      row.appendChild(document.createTextNode(" " + t("interp.keyboard")));
     }
     return row;
   }
@@ -3513,7 +3545,7 @@
         count++;
       });
       if (state.componentList.firstChild) {
-        state.componentsBox.appendChild(el("div", "label", "Component hanja"));
+        state.componentsBox.appendChild(el("div", "label", t("section.componentHanja")));
         state.componentsBox.appendChild(state.componentList);
       }
     });
@@ -3848,8 +3880,7 @@
       if (idx === 0 && last > 0) {
         var gap = el("button", "crumb-gap", "…");
         gap.type = "button";
-        gap.setAttribute("aria-label",
-          "Show all " + viewStack.length + " steps of the trail");
+        gap.setAttribute("aria-label", t("crumb.showAll", { COUNT: viewStack.length }));
         gap.addEventListener("click", function (ev) {
           ev.preventDefault();
           ev.stopPropagation();
@@ -4628,6 +4659,7 @@
       if (changes.okpSettings) {
         var next = changes.okpSettings.newValue;
         settingsCache = next && typeof next === "object" ? next : null;
+        applyLanguage(settingsCache);
       }
       // The saved record is a star's business; settings are not.
       if (!changes.okpSaved) return;
@@ -4636,9 +4668,10 @@
   }
 
   // One settings read at startup fills the cache the section predicates
-  // consult. Local storage only, so no service worker is woken on page load.
-  // A selection made before this answers renders as if the toggle were off,
-  // which is the safe direction: requests stay byte-identical to today's.
+  // consult. Local storage only, so no service worker is woken on page load
+  // except on a fresh install (below). A selection made before this answers
+  // renders as if the toggle were off, which is the safe direction: requests
+  // stay byte-identical to today's.
   if (typeof chrome !== "undefined" && chrome && chrome.storage &&
       chrome.storage.local &&
       typeof chrome.storage.local.get === "function") {
@@ -4649,6 +4682,18 @@
         if (record && typeof record === "object" && settingsCache === null) {
           settingsCache = record;
         }
+        if (record && typeof record === "object") {
+          applyLanguage(record);
+          return;
+        }
+        // No record yet: the worker derives the first-run language from the
+        // browser and persists it (SPEC), so ask it once. The storage
+        // listener above picks up the record it writes.
+        sendToWorker({ type: "settingsGet" }).then(function (response) {
+          if (response && response.ok === true && response.settings) {
+            applyLanguage(response.settings);
+          }
+        });
       });
     } catch (e) { /* no storage access here: the toggle simply stays off */ }
   }
@@ -4806,6 +4851,7 @@
       // from, so it hands a record in directly (e.g. { nativeWords: true }).
       setSettings: function (record) {
         settingsCache = record && typeof record === "object" ? record : null;
+        applyLanguage(settingsCache);
       },
       // The badge registry itself, so a check can prove a NEW badge needs
       // nothing but an entry (the harness registers a dummy and removes it).

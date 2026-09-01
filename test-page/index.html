@@ -1127,6 +1127,7 @@
   function settingsCopy() {
     return {
       v: settings.v, defaultFolderId: settings.defaultFolderId,
+      language: settings.language,
       anki: {
         wordFront: settings.anki.wordFront,
         wordBack: settings.anki.wordBack.slice(),
@@ -1427,6 +1428,45 @@
     fail: function (which, on) { savedFail[which] = on !== false; }
   };
 
+  /* ---- Korean language mode ADDENDUM: the message tables ------------------ *
+   * The worker's messagesGet, answered from the packaged files themselves so
+   * the ko sweep runs against the real table. fetch() of a relative file
+   * works over http:// only; under file:// the answer is {ok:false}, the
+   * loader keeps its built-in English, and the language checks skip.
+   * -------------------------------------------------------------------- */
+  var messagesCache = Object.create(null);
+  function messagesTable(lang) {
+    var chosen = lang === "ko" ? "ko" : "en";
+    if (!messagesCache[chosen]) {
+      messagesCache[chosen] = fetch("../extension/_locales/" + chosen + "/messages.json")
+        .then(function (res) {
+          if (!res.ok) throw new Error("HTTP " + res.status);
+          return res.json();
+        })
+        .then(function (messages) {
+          return { ok: true, lang: chosen, messages: messages };
+        })
+        .catch(function (e) {
+          delete messagesCache[chosen];
+          return { ok: false, error: String(e) };
+        });
+    }
+    return messagesCache[chosen];
+  }
+
+  // English byte-identity anchors (Korean language mode ADDENDUM): the
+  // outerHTML of three fixture views as the renderer produced them BEFORE
+  // its copy went through the message table (학생 word card, 靴 char card,
+  // 국 reading list; `.more` expanders stripped, since those depend on font
+  // metrics). Captured by rendering the pre-port content.js against this
+  // very fixture in headless Chrome. Equality with a fresh render proves the
+  // English surface is byte-for-byte what it was.
+  var SNAPSHOTS = {
+    word: "<div class=\"card\"><div class=\"hedge\"><\/div><div class=\"word-body\"><div class=\"head\"><div class=\"surface\">學生<\/div><div class=\"headmeta\"><div class=\"hangul\"><span class=\"rnav\" title=\"Look up 학생\" aria-label=\"Look up 학생\" role=\"button\" tabindex=\"0\">학생<\/span><\/div><\/div><button class=\"save save--unknown\" type=\"button\" aria-pressed=\"false\" aria-label=\"Save 學生\" title=\"Save\">☆<\/button><a class=\"wiki\" href=\"https://en.wiktionary.org/wiki/%ED%95%99%EC%83%9D#Korean\" target=\"_blank\" rel=\"noopener noreferrer\" aria-label=\"Wiktionary entry for 학생 (opens in a new tab)\">Wiktionary ↗<\/a><\/div><div class=\"glosses\"><div class=\"gloss\"><div class=\"clampwrap\"><span class=\"gloss-text clamp clamp-2\">Student; pupil<\/span><\/div><\/div><\/div><div class=\"chips\"><span class=\"chip nav\" aria-label=\"學 배울 학\" role=\"button\" tabindex=\"0\"><span class=\"chip-glyph\">學<\/span><span class=\"chip-text\">배울 학<\/span><\/span><span class=\"chip nav\" aria-label=\"生 날 생\" role=\"button\" tabindex=\"0\"><span class=\"chip-glyph\">生<\/span><span class=\"chip-text\">날 생<\/span><\/span><\/div><div class=\"entry-row usedin-row nav\" role=\"button\" tabindex=\"0\"><span class=\"usedin-text\">Used in <b>6<\/b> larger words<\/span><\/div><\/div><div class=\"parts\"><\/div><div class=\"components\"><div class=\"label\">Component hanja<\/div><div class=\"component-list\"><div class=\"card component\"><div class=\"head\"><div class=\"surface\">學<\/div><div class=\"headmeta\"><div class=\"eumhun\"><span class=\"hun\">배울 <\/span><span class=\"rnav\" title=\"Characters read 학\" aria-label=\"Characters read 학\" role=\"button\" tabindex=\"0\">학<\/span><span class=\"edu-badge edu-badge--lvlM\" title=\"MOE curriculum, middle school (중학교용)\" aria-label=\"MOE curriculum, middle school (중학교용)\">Middle school<\/span><\/div><\/div><button class=\"save save--unknown\" type=\"button\" aria-pressed=\"false\" aria-label=\"Save 學\" title=\"Save\">☆<\/button><a class=\"wiki\" href=\"https://en.wiktionary.org/wiki/%E5%AD%B8#Korean\" target=\"_blank\" rel=\"noopener noreferrer\" aria-label=\"Wiktionary entry for 學 (opens in a new tab)\">Wiktionary ↗<\/a><\/div><div class=\"glosses numbered\"><div class=\"gloss\"><span class=\"gloss-num\">1.<\/span><div class=\"clampwrap\"><span class=\"gloss-text clamp clamp-2\">To learn; study<\/span><\/div><\/div><div class=\"gloss\"><span class=\"gloss-num\">2.<\/span><div class=\"clampwrap\"><span class=\"gloss-text clamp clamp-2\">School; learning<\/span><\/div><\/div><\/div><div class=\"label\">Compounds<\/div><div class=\"compounds\"><div class=\"entry-row compound-row nav\" role=\"button\" tabindex=\"0\"><div class=\"clampwrap\"><span class=\"compound clamp clamp-1\"><span class=\"cpd-hangul\">학생<\/span><span class=\"cpd-hanja\"> (學生)<\/span><span class=\"cpd-gloss\">: student<\/span><\/span><\/div><\/div><div class=\"entry-row compound-row nav\" role=\"button\" tabindex=\"0\"><div class=\"clampwrap\"><span class=\"compound clamp clamp-1\"><span class=\"cpd-hangul\">대학<\/span><span class=\"cpd-hanja\"> (大學)<\/span><span class=\"cpd-gloss\">: university<\/span><\/span><\/div><\/div><div class=\"entry-row compound-row nav\" role=\"button\" tabindex=\"0\"><div class=\"clampwrap\"><span class=\"compound clamp clamp-1\"><span class=\"cpd-hangul\">학교<\/span><span class=\"cpd-hanja\"> (學校)<\/span><span class=\"cpd-gloss\">: school<\/span><\/span><\/div><\/div><div class=\"entry-row compound-row nav\" role=\"button\" tabindex=\"0\"><div class=\"clampwrap\"><span class=\"compound clamp clamp-1\"><span class=\"cpd-hangul\">과학<\/span><span class=\"cpd-hanja\"> (科學)<\/span><span class=\"cpd-gloss\">: science<\/span><\/span><\/div><\/div><div class=\"entry-row compound-row\"><div class=\"clampwrap\"><span class=\"compound clamp clamp-1\"><span class=\"cpd-hangul\">학벌<\/span><span class=\"cpd-gloss\">: academic clique<\/span><\/span><\/div><\/div><\/div><button class=\"cpd-more\" type=\"button\">Show 5 more (13)<\/button><button class=\"cpd-more cpd-all\" type=\"button\">Show all (17)<\/button><\/div><div class=\"card component\"><div class=\"head\"><div class=\"surface\">生<\/div><div class=\"headmeta\"><div class=\"eumhun\"><span class=\"hun\">날 <\/span><span class=\"rnav\" title=\"Characters read 생\" aria-label=\"Characters read 생\" role=\"button\" tabindex=\"0\">생<\/span><span class=\"edu-badge edu-badge--lvlM\" title=\"MOE curriculum, middle school (중학교용)\" aria-label=\"MOE curriculum, middle school (중학교용)\">Middle school<\/span><\/div><\/div><button class=\"save save--unknown\" type=\"button\" aria-pressed=\"false\" aria-label=\"Save 生\" title=\"Save\">☆<\/button><a class=\"wiki\" href=\"https://en.wiktionary.org/wiki/%E7%94%9F#Korean\" target=\"_blank\" rel=\"noopener noreferrer\" aria-label=\"Wiktionary entry for 生 (opens in a new tab)\">Wiktionary ↗<\/a><\/div><div class=\"glosses numbered\"><div class=\"gloss\"><span class=\"gloss-num\">1.<\/span><div class=\"clampwrap\"><span class=\"gloss-text clamp clamp-2\">To be born; to live<\/span><\/div><\/div><div class=\"gloss\"><span class=\"gloss-num\">2.<\/span><div class=\"clampwrap\"><span class=\"gloss-text clamp clamp-2\">Raw; fresh<\/span><\/div><\/div><\/div><div class=\"label\">Compounds<\/div><div class=\"compounds\"><div class=\"entry-row compound-row nav\" role=\"button\" tabindex=\"0\"><div class=\"clampwrap\"><span class=\"compound clamp clamp-1\"><span class=\"cpd-hangul\">학생<\/span><span class=\"cpd-hanja\"> (學生)<\/span><span class=\"cpd-gloss\">: student<\/span><\/span><\/div><\/div><div class=\"entry-row compound-row nav\" role=\"button\" tabindex=\"0\"><div class=\"clampwrap\"><span class=\"compound clamp clamp-1\"><span class=\"cpd-hangul\">생일<\/span><span class=\"cpd-hanja\"> (生日)<\/span><span class=\"cpd-gloss\">: birthday<\/span><\/span><\/div><\/div><\/div><\/div><\/div><\/div><\/div>",
+    char: "<div class=\"card\"><div class=\"head\"><div class=\"surface\">靴<\/div><div class=\"headmeta\"><div class=\"eumhun\"><span class=\"hun\">신 <\/span><span class=\"rnav\" title=\"Characters read 화\" aria-label=\"Characters read 화\" role=\"button\" tabindex=\"0\">화<\/span><span class=\"edu-badge edu-badge--lvlR\" title=\"Archaic, specialist, or reading-only (Okpyeon's classification)\" aria-label=\"Archaic, specialist, or reading-only (Okpyeon's classification)\">Rare<\/span><\/div><\/div><button class=\"save save--unknown\" type=\"button\" aria-pressed=\"false\" aria-label=\"Save 靴\" title=\"Save\">☆<\/button><a class=\"wiki\" href=\"https://en.wiktionary.org/wiki/%E9%9D%B4#Korean\" target=\"_blank\" rel=\"noopener noreferrer\" aria-label=\"Wiktionary entry for 靴 (opens in a new tab)\">Wiktionary ↗<\/a><\/div><div class=\"glosses\"><div class=\"gloss\"><div class=\"clampwrap\"><span class=\"gloss-text clamp clamp-2\">Shoe; boot<\/span><\/div><\/div><\/div><div class=\"madeof\"><div class=\"entry-row madeof-row nav\" aria-expanded=\"false\" role=\"button\" tabindex=\"0\"><div class=\"clampwrap\"><span class=\"madeof-text clamp clamp-1\">Made of <span class=\"madeof-glyph\">革<\/span> + <span class=\"madeof-glyph\">亻<\/span> + <span class=\"madeof-glyph\">乚<\/span> + <span class=\"madeof-glyph\">㇒<\/span><\/span><\/div><\/div><div class=\"madeof-list\" hidden=\"\"><div class=\"entry-row madeof-part nav\" role=\"button\" tabindex=\"0\"><span class=\"r-glyph\">革<\/span><div class=\"clampwrap\"><span class=\"r-text clamp clamp-1\"><span class=\"r-eumhun\">가죽 혁<\/span><span class=\"r-gloss\">  leather; hide<\/span><\/span><\/div><\/div><div class=\"entry-row madeof-part nav\" role=\"button\" tabindex=\"0\"><span class=\"r-glyph\">亻<\/span><div class=\"clampwrap\"><span class=\"r-text clamp clamp-1\"><span class=\"r-eumhun\">사람 인<\/span><span class=\"r-gloss\">  person; human being<\/span><\/span><\/div><\/div><div class=\"entry-row madeof-part inert\"><span class=\"r-glyph\">乚<\/span><div class=\"clampwrap\"><span class=\"r-text clamp clamp-1\"><span class=\"madeof-name\">hidden<\/span><\/span><\/div><\/div><div class=\"entry-row madeof-part inert\"><span class=\"r-glyph\">㇒<\/span><div class=\"clampwrap\"><span class=\"r-text clamp clamp-1\"><\/span><\/div><\/div><\/div><\/div><div class=\"label\">Compounds<\/div><div class=\"compounds\"><div class=\"entry-row compound-row nav\" role=\"button\" tabindex=\"0\"><div class=\"clampwrap\"><span class=\"compound clamp clamp-1\"><span class=\"cpd-hangul\">군화<\/span><span class=\"cpd-hanja\"> (軍靴)<\/span><span class=\"cpd-gloss\">: military boots<\/span><\/span><\/div><\/div><\/div><\/div>",
+    reading: "<div class=\"card reading\"><div class=\"reading-title\">5 hanja read <b>국<\/b><\/div><div class=\"reading-list\"><div class=\"reading-row\" role=\"button\" tabindex=\"0\"><span class=\"r-glyph\">國<\/span><span class=\"r-text\"><span class=\"r-eumhun\">나라 국<\/span><span class=\"edu-badge edu-badge--lvlM\" title=\"MOE curriculum, middle school (중학교용)\" aria-label=\"MOE curriculum, middle school (중학교용)\">Middle school<\/span><span class=\"r-gloss\">  country; state; nation<\/span><\/span><\/div><div class=\"reading-row\" role=\"button\" tabindex=\"0\"><span class=\"r-glyph\">局<\/span><span class=\"r-text\"><span class=\"r-eumhun\">판 국<\/span><span class=\"edu-badge edu-badge--lvlH\" title=\"MOE curriculum, high school (고등학교용)\" aria-label=\"MOE curriculum, high school (고등학교용)\">High school<\/span><span class=\"r-gloss\">  bureau; office; situation<\/span><\/span><\/div><div class=\"reading-row\" role=\"button\" tabindex=\"0\"><span class=\"r-glyph\">菊<\/span><span class=\"r-text\"><span class=\"r-eumhun\">국화 국<\/span><span class=\"edu-badge edu-badge--lvlA\" title=\"Beyond the school curriculum; attested in real vocabulary (Okpyeon's classification)\" aria-label=\"Beyond the school curriculum; attested in real vocabulary (Okpyeon's classification)\">Advanced<\/span><span class=\"r-gloss\">  chrysanthemum<\/span><\/span><\/div><div class=\"reading-row\" role=\"button\" tabindex=\"0\"><span class=\"r-glyph\">鞠<\/span><span class=\"r-text\"><span class=\"r-eumhun\">공 국<\/span><span class=\"edu-badge edu-badge--lvlR\" title=\"Archaic, specialist, or reading-only (Okpyeon's classification)\" aria-label=\"Archaic, specialist, or reading-only (Okpyeon's classification)\">Rare<\/span><span class=\"r-gloss\">  leather ball; to rear<\/span><\/span><\/div><div class=\"reading-row\" role=\"button\" tabindex=\"0\"><span class=\"r-glyph\">麴<\/span><span class=\"r-text\"><span class=\"r-eumhun\">누룩 국<\/span><span class=\"edu-badge edu-badge--lvlR\" title=\"Archaic, specialist, or reading-only (Okpyeon's classification)\" aria-label=\"Archaic, specialist, or reading-only (Okpyeon's classification)\">Rare<\/span><span class=\"r-gloss\">  yeast; malt<\/span><\/span><\/div><\/div><\/div>"
+  };
+
   globalThis.__hanjaHoverTestRuntime = {
     __isStub: true,
     __calls: 0,          // dictionary sendMessage — proves "back" doesn't re-query
@@ -1459,11 +1499,16 @@
     __openTabCalls: 0,
     __lastOpenTabUrl: null,
     __failOpenTab: false,
+    // {type:"messagesGet"} (Korean language mode ADDENDUM), answered from
+    // the packaged files; see messagesTable.
+    __messagesCalls: 0,
     sendMessage: function (msg, cb) {
       // Dictionary traffic only. The saved store keeps its own counters, so
       // every "this view was served from cache" proof stays a statement about
       // LOOKUPS and does not quietly start counting savedCheck round-trips.
-      if (!(msg && SAVED_TYPES[msg.type] === 1)) this.__calls++;
+      if (!(msg && (SAVED_TYPES[msg.type] === 1 || msg.type === "messagesGet"))) {
+        this.__calls++;
+      }
       var resp;
       try {
         if (msg && msg.type === "lookup") {
@@ -1514,6 +1559,9 @@
           resp = this.__failOpenTab
             ? { ok: false, error: "url rejected" }
             : { ok: true };
+        } else if (msg && msg.type === "messagesGet") {
+          this.__messagesCalls++;
+          resp = messagesTable(msg.lang);
         } else if (msg && SAVED_TYPES[msg.type] === 1) {
           resp = savedMessage(msg);
         } else {
@@ -1550,11 +1598,15 @@
     __fullCompounds: fullCompounds,
     __usedIn: buildUsedIn,
     __foundIn: buildFoundIn,
-    __savedStore: savedStore
+    __savedStore: savedStore,
+    // The message tables and the English byte-identity anchors.
+    __messages: messagesTable,
+    __snapshots: SNAPSHOTS
   };
 })();
 </script>
 
+<script src="../extension/i18n.js"></script>
 <script src="../extension/content/content.js"></script>
 
 <!-- Self-checks: rendering, positioning, navigation, homographs. -->
@@ -3194,13 +3246,40 @@
       api.crumbLabels().join(" › ") === "海外大學生活 › 大學生活 › 大學生 › 大學",
       api.crumbLabels().join(" › "));
 
-    // Narrow the panel until the row genuinely cannot hold the trail: the
-    // middle elides behind the …, keeping the root and the last two.
+    // Two more levels: 大學's used-in list, then 大學生 from it (a revisit of
+    // level 3, which pushes normally). Six crumbs run past even the
+    // narrowest panel (content.js clamps at MIN_PANEL_W, 280px, where four
+    // still fit), so the ellipsis logic is genuinely exercised below.
+    function descendTwoMore() {
+      api.query(".usedin-row").click();                     // → Used in
+      return wait(90).then(function () {
+        usedInRows().filter(function (r) {
+          return /\(大學生\)/.test(r.textContent);
+        })[0].click();                                       // → 大學生
+        return wait(90);
+      });
+    }
+    var SIX_LEVELS = "海外大學生活 › 大學生活 › 大學生 › 大學 › Used in › 大學生";
+    await descendTwoMore();
+    // Six crumbs overflow even the default 340px panel, so the trail is
+    // already elided here; which middle levels hide depends on the width,
+    // so only the depth, the ellipsis and the two ends are pinned.
+    check("six levels deep, the trail overflows even the default width",
+      api.viewDepth() === 6 &&
+      !api.query(".crumb-gap").hasAttribute("hidden") &&
+      api.crumbLabels()[0] === "海外大學生活" && api.crumbLabels()[1] === "…" &&
+      api.crumbLabels().slice(-2).join(" › ") === "Used in › 大學生",
+      api.crumbLabels().join(" › "));
+
+    // Narrow the panel to its floor: the row genuinely cannot hold the
+    // trail, so the middle elides behind the …, keeping the root and the
+    // last two.
     api.resizePanel(210, 420);
     await wait(220);
     check("a genuinely overflowing row elides the middle behind …",
-      api.crumbLabels().join(" › ") === "海外大學生活 › … › 大學生 › 大學",
-      api.crumbLabels().join(" › "));
+      api.panelSize().width <= 300 &&
+      api.crumbLabels().join(" › ") === "海外大學生活 › … › Used in › 大學生",
+      Math.round(api.panelSize().width) + "px " + api.crumbLabels().join(" › "));
     var gap = api.query(".crumb-gap");
     check("the … is a real, visible BUTTON, not decoration",
       !!gap && !gap.hasAttribute("hidden") &&
@@ -3212,7 +3291,7 @@
     gap.click();
     await wait(60);
     check("pressing … expands the trail in place to every level",
-      api.crumbLabels().join(" › ") === "海外大學生活 › 大學生活 › 大學生 › 大學" &&
+      api.crumbLabels().join(" › ") === SIX_LEVELS &&
       api.query(".crumb-gap").hasAttribute("hidden"),
       api.crumbLabels().join(" › "));
     check("expanding navigates nowhere and queries nothing",
@@ -3222,7 +3301,7 @@
       getComputedStyle(api.query(".crumbs")).flexWrap === "wrap",
       getComputedStyle(api.query(".crumbs")).flexWrap);
     check("every earlier level is now a clickable button",
-      api.queryAll(".crumb").slice(0, 3).every(function (c) {
+      api.queryAll(".crumb").slice(0, 5).every(function (c) {
         return c.tagName === "BUTTON";
       }) && api.queryAll(".crumb").pop().classList.contains("current"));
 
@@ -3240,17 +3319,19 @@
     await wait(90);
     api.queryAll(".part-row")[0].click();       // → 大學, depth 4 again
     await wait(90);
+    await descendTwoMore();                     // → depth 6 again
     check("the trail re-collapses after the next navigation (still narrow)",
-      api.viewDepth() === 4 &&
+      api.viewDepth() === 6 &&
       !api.query(".crumb-gap").hasAttribute("hidden") &&
-      api.crumbLabels().join(" › ") === "海外大學生活 › … › 大學生 › 大學",
+      api.crumbLabels().join(" › ") === "海外大學生活 › … › Used in › 大學生",
       api.crumbLabels().join(" › "));
 
     // Re-widening restores the full trail without any rebuild or click.
-    api.resizePanel(360, 480);
+    // Six crumbs need more than the old 360px, so well past that.
+    api.resizePanel(600, 480);
     await wait(220);
     check("re-widening the panel brings the hidden levels back",
-      api.crumbLabels().join(" › ") === "海外大學生活 › 大學生活 › 大學生 › 大學" &&
+      api.crumbLabels().join(" › ") === SIX_LEVELS &&
       api.query(".crumb-gap").hasAttribute("hidden"),
       api.crumbLabels().join(" › "));
     api.resetPanelSize();
@@ -5372,6 +5453,300 @@
         accessors.length === 1 && !bypasses.length,
         "accessors=" + accessors.length + " bypasses=" + bypasses.length);
     }
+
+    /* ==================================================================
+     * Korean language mode (SPEC ADDENDUM 2026-09-01): every string on a
+     * card comes through the message table. Two proofs. English renders
+     * byte-for-byte what it did before the port (snapshots captured from
+     * the pre-port renderer against this fixture); and under 한국어 no
+     * English copy survives on any fixture card, chip, row, tooltip or
+     * bubble.
+     * ================================================================== */
+    var i18n = globalThis.__okpyeonI18n;
+    api.setSettings(null);
+    api.hide();
+    check("the message-table loader is loaded ahead of the renderer, English active",
+      !!i18n && typeof i18n.t === "function" && i18n.language() === "en");
+    check("t() reads the built-in English table synchronously",
+      !!i18n && i18n.t("section.compounds") === "Compounds" &&
+      i18n.t("row.usedIn", { COUNT: 1 }) === "Used in 1 larger word" &&
+      i18n.t("row.usedIn", { COUNT: 6 }) === "Used in 6 larger words" &&
+      i18n.t("no.such.key") === "no.such.key");
+
+    // `.more` expanders depend on font metrics, so both sides drop them.
+    function snapshotOf(text, sel) {
+      api.showAt(anchor, fake.__lookup(text).matches);
+      var clone = api.query(sel).cloneNode(true);
+      Array.prototype.slice.call(clone.querySelectorAll(".more")).forEach(function (b) {
+        b.parentNode.removeChild(b);
+      });
+      return clone.outerHTML;
+    }
+    function firstDiff(a, b) {
+      var i = 0;
+      while (i < a.length && a[i] === b[i]) i++;
+      return "at " + i + ": " + JSON.stringify(b.slice(Math.max(0, i - 40), i + 60));
+    }
+    [["word", "학생", ".view > .card", "the 學生 word card"],
+     ["char", "靴", ".top-chars > .card", "the 靴 char card"],
+     ["reading", "국", ".card.reading", "the 국 reading list"]].forEach(function (s) {
+      var html = snapshotOf(s[1], s[2]);
+      check("EN byte-identity: " + s[3] + " renders exactly the pre-port snapshot",
+        html === fake.__snapshots[s[0]], firstDiff(fake.__snapshots[s[0]], html));
+    });
+    api.hide();
+
+    var enTable = await fake.__messages("en");
+    var koTable = await fake.__messages("ko");
+    if (!enTable.ok || !koTable.ok) {
+      skip("KO sweep: no English copy on any fixture card under 한국어",
+        "file:// blocks fetching the message tables; serve the repo over http://");
+    } else {
+      // No English message may survive: text nodes and attributes against
+      // the English values exactly, and each element's own text against
+      // the templates with their slots wild. Values the two tables share
+      // are the fixed tokens (Wiktionary, Anki, CSV, GitHub, Okpyeon);
+      // stored folder names are data, not copy, and are allowed as well.
+      var sweepExact = Object.create(null);
+      var sweepTemplates = [];
+      Object.keys(enTable.messages).forEach(function (key) {
+        var value = enTable.messages[key].message;
+        if (!value) return;
+        if (koTable.messages[key] && koTable.messages[key].message === value) return;
+        if (/\$[A-Z_]+\$/.test(value)) {
+          sweepTemplates.push(new RegExp("^" + value.split(/\$[A-Z_]+\$/).map(function (part) {
+            return part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+          }).join("[\\s\\S]+") + "$"));
+        } else {
+          sweepExact[value] = key;
+        }
+      });
+      // Elements under these carry dictionary or stored data, not copy.
+      var DATA_SELECTOR = ".gloss-text, .cpd-gloss, .r-gloss, .p-gloss, .madeof-name, " +
+        ".interp-from, .savebubble-folder option";
+      function isData(text) {
+        return store.state().folders.some(function (f) { return f.name === text; });
+      }
+      function inData(node) {
+        var el = node.nodeType === 1 ? node : node.parentNode;
+        return !!(el && el.closest && el.closest(DATA_SELECTOR));
+      }
+      function englishIn(text) {
+        var s = String(text == null ? "" : text).trim();
+        if (!s || isData(s)) return false;
+        if (sweepExact[s]) return true;
+        for (var i = 0; i < sweepTemplates.length; i++) {
+          if (sweepTemplates[i].test(s)) return true;
+        }
+        return false;
+      }
+      function sweep(root, where) {
+        var found = [];
+        if (!root) return found;
+        var nodes = [root].concat(Array.prototype.slice.call(root.querySelectorAll("*")));
+        nodes.forEach(function (node) {
+          if (inData(node)) return;
+          ["title", "aria-label", "placeholder"].forEach(function (attr) {
+            if (node.hasAttribute(attr) && englishIn(node.getAttribute(attr))) {
+              found.push(where + " " + attr + "=" + JSON.stringify(node.getAttribute(attr)));
+            }
+          });
+          if (englishIn(node.textContent)) {
+            found.push(where + " <" + node.tagName.toLowerCase() + "> " +
+              JSON.stringify(node.textContent.trim().slice(0, 60)));
+          }
+        });
+        var walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+        var textNode;
+        while ((textNode = walker.nextNode())) {
+          var text = textNode.nodeValue.trim();
+          if (text && sweepExact[text] && !isData(text) && !inData(textNode)) {
+            found.push(where + " text " + JSON.stringify(text));
+          }
+        }
+        return found;
+      }
+      var violations = [];
+      function sweepView(where) {
+        violations = violations.concat(sweep(api.query(".view"), where));
+      }
+
+      var switched = await i18n.setLanguage("ko");
+      check("switching to 한국어 loads the table through the worker's messagesGet",
+        switched === true && i18n.language() === "ko" && fake.__messagesCalls >= 1 &&
+        i18n.t("section.compounds") === "단어" &&
+        i18n.t("row.partOf", { COUNT: 1 }) === "한자 1자에 쓰임",
+        "switched=" + switched + " lang=" + i18n.language() + " calls=" + fake.__messagesCalls);
+
+      api.showAt(anchor, fake.__lookup("학생").matches, "학생");
+      await wait(60);
+      check("KO: the 學生 card's rows, labels, chips and tooltips read Korean",
+        api.query(".usedin-row").textContent === "더 긴 단어 6개에 쓰임" &&
+        api.query(".components .label").textContent === "구성 한자" &&
+        api.query(".edu-badge").textContent === "중학" &&
+        api.query(".edu-badge").title === "교육부 지정 중학교용 기초 한자" &&
+        api.query(".cpd-more").textContent === "5개 더 보기 (13)" &&
+        api.query(".cpd-all").textContent === "전체 보기 (17)" &&
+        api.query(".label").textContent === "구성 한자" &&
+        api.query(".wiki").getAttribute("aria-label") === "학생의 Wiktionary 항목 (새 탭에서 열림)" &&
+        api.query(".wiki").textContent === "Wiktionary ↗" &&
+        api.query(".save").getAttribute("aria-label") === "學生 저장" &&
+        api.query(".word-body .rnav").title === "학생 찾기" &&
+        api.query(".card.component .rnav").title === "학(으)로 읽는 한자",
+        [api.query(".usedin-row").textContent, api.query(".edu-badge").textContent,
+          api.query(".cpd-more").textContent, api.query(".wiki").getAttribute("aria-label"),
+          api.query(".save").getAttribute("aria-label")].join(" | "));
+      sweepView("학생");
+      api.query(".usedin-row").click();
+      await wait(90);
+      check("KO: the used-in list and its crumb",
+        api.viewDepth() === 2 && api.crumbLabels().join("›") === "學生›더 긴 단어" &&
+        api.query(".card.usedin .reading-title").textContent === "學生이(가) 들어간 단어 6개",
+        api.crumbLabels().join("›") + " | " +
+          (api.query(".card.usedin .reading-title") || {}).textContent);
+      sweepView("學生 used-in");
+
+      api.showAt(anchor, fake.__lookup("鞠").matches);
+      await wait(60);
+      madeOfRow().click();
+      await wait(30);
+      check("KO: Made of, the phonetic marker and its tooltip",
+        /^짜임 /.test(madeOfRow().textContent) &&
+        api.query(".phon-marker").textContent === "소리" &&
+        api.query(".phon-marker").title === "革이(가) 이 글자의 소리를 나타냅니다" &&
+        api.query(".madeof-glyph.phon").title === "革이(가) 이 글자의 소리를 나타냅니다",
+        madeOfRow().textContent + " | " + (api.query(".phon-marker") || {}).textContent);
+      sweepView("鞠");
+
+      api.showAt(anchor, fake.__lookup("革").matches);
+      await wait(60);
+      check("KO: the Part of row", api.query(".foundin-row").textContent === "한자 2자에 쓰임",
+        (api.query(".foundin-row") || {}).textContent);
+      sweepView("革");
+      api.query(".foundin-row").click();
+      await wait(90);
+      check("KO: the Part of list and its crumb",
+        api.crumbLabels().join("›") === "革›쓰인 한자" &&
+        api.query(".card.foundin .reading-title").textContent === "革이(가) 들어간 한자 2자",
+        api.crumbLabels().join("›") + " | " +
+          (api.query(".card.foundin .reading-title") || {}).textContent);
+      sweepView("革 part-of");
+
+      api.showAt(anchor, fake.__lookup("국").matches);
+      await wait(60);
+      check("KO: the reading list heading",
+        api.query(".reading-title").textContent === "국(으)로 읽는 한자 5자",
+        api.query(".reading-title").textContent);
+      sweepView("국");
+
+      var dual = await Promise.resolve(fake.__lookup("su", { interpret: true }));
+      api.showAt(anchor, dual.matches, "su", dual.interpretations);
+      await wait(60);
+      check("KO: the ambiguous-query dividers carry the keyboard suffix in Korean",
+        api.queryAll(".interp").length === 2 &&
+        api.queryAll(".interp").some(function (row) { return /\(키보드\)$/.test(row.textContent); }),
+        api.queryAll(".interp").map(function (row) { return row.textContent; }).join(" | "));
+      sweepView("su");
+
+      api.showAt(anchor, fake.__lookup("사랑").matches, "사랑");
+      await wait(60);
+      check("KO: the hedge banner",
+        api.query(".hedge .label").textContent === "희귀 한자 동음어" &&
+        api.query(".hedge-note").textContent === "고유어일 가능성이 높습니다. 이 한자 표기는 드뭅니다.",
+        api.query(".hedge").textContent);
+      sweepView("사랑");
+      api.showAt(anchor, fake.__lookup("사기").matches, "사기");
+      await wait(60);
+      check("KO: the rare spelling marker",
+        api.query(".spell-chip.rare .chip-rare").textContent === "희귀",
+        (api.query(".spell-chip.rare") || {}).textContent);
+      sweepView("사기");
+
+      // The native surfaces, with the language riding the same record.
+      api.setSettings({ nativeWords: true, language: "ko" });
+      var koMuri = await sendNative("무리");
+      api.showAt(anchor, koMuri.matches, "무리", undefined, koMuri.nativeMatches);
+      await wait(60);
+      check("KO: the native marker and the Same sound label",
+        api.query(".samesound-row .native-tag").textContent === "고유어" &&
+        api.query(".samesound").previousSibling.textContent === "같은 소리" &&
+        /^무리, 고유어/.test(api.query(".samesound-row").getAttribute("aria-label")),
+        api.query(".samesound-row").getAttribute("aria-label"));
+      sweepView("무리 native rows");
+      var koSky = await sendNative("하늘");
+      api.showAt(anchor, koSky.matches, "하늘", undefined, koSky.nativeMatches);
+      await wait(60);
+      check("KO: the native card's marker", api.query(".card.native .native-tag").textContent === "고유어",
+        (api.query(".card.native") || {}).textContent);
+      sweepView("하늘 native card");
+
+      // The sibling readings, both languages on.
+      api.setSettings({ jaReadings: true, zhReadings: true, language: "ko" });
+      var koHak = await sendSino("學");
+      api.showAt(anchor, koHak.matches);
+      await wait(60);
+      check("KO: the JP / CN markers read 일 / 중, the tooltip keeps the readings",
+        sinoMarkers().join(",") === "일,중" &&
+        api.query(".sino-line .sino-reading").title === "학 ↔ ガク ↔ xué",
+        sinoMarkers().join(",") + " | " + api.query(".sino-line .sino-reading").title);
+      sweepView("學 sino");
+      api.setSettings({ language: "ko" });
+
+      // The save bubble, both of its states, and the star's own labels.
+      store.reset();
+      api.showAt(anchor, fake.__lookup("국민").matches, "국민");
+      await wait(60);
+      starFor(".card").click();
+      await wait(60);
+      var koBubble = api.saveBubble();
+      check("KO: the save bubble and the saved star",
+        !!koBubble &&
+        koBubble.querySelector(".savebubble-title").textContent === "저장 위치" &&
+        koBubble.querySelector(".savebubble-remove").textContent === "제거" &&
+        koBubble.getAttribute("aria-label") === "저장됨" &&
+        koBubble.querySelector(".savebubble-folder").getAttribute("aria-label") === "폴더" &&
+        Array.prototype.slice.call(koBubble.querySelector(".savebubble-folder").options).pop()
+          .textContent === "새 폴더…" &&
+        starFor(".card").title === "저장됨" &&
+        starFor(".card").getAttribute("aria-label") === "國民 저장 취소",
+        koBubble && koBubble.textContent);
+      sweepView("국민 bubble");
+      var koFolderSel = koBubble.querySelector(".savebubble-folder");
+      koFolderSel.value = "okp:new-folder";
+      koFolderSel.dispatchEvent(new Event("change", { bubbles: true }));
+      check("KO: the new-folder form inside the bubble",
+        api.query(".savebubble-name").placeholder === "폴더 이름" &&
+        api.query(".savebubble-name").getAttribute("aria-label") === "새 폴더 이름" &&
+        api.query(".savebubble-create").textContent === "만들기" &&
+        api.query(".savebubble-cancel").textContent === "취소",
+        koBubble.textContent);
+      sweepView("국민 bubble new folder");
+      escape();
+      await wait(30);
+      starFor(".card").click();          // unsave, so the store is left clean
+      await wait(60);
+      store.reset();
+
+      // The Wiktionary link's opened flash.
+      api.query(".wiki").click();
+      await wait(30);
+      check("KO: the opened-link flash", api.query(".wiki").textContent === "열림 ↗",
+        api.query(".wiki").textContent);
+      sweepView("국민 wiki flash");
+
+      check("KO sweep: no English copy on any fixture card under 한국어",
+        violations.length === 0,
+        violations.length + " hits: " + violations.slice(0, 6).join(" | "));
+
+      // A settings record with no language field reads as English, and the
+      // English render is again exactly the snapshot.
+      api.setSettings(null);
+      await wait(30);
+      check("back to English: the 學生 card renders the English snapshot again",
+        i18n.language() === "en" && snapshotOf("학생", ".view > .card") === fake.__snapshots.word,
+        "lang=" + i18n.language());
+    }
+    api.hide();
 
     api.hide();
     check("hide() clears visibility", !api.isVisible());

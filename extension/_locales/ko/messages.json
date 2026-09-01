@@ -1,0 +1,699 @@
+{
+  "appName": {
+    "message": "옥편: 한자 팝업 사전"
+  },
+  "appDesc": {
+    "message": "한자 학습 도구. 한자·한자(간체)·일본어 한자를 드래그하면 한국어 음훈과 뜻을, 한글 단어를 드래그하면 한자를 보여 줍니다."
+  },
+  "level_m": {
+    "message": "중학"
+  },
+  "level_h": {
+    "message": "고등"
+  },
+  "level_a": {
+    "message": "고급"
+  },
+  "level_r": {
+    "message": "희귀"
+  },
+  "marker_ja": {
+    "message": "일"
+  },
+  "marker_zh": {
+    "message": "중"
+  },
+  "marker_rare": {
+    "message": "희귀"
+  },
+  "marker_native": {
+    "message": "고유어"
+  },
+  "marker_phonetic": {
+    "message": "소리"
+  },
+  "marker_noKorean": {
+    "message": "한국어 없음"
+  },
+  "section_compounds": {
+    "message": "단어"
+  },
+  "section_componentHanja": {
+    "message": "구성 한자"
+  },
+  "section_componentWords": {
+    "message": "구성 단어"
+  },
+  "section_sameSound": {
+    "message": "같은 소리"
+  },
+  "row_madeOf": {
+    "message": "짜임 $PARTS$",
+    "placeholders": {
+      "parts": {
+        "content": "$1"
+      }
+    }
+  },
+  "row_partOf": {
+    "message": "한자 $COUNT$자에 쓰임",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "row_usedIn": {
+    "message": "더 긴 단어 $COUNT$개에 쓰임",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "button_showMore": {
+    "message": "$PAGE$개 더 보기 ($COUNT$)",
+    "placeholders": {
+      "page": {
+        "content": "$1"
+      },
+      "count": {
+        "content": "$2"
+      }
+    }
+  },
+  "button_showAll": {
+    "message": "전체 보기 ($COUNT$)",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "hedge_label": {
+    "message": "희귀 한자 동음어"
+  },
+  "hedge_note": {
+    "message": "고유어일 가능성이 높습니다. 이 한자 표기는 드뭅니다."
+  },
+  "hint_nativeInAll": {
+    "message": "전체 단어에 고유어 $COUNT$개",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "interp_keyboard": {
+    "message": "(키보드)"
+  },
+  "tooltip_phonetic": {
+    "message": "$GLYPH$이(가) 이 글자의 소리를 나타냅니다",
+    "placeholders": {
+      "glyph": {
+        "content": "$1"
+      }
+    }
+  },
+  "tooltip_wiktionary": {
+    "message": "$WORD$의 Wiktionary 항목 (새 탭에서 열림)",
+    "placeholders": {
+      "word": {
+        "content": "$1"
+      }
+    }
+  },
+  "bubble_savedTo": {
+    "message": "저장 위치"
+  },
+  "bubble_create": {
+    "message": "만들기"
+  },
+  "bubble_cancel": {
+    "message": "취소"
+  },
+  "bubble_remove": {
+    "message": "제거"
+  },
+  "level_m_title": {
+    "message": "교육부 지정 중학교용 기초 한자"
+  },
+  "level_h_title": {
+    "message": "교육부 지정 고등학교용 기초 한자"
+  },
+  "level_a_title": {
+    "message": "교육용 한자 밖이지만 실제 어휘에서 확인된 한자 (옥편 자체 분류)"
+  },
+  "level_r_title": {
+    "message": "고어, 전문어, 또는 읽기만 있는 한자 (옥편 자체 분류)"
+  },
+  "button_more": {
+    "message": "더 보기"
+  },
+  "button_less": {
+    "message": "접기"
+  },
+  "link_wiktionary": {
+    "message": "Wiktionary ↗"
+  },
+  "link_opened": {
+    "message": "열림 ↗"
+  },
+  "star_save": {
+    "message": "$WORD$ 저장",
+    "placeholders": {
+      "word": {
+        "content": "$1"
+      }
+    }
+  },
+  "star_remove": {
+    "message": "$WORD$ 저장 취소",
+    "placeholders": {
+      "word": {
+        "content": "$1"
+      }
+    }
+  },
+  "star_title_save": {
+    "message": "저장"
+  },
+  "star_title_saved": {
+    "message": "저장됨"
+  },
+  "bubble_saved": {
+    "message": "저장됨"
+  },
+  "bubble_folder": {
+    "message": "폴더"
+  },
+  "bubble_newFolder": {
+    "message": "새 폴더…"
+  },
+  "bubble_createFailed": {
+    "message": "폴더를 만들지 못했습니다"
+  },
+  "tooltip_reading": {
+    "message": "$SYLLABLE$(으)로 읽는 한자",
+    "placeholders": {
+      "syllable": {
+        "content": "$1"
+      }
+    }
+  },
+  "tooltip_lookup": {
+    "message": "$WORD$ 찾기",
+    "placeholders": {
+      "word": {
+        "content": "$1"
+      }
+    }
+  },
+  "aria_nativeWord": {
+    "message": "$WORD$, 고유어",
+    "placeholders": {
+      "word": {
+        "content": "$1"
+      }
+    }
+  },
+  "crumb_usedIn": {
+    "message": "더 긴 단어"
+  },
+  "crumb_partOf": {
+    "message": "쓰인 한자"
+  },
+  "title_usedIn": {
+    "message": "$WORD$이(가) 들어간 단어 $COUNT$개",
+    "placeholders": {
+      "word": {
+        "content": "$1"
+      },
+      "count": {
+        "content": "$2"
+      }
+    }
+  },
+  "title_partOf": {
+    "message": "$GLYPH$이(가) 들어간 한자 $COUNT$자",
+    "placeholders": {
+      "glyph": {
+        "content": "$1"
+      },
+      "count": {
+        "content": "$2"
+      }
+    }
+  },
+  "title_reading": {
+    "message": "$SYLLABLE$(으)로 읽는 한자 $COUNT$자",
+    "placeholders": {
+      "syllable": {
+        "content": "$1"
+      },
+      "count": {
+        "content": "$2"
+      }
+    }
+  },
+  "reading_showAll": {
+    "message": "전체 $COUNT$자 보기",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "reading_showAll_aria": {
+    "message": "$SYLLABLE$(으)로 읽는 한자 $COUNT$자 전체 보기",
+    "placeholders": {
+      "syllable": {
+        "content": "$1"
+      },
+      "count": {
+        "content": "$2"
+      }
+    }
+  },
+  "crumb_showAll": {
+    "message": "경로 $COUNT$단계 전체 보기",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "tooltip_sino_both": {
+    "message": "$EUM$ ↔ $JA$ ↔ $ZH$",
+    "placeholders": {
+      "eum": {
+        "content": "$1"
+      },
+      "ja": {
+        "content": "$2"
+      },
+      "zh": {
+        "content": "$3"
+      }
+    }
+  },
+  "tooltip_sino_ja": {
+    "message": "$EUM$ ↔ $JA$",
+    "placeholders": {
+      "eum": {
+        "content": "$1"
+      },
+      "ja": {
+        "content": "$2"
+      }
+    }
+  },
+  "tooltip_sino_zh": {
+    "message": "$EUM$ ↔ $ZH$",
+    "placeholders": {
+      "eum": {
+        "content": "$1"
+      },
+      "zh": {
+        "content": "$2"
+      }
+    }
+  },
+  "tab_search": {
+    "message": "검색"
+  },
+  "tab_saved": {
+    "message": "저장"
+  },
+  "tab_settings": {
+    "message": "설정"
+  },
+  "title_search": {
+    "message": "한자와 단어 검색"
+  },
+  "title_saved": {
+    "message": "저장한 단어와 글자"
+  },
+  "title_settings": {
+    "message": "저장 및 내보내기 설정"
+  },
+  "search_empty": {
+    "message": "한자, 한국어 단어, 또는 한 글자를 검색하세요."
+  },
+  "search_none": {
+    "message": "‘$QUERY$’ 항목이 없습니다.",
+    "placeholders": {
+      "query": {
+        "content": "$1"
+      }
+    }
+  },
+  "search_error": {
+    "message": "검색에 실패했습니다. 다시 시도하세요."
+  },
+  "scope_all": {
+    "message": "전체 단어"
+  },
+  "scope_hanja": {
+    "message": "한자만"
+  },
+  "scope_all_title": {
+    "message": "고유어 포함"
+  },
+  "scope_hanja_title": {
+    "message": "한자어만"
+  },
+  "about": {
+    "message": "$WORDMARK$ $VERSION$. 자료: 영어 위키낱말사전, 우리말샘 (CC BY-SA). $GITHUB$",
+    "placeholders": {
+      "wordmark": {
+        "content": "$1"
+      },
+      "version": {
+        "content": "$2"
+      },
+      "github": {
+        "content": "$3"
+      }
+    }
+  },
+  "about_noVersion": {
+    "message": "$WORDMARK$. 자료: 영어 위키낱말사전, 우리말샘 (CC BY-SA). $GITHUB$",
+    "placeholders": {
+      "wordmark": {
+        "content": "$1"
+      },
+      "github": {
+        "content": "$2"
+      }
+    }
+  },
+  "wordmark": {
+    "message": "Okpyeon"
+  },
+  "link_github": {
+    "message": "GitHub ↗"
+  },
+  "page_title": {
+    "message": "옥편: 한자 검색"
+  },
+  "brand_title": {
+    "message": "玉篇 찾기"
+  },
+  "brand_aria": {
+    "message": "옥편: 玉篇 찾기"
+  },
+  "nav_aria": {
+    "message": "보기"
+  },
+  "input_placeholder": {
+    "message": "한자 · 한글 · 음절"
+  },
+  "input_aria": {
+    "message": "한자, 한자어, 또는 한 글자를 검색"
+  },
+  "scope_aria": {
+    "message": "검색 범위"
+  },
+  "folder_default": {
+    "message": "저장됨"
+  },
+  "omnibox_suggestion": {
+    "message": "옥편에서 <match>%s</match> 검색"
+  },
+  "saved_filter": {
+    "message": "폴더별 보기"
+  },
+  "saved_newFolder": {
+    "message": "새 폴더"
+  },
+  "saved_rename": {
+    "message": "이름 바꾸기"
+  },
+  "saved_delete": {
+    "message": "삭제"
+  },
+  "saved_selectAll": {
+    "message": "전체 선택"
+  },
+  "saved_folderName": {
+    "message": "폴더 이름"
+  },
+  "saved_newFolderName": {
+    "message": "새 폴더 이름"
+  },
+  "saved_create": {
+    "message": "만들기"
+  },
+  "saved_save": {
+    "message": "저장"
+  },
+  "saved_cancel": {
+    "message": "취소"
+  },
+  "saved_close": {
+    "message": "닫기"
+  },
+  "saved_failed": {
+    "message": "문제가 생겼습니다."
+  },
+  "saved_all": {
+    "message": "전체 ($COUNT$)",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "saved_unavailable": {
+    "message": "이 브라우저 세션에서는 저장한 단어를 사용할 수 없습니다."
+  },
+  "saved_emptyFolder": {
+    "message": "이 폴더는 비어 있습니다."
+  },
+  "saved_emptyAll": {
+    "message": "아직 저장한 항목이 없습니다. 카드의 ☆을 눌러 저장하세요."
+  },
+  "saved_moveTo": {
+    "message": "폴더로 이동…"
+  },
+  "saved_moved": {
+    "message": "$COUNT$개를 ‘$FOLDER$’ 폴더로 이동",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      },
+      "folder": {
+        "content": "$2"
+      }
+    }
+  },
+  "saved_deleteN": {
+    "message": "$COUNT$개를 삭제할까요?",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "saved_export": {
+    "message": "내보내기"
+  },
+  "saved_exportN": {
+    "message": "$COUNT$개 내보내기",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "saved_anki": {
+    "message": "Anki"
+  },
+  "anki_desc": {
+    "message": "Anki 탭 구분 가져오기 파일"
+  },
+  "saved_csv": {
+    "message": "CSV"
+  },
+  "csv_desc": {
+    "message": "모든 항목이 들어간 스프레드시트"
+  },
+  "saved_exportUnavailable": {
+    "message": "내보내기를 사용할 수 없습니다."
+  },
+  "saved_newFolder_title": {
+    "message": "폴더 만들기"
+  },
+  "saved_rename_title": {
+    "message": "이 폴더 이름 바꾸기"
+  },
+  "saved_delete_title": {
+    "message": "이 폴더 삭제"
+  },
+  "saved_nameNeeded": {
+    "message": "폴더 이름을 입력하세요."
+  },
+  "saved_deleteFolder": {
+    "message": "‘$FOLDER$’ 폴더를 삭제할까요?",
+    "placeholders": {
+      "folder": {
+        "content": "$1"
+      }
+    }
+  },
+  "saved_deleteFolderN": {
+    "message": "‘$FOLDER$’ 폴더를 삭제할까요? 항목 $COUNT$개는 ‘$TARGET$’ 폴더로 옮겨집니다.",
+    "placeholders": {
+      "folder": {
+        "content": "$1"
+      },
+      "count": {
+        "content": "$2"
+      },
+      "target": {
+        "content": "$3"
+      }
+    }
+  },
+  "saved_select": {
+    "message": "$ITEM$ 선택",
+    "placeholders": {
+      "item": {
+        "content": "$1"
+      }
+    }
+  },
+  "saved_selectFolder": {
+    "message": "‘$FOLDER$’ 폴더 전체 선택",
+    "placeholders": {
+      "folder": {
+        "content": "$1"
+      }
+    }
+  },
+  "saved_missing": {
+    "message": "사전에서 사라진 항목"
+  },
+  "saved_move_aria": {
+    "message": "선택한 항목을 폴더로 이동"
+  },
+  "saved_folder": {
+    "message": "폴더"
+  },
+  "saved_deleteSelection_title": {
+    "message": "선택한 항목 삭제"
+  },
+  "saved_exportSelection_title": {
+    "message": "선택한 항목 내보내기"
+  },
+  "saved_selected": {
+    "message": "$COUNT$개 선택됨",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "saved_allShown": {
+    "message": "표시된 $COUNT$개 전체",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "group_language": {
+    "message": "언어"
+  },
+  "language_label": {
+    "message": "언어"
+  },
+  "language_sub": {
+    "message": "화면과 뜻풀이의 언어"
+  },
+  "group_search": {
+    "message": "검색"
+  },
+  "nativeWords_label": {
+    "message": "고유어 검색"
+  },
+  "nativeWords_sub": {
+    "message": "사전에 고유어를 추가합니다. 검색에 ‘전체 단어’ 범위가 생깁니다."
+  },
+  "group_charCards": {
+    "message": "글자 카드"
+  },
+  "jaReadings_label": {
+    "message": "일본어 읽기"
+  },
+  "jaReadings_sub": {
+    "message": "글자의 음독을 가타카나로 보여 줍니다."
+  },
+  "zhReadings_label": {
+    "message": "중국어 읽기"
+  },
+  "zhReadings_sub": {
+    "message": "글자의 표준 중국어 읽기를 병음으로 보여 줍니다."
+  },
+  "group_saving": {
+    "message": "저장"
+  },
+  "defaultFolder_label": {
+    "message": "새로 저장하는 항목의 기본 폴더"
+  },
+  "anki_wordFront": {
+    "message": "단어 카드: 앞면"
+  },
+  "anki_wordBack": {
+    "message": "단어 카드: 뒷면"
+  },
+  "anki_charFront": {
+    "message": "글자 카드: 앞면"
+  },
+  "anki_charBack": {
+    "message": "글자 카드: 뒷면"
+  },
+  "anki_field_hanja": {
+    "message": "한자"
+  },
+  "anki_field_hangul": {
+    "message": "한글"
+  },
+  "anki_field_defs": {
+    "message": "뜻풀이"
+  },
+  "anki_field_char": {
+    "message": "글자"
+  },
+  "anki_field_eumhun": {
+    "message": "음훈"
+  },
+  "anki_field_readings": {
+    "message": "읽기"
+  },
+  "anki_field_lvl": {
+    "message": "등급"
+  },
+  "anki_field_ja": {
+    "message": "일본어 읽기"
+  },
+  "anki_field_zh": {
+    "message": "중국어 읽기"
+  },
+  "group_anki": {
+    "message": "Anki 내보내기"
+  },
+  "language_en": {
+    "message": "English"
+  },
+  "language_ko": {
+    "message": "한국어"
+  },
+  "toggle_enabled": {
+    "message": "사용"
+  },
+  "settings_unavailable": {
+    "message": "이 브라우저 세션에서는 설정을 사용할 수 없습니다."
+  }
+}

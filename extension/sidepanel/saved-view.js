@@ -36,6 +36,14 @@
   var sidebar = globalThis.__okpyeonSidebar;
   if (!sidebar || typeof sidebar.registerView !== "function") return;
 
+  // Copy comes through the message-table loader (i18n.js), which loads
+  // before this script on every surface; keys stand in on a page without it.
+  var I18N = globalThis.__okpyeonI18n || null;
+
+  function t(key, subs) {
+    return I18N ? I18N.t(key, subs) : String(key);
+  }
+
   /* ------------------------------------------------------------------ *
    * Worker access — the same probe sidepanel.js uses.
    * ------------------------------------------------------------------ */
@@ -241,10 +249,11 @@
 
     var main = el("div", "saved-bar-main");
 
+    // Labels and titles come later, from relabelChrome(): the bars are built
+    // once, and a language change re-labels them in place.
     var filter = document.createElement("select");
     filter.id = "okp-saved-filter";
     filter.className = "saved-filter";
-    filter.setAttribute("aria-label", "Filter by folder");
     filter.addEventListener("change", function () {
       filterId = filter.value;
       renderList();
@@ -253,17 +262,17 @@
     });
     main.appendChild(filter);
 
-    var newBtn = button("saved-new", "New folder", "Create a folder");
+    var newBtn = button("saved-new", "");
     newBtn.id = "okp-saved-new";
     newBtn.addEventListener("click", function () { openNameForm("new"); });
     main.appendChild(newBtn);
 
-    var renameBtn = button("saved-rename", "Rename", "Rename this folder");
+    var renameBtn = button("saved-rename", "");
     renameBtn.id = "okp-saved-rename";
     renameBtn.addEventListener("click", function () { openNameForm("rename"); });
     main.appendChild(renameBtn);
 
-    var deleteBtn = button("saved-delete", "Delete", "Delete this folder");
+    var deleteBtn = button("saved-delete", "");
     deleteBtn.id = "okp-saved-delete";
     deleteBtn.addEventListener("click", function () { openDeleteConfirm(); });
     main.appendChild(deleteBtn);
@@ -283,7 +292,8 @@
       renderActions();
     });
     selectAllLabel.appendChild(selectAll);
-    selectAllLabel.appendChild(el("span", "saved-selectall-text", "Select all"));
+    var selectAllText = el("span", "saved-selectall-text");
+    selectAllLabel.appendChild(selectAllText);
     main.appendChild(selectAllLabel);
 
     bar.appendChild(main);
@@ -301,8 +311,28 @@
     els.renameBtn = renameBtn;
     els.deleteBtn = deleteBtn;
     els.selectAll = selectAll;
+    els.selectAllText = selectAllText;
     els.barInline = inline;
     return bar;
+  }
+
+  // Every fixed label on the two bars, from the message table. Called once
+  // after both bars exist, then on every language change.
+  function relabelChrome() {
+    if (!els.filter || !els.move) return;
+    els.filter.setAttribute("aria-label", t("saved.filter"));
+    els.newBtn.textContent = t("saved.newFolder");
+    els.newBtn.title = t("saved.newFolder.title");
+    els.renameBtn.textContent = t("saved.rename");
+    els.renameBtn.title = t("saved.rename.title");
+    els.deleteBtn.textContent = t("saved.delete");
+    els.deleteBtn.title = t("saved.delete.title");
+    els.selectAllText.textContent = t("saved.selectAll");
+    els.move.setAttribute("aria-label", t("saved.move.aria"));
+    els.removeBtn.textContent = t("saved.delete");
+    els.removeBtn.title = t("saved.deleteSelection.title");
+    els.exportBtn.textContent = t("saved.export");
+    els.exportBtn.title = t("saved.exportSelection.title");
   }
 
   function closeBarInline() {
@@ -330,20 +360,21 @@
     input.type = "text";
     input.className = "saved-name-input";
     input.id = "okp-saved-name-input";
-    input.placeholder = mode === "new" ? "Folder name" : "Folder name";
+    input.placeholder = t("saved.folderName");
     input.value = mode === "rename" ? folderName(filterId) : "";
-    input.setAttribute("aria-label", mode === "new" ? "New folder name" : "Folder name");
+    input.setAttribute("aria-label",
+      t(mode === "new" ? "saved.newFolderName" : "saved.folderName"));
     form.appendChild(input);
 
-    var okBtn = button("saved-name-ok", mode === "new" ? "Create" : "Save");
-    var cancelBtn = button("saved-name-cancel", "Cancel");
+    var okBtn = button("saved-name-ok", t(mode === "new" ? "saved.create" : "saved.save"));
+    var cancelBtn = button("saved-name-cancel", t("saved.cancel"));
     var error = el("span", "saved-error");
     error.hidden = true;
 
     function submit() {
       var name = input.value.trim();
       if (!name) {
-        error.textContent = "A folder needs a name.";
+        error.textContent = t("saved.nameNeeded");
         error.hidden = false;
         input.focus();
         return;
@@ -353,7 +384,7 @@
         : { type: "folderRename", id: filterId, name: name };
       sendToWorker(message).then(function (res) {
         if (!res || res.ok !== true) {
-          error.textContent = (res && res.error) ? String(res.error) : "That did not work.";
+          error.textContent = (res && res.error) ? String(res.error) : t("saved.failed");
           error.hidden = false;
           return;
         }
@@ -386,13 +417,16 @@
     if (!filterId || filterId === "f0") return;
     var box = el("div", "saved-confirm saved-confirm--folder");
     var count = itemsInFolder(filterId).length;
+    // The items land in the folder that always exists, named by its stored
+    // name (the worker's default, or whatever it was renamed to).
     box.appendChild(el("span", "saved-confirm-text",
       count
-        ? "Delete " + folderName(filterId) + "? " + count +
-          (count === 1 ? " item moves to Saved." : " items move to Saved.")
-        : "Delete " + folderName(filterId) + "?"));
-    var yes = button("saved-confirm-yes", "Delete");
-    var no = button("saved-confirm-no", "Cancel");
+        ? t("saved.deleteFolderN", {
+            FOLDER: folderName(filterId), COUNT: count, TARGET: folderName("f0")
+          })
+        : t("saved.deleteFolder", { FOLDER: folderName(filterId) })));
+    var yes = button("saved-confirm-yes", t("saved.delete"));
+    var no = button("saved-confirm-no", t("saved.cancel"));
     yes.addEventListener("click", function () {
       var target = filterId;
       sendToWorker({ type: "folderDelete", id: target }).then(function () {
@@ -413,7 +447,7 @@
     clear(filter);
     var all = document.createElement("option");
     all.value = "";
-    all.textContent = "All (" + items.length + ")";
+    all.textContent = t("saved.all", { COUNT: items.length });
     filter.appendChild(all);
     var stillThere = false;
     for (var i = 0; i < folders.length; i++) {
@@ -455,7 +489,7 @@
     check.type = "checkbox";
     check.className = "saved-check";
     check.checked = selected[item.id] === true;
-    check.setAttribute("aria-label", "Select " + item.key);
+    check.setAttribute("aria-label", t("saved.select", { ITEM: item.key }));
     check.addEventListener("change", function () {
       if (check.checked) selected[item.id] = true;
       else delete selected[item.id];
@@ -473,7 +507,7 @@
     var secondary = secondaryText(item);
     if (secondary) text.appendChild(el("span", "saved-secondary", secondary));
     if (item.missing === true) {
-      text.appendChild(el("span", "saved-missing", "no longer in the dictionary"));
+      text.appendChild(el("span", "saved-missing", t("saved.missing")));
     } else {
       var gloss = firstGloss(item);
       if (gloss) text.appendChild(el("span", "saved-gloss", gloss));
@@ -506,7 +540,7 @@
     check.checked = rows.length > 0 && picked.length === rows.length;
     check.indeterminate = picked.length > 0 && picked.length < rows.length;
     check.disabled = rows.length === 0;
-    check.setAttribute("aria-label", "Select everything in " + folder.name);
+    check.setAttribute("aria-label", t("saved.selectFolder", { FOLDER: folder.name }));
     check.addEventListener("change", function () {
       for (var i = 0; i < rows.length; i++) {
         if (check.checked) selected[rows[i].id] = true;
@@ -559,16 +593,14 @@
 
 
     if (!available) {
-      list.appendChild(el("p", "saved-unavailable",
-        "Saved words are not available in this browser session."));
+      list.appendChild(el("p", "saved-unavailable", t("saved.unavailable")));
       return;
     }
 
     var rows = filteredItems();
     if (!rows.length) {
-      list.appendChild(el("p", "saved-empty", items.length
-        ? "This folder is empty."
-        : "Nothing saved yet. Tap the ☆ on a card to save it."));
+      list.appendChild(el("p", "saved-empty",
+        t(items.length ? "saved.emptyFolder" : "saved.emptyAll")));
       return;
     }
 
@@ -605,7 +637,6 @@
     var move = document.createElement("select");
     move.id = "okp-saved-move";
     move.className = "saved-move";
-    move.setAttribute("aria-label", "Move the selection to a folder");
     move.addEventListener("change", function () {
       var target = move.value;
       move.value = "";
@@ -618,19 +649,21 @@
         // as deletion without this note (user-raised).
         if (res && res.ok === true) {
           var folder = folders.filter(function (f) { return f.id === target; })[0];
-          flashCount("Moved " + ids.length + " to " + (folder ? folder.name : "folder"));
+          flashCount(t("saved.moved", {
+            COUNT: ids.length, FOLDER: folder ? folder.name : t("saved.folder")
+          }));
         }
         refresh();
       });
     });
     main.appendChild(move);
 
-    var removeBtn = button("saved-remove", "Delete", "Delete the selection");
+    var removeBtn = button("saved-remove", "");
     removeBtn.id = "okp-saved-remove";
     removeBtn.addEventListener("click", openRemoveConfirm);
     main.appendChild(removeBtn);
 
-    var exportBtn = button("saved-export", "Export", "Export the selection");
+    var exportBtn = button("saved-export", "");
     exportBtn.id = "okp-saved-export";
     exportBtn.addEventListener("click", openExportChoice);
     main.appendChild(exportBtn);
@@ -690,9 +723,9 @@
     if (!ids.length) return;
     var box = el("div", "saved-confirm saved-confirm--remove");
     box.appendChild(el("span", "saved-confirm-text",
-      "Delete " + ids.length + (ids.length === 1 ? " item?" : " items?")));
-    var yes = button("saved-confirm-yes", "Delete");
-    var no = button("saved-confirm-no", "Cancel");
+      t("saved.deleteN", { COUNT: ids.length })));
+    var yes = button("saved-confirm-yes", t("saved.delete"));
+    var no = button("saved-confirm-no", t("saved.cancel"));
     yes.addEventListener("click", function () {
       sendToWorker({ type: "savedRemove", ids: ids }).then(function () {
         for (var i = 0; i < ids.length; i++) delete selected[ids[i]];
@@ -710,10 +743,10 @@
     var ids = effectiveIds();
     if (!ids.length) return;
     var box = el("div", "saved-export-choice");
-    box.appendChild(el("span", "saved-export-text", "Export " + ids.length + " as"));
-    var anki = button("saved-export-anki", "Anki", "Anki tab-separated import file");
-    var csv = button("saved-export-csv", "CSV", "Spreadsheet with every field");
-    var cancel = button("saved-export-cancel", "Cancel");
+    box.appendChild(el("span", "saved-export-text", t("saved.exportN", { COUNT: ids.length })));
+    var anki = button("saved-export-anki", t("saved.anki"), t("anki.desc"));
+    var csv = button("saved-export-csv", t("saved.csv"), t("csv.desc"));
+    var cancel = button("saved-export-cancel", t("saved.cancel"));
     anki.addEventListener("click", function () { runExport(ids, "anki"); });
     csv.addEventListener("click", function () { runExport(ids, "csv"); });
     cancel.addEventListener("click", closeActionsInline);
@@ -731,8 +764,8 @@
       if (!res || res.ok !== true || typeof res.tsv !== "string") {
         var box = el("div", "saved-export-choice");
         box.appendChild(el("span", "saved-error",
-          (res && res.error) ? String(res.error) : "Export is not available."));
-        var back = button("saved-export-cancel", "Close");
+          (res && res.error) ? String(res.error) : t("saved.exportUnavailable")));
+        var back = button("saved-export-cancel", t("saved.close"));
         back.addEventListener("click", closeActionsInline);
         box.appendChild(back);
         openActionsInline(box);
@@ -767,7 +800,7 @@
     clear(move);
     var head = document.createElement("option");
     head.value = "";
-    head.textContent = "Move to…";
+    head.textContent = t("saved.moveTo");
     move.appendChild(head);
     for (var i = 0; i < folders.length; i++) {
       var option = document.createElement("option");
@@ -782,8 +815,8 @@
     els.count.textContent = flashUntil > Date.now()
       ? els.count.textContent
       : picked.length
-        ? picked.length + " selected"
-        : (target ? "all " + target + " shown" : "");
+        ? t("saved.selected", { COUNT: picked.length })
+        : (target ? t("saved.allShown", { COUNT: target }) : "");
     var inert = target === 0 || !available;
     move.disabled = inert;
     els.removeBtn.disabled = inert;
@@ -880,10 +913,25 @@
    * Registration
    * ------------------------------------------------------------------ */
 
+  // A language change: the transient inline forms are dropped rather than
+  // re-labelled mid-flight, the bars are re-labelled, and the list is
+  // rebuilt from what was last read.
+  if (I18N) {
+    I18N.onChange(function () {
+      if (!root) return;
+      closeBarInline();
+      closeActionsInline();
+      relabelChrome();
+      renderBar();
+      renderList();
+      renderActions();
+    });
+  }
+
   sidebar.registerView({
     key: "saved",
-    label: "Saved",
-    title: "Saved words and characters",
+    labelKey: "tab.saved",
+    titleKey: "title.saved",
     mount: function (container, viewCtx) {
       ctx = viewCtx;
       root = container;
@@ -896,6 +944,7 @@
       els.list = list;
       container.appendChild(list);
       container.appendChild(buildActions());
+      relabelChrome();
 
       // Real runtime only: the harness has no chrome.storage and drives
       // handleStorageChanged directly instead.

@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Okpyeon — Hanja search</title>
+<title>Okpyeon: Hanja search</title>
 <link rel="stylesheet" href="sidepanel.css">
 </head>
 <body>
@@ -67,9 +67,12 @@
   laid-out container. MV3's extension-page CSP forbids inline script, so none
   of this can be collapsed into the page.
 
-  The first three lines are surface-independent: any future extension page
-  loads them verbatim and supplies only its own bootstrapper.
+  The first four lines are surface-independent: any future extension page
+  loads them verbatim and supplies only its own bootstrapper. i18n.js (the
+  message-table loader) precedes content.js the same way the manifest's
+  content_scripts list does.
 -->
+<script src="../i18n.js"></script>
 <script src="boot.js"></script>
 <script src="../content/content.js"></script>
 <script src="search-shell.js"></script>

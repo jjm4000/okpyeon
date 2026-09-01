@@ -33,12 +33,30 @@
  *   handleWorkerMessage(m)  the worker-message handler (the panel half of the
  *                           pending-query push), driveable without a real
  *                           chrome.runtime; -> Promise<{applied, ...}>
+ *   handleStorageChanged(c, a)  the storage-change handler (toggles and the
+ *                           language), driveable without chrome.storage;
+ *                           -> Promise resolved once the language is applied
+ *   renderChrome()          re-label the page chrome from the message table
  *   ready                   Promise resolved once the boot sequence is done
  *                           (the initial query has been resolved, the chrome
  *                           rendered and the search view mounted)
  */
 (function () {
   "use strict";
+
+  // Copy comes through the message-table loader (i18n.js), which loads
+  // before this script on every surface; keys stand in on a page without it.
+  var I18N = globalThis.__okpyeonI18n || null;
+
+  function t(key, subs) {
+    return I18N ? I18N.t(key, subs) : String(key);
+  }
+
+  // Resolves once the language is active; "en" is built in and never waits.
+  function applyLanguage(lang) {
+    if (!I18N) return Promise.resolve(false);
+    return I18N.setLanguage(typeof lang === "string" ? lang : "en");
+  }
 
   /* ------------------------------------------------------------------ *
    * Header actions registry
@@ -125,8 +143,12 @@
    * Entry: {
    *   key,      // required, unique — becomes the .view--<key> modifier and
    *             //   the id of the view's container
-   *   label,    // the tab's visible text (falls back to the key)
-   *   title,    // the tab's tooltip; on a disabled entry, say WHY
+   *   labelKey, // message key of the tab's visible text; shipped views use
+   *             //   this so the nav follows the language setting
+   *   titleKey, // message key of the tab's tooltip
+   *   label,    // literal tab text, for a view without a key (falls back to
+   *             //   the view key)
+   *   title,    // literal tooltip; on a disabled entry, say WHY
    *   enabled,  // boolean or () => boolean; default true. false = dimmed+inert
    *   mount,    // required: (container, ctx) => void, called ONCE
    *   onShow,   // optional: () => void, on every switch TO this view
@@ -170,6 +192,17 @@
       if (SIDEBAR_VIEWS[i] && SIDEBAR_VIEWS[i].key === key) return SIDEBAR_VIEWS[i];
     }
     return null;
+  }
+
+  // A view names itself by message key, or (a harness probe) by literal text.
+  function viewLabel(view) {
+    if (typeof view.labelKey === "string") return t(view.labelKey);
+    return view.label == null ? String(view.key) : String(view.label);
+  }
+
+  function viewTitle(view) {
+    if (typeof view.titleKey === "string") return t(view.titleKey);
+    return view.title == null ? "" : String(view.title);
   }
 
   function viewContext() {
@@ -249,8 +282,8 @@
       var button = document.createElement("button");
       button.type = "button";
       button.className = "tab tab--" + view.key;
-      button.textContent = view.label == null ? String(view.key) : String(view.label);
-      var title = view.title == null ? "" : String(view.title);
+      button.textContent = viewLabel(view);
+      var title = viewTitle(view);
       if (title) button.title = title;
       button.setAttribute("aria-label", title || button.textContent || view.key);
       if (view.key === activeKey) {
@@ -295,8 +328,8 @@
 
   SIDEBAR_VIEWS.push({
     key: "search",
-    label: "Search",
-    title: "Search hanja and words",
+    labelKey: "tab.search",
+    titleKey: "title.search",
     mount: function (container, ctx) {
       // Corner seal (SPEC "Corner seal"): sealed like the other views, shown
       // only while it fits under the content. The content is the renderer's
@@ -508,18 +541,52 @@
   }
 
   // The search-affecting toggles, read once at boot: Korean word search and
-  // the two sibling-reading languages (sino ADDENDUM). Every failure reads
-  // as off, which is each setting's own default.
+  // the two sibling-reading languages (sino ADDENDUM), plus the language
+  // (Korean language mode ADDENDUM). Every failure reads as off, which is
+  // each setting's own default; the language's default is English.
   function searchToggles() {
     return sendToWorker({ type: "settingsGet" }).then(function (res) {
       var s = (res && res.ok === true && res.settings) || {};
       return {
         native: s.nativeWords === true,
-        sino: { ja: s.jaReadings === true, zh: s.zhReadings === true }
+        sino: { ja: s.jaReadings === true, zh: s.zhReadings === true },
+        language: typeof s.language === "string" ? s.language : "en"
       };
     }, function () {
-      return { native: false, sino: { ja: false, zh: false } };
+      return { native: false, sino: { ja: false, zh: false }, language: "en" };
     });
+  }
+
+  /* ------------------------------------------------------------------ *
+   * Page chrome
+   *
+   * The header, searchbar and scope row are authored in sidepanel.html with
+   * English defaults; this labels them from the message table, at boot and
+   * on every language change. The tab title and the document language are
+   * set only on the real extension page: a harness page has a title of its
+   * own.
+   * ------------------------------------------------------------------ */
+
+  function renderChrome() {
+    var brand = document.getElementById("okp-brand");
+    if (brand) {
+      brand.title = t("brand.title");
+      brand.setAttribute("aria-label", t("brand.aria"));
+    }
+    if (navBox) navBox.setAttribute("aria-label", t("nav.aria"));
+    var inputEl = document.getElementById("okp-input");
+    if (inputEl) {
+      inputEl.placeholder = t("input.placeholder");
+      inputEl.setAttribute("aria-label", t("input.aria"));
+    }
+    var scopeBox = document.getElementById("okp-scope");
+    if (scopeBox) scopeBox.setAttribute("aria-label", t("scope.aria"));
+    var chromeObj = globalThis.chrome;
+    var runtime = chromeObj && chromeObj.runtime;
+    if (runtime && runtime.id) {
+      document.title = t("page.title");
+      document.documentElement.lang = I18N ? I18N.language() : "en";
+    }
   }
 
   /* ------------------------------------------------------------------ *
@@ -536,9 +603,14 @@
       bootScope = resolved[0].scope;
       bootNative = resolved[1].native;
       bootSino = resolved[1].sino;
-      renderActions();
-      showView(SIDEBAR_VIEWS[0].key); // mounts the search view and wires the shell
-      return bootQuery;
+      // The language settles before the first view renders: a Korean boot
+      // waits one round trip for its table instead of flashing English.
+      return applyLanguage(resolved[1].language).then(function () {
+        renderActions();
+        renderChrome();
+        showView(SIDEBAR_VIEWS[0].key); // mounts the search view and wires the shell
+        return bootQuery;
+      });
     });
 
   // Never rejects, so a poke that arrives while boot is in flight (or after a
@@ -670,11 +742,38 @@
    *
    * The settings view writes through the worker, the worker writes storage,
    * and storage.onChanged is how every open surface hears about it, the
-   * same channel saved-view.js and the renderer already listen on. Only the
-   * Korean-word-search toggle matters to this page's chrome; the record in
-   * `newValue` is the worker's own normalized write, read with the same
-   * `=== true` strictness the worker applies.
+   * same channel saved-view.js and the renderer already listen on. The
+   * Korean-word-search toggle, the readings toggles and the language matter
+   * to this page's chrome; the record in `newValue` is the worker's own
+   * normalized write, read with the same `=== true` strictness the worker
+   * applies. Exposed for the harness, which has no chrome.storage to fire
+   * it; the promise resolves once the language (the one asynchronous part)
+   * is applied.
    * ------------------------------------------------------------------ */
+
+  function handleStorageChanged(changes, area) {
+    if (area !== "local" || !changes || !changes.okpSettings) {
+      return Promise.resolve(false);
+    }
+    var next = changes.okpSettings.newValue;
+    var record = next !== null && typeof next === "object" ? next : {};
+    var shell = globalThis.__okpyeonSearchShell;
+    var controller = shell && typeof shell.controller === "function"
+      ? shell.controller()
+      : null;
+    if (controller) {
+      if (typeof controller.setNativeEnabled === "function") {
+        controller.setNativeEnabled(record.nativeWords === true);
+      }
+      if (typeof controller.setSinoEnabled === "function") {
+        controller.setSinoEnabled({
+          ja: record.jaReadings === true,
+          zh: record.zhReadings === true
+        });
+      }
+    }
+    return applyLanguage(record.language);
+  }
 
   (function () {
     var chromeObj = globalThis.chrome;
@@ -685,25 +784,18 @@
       return;
     }
     storage.onChanged.addListener(function (changes, area) {
-      if (area !== "local" || !changes || !changes.okpSettings) return;
-      var next = changes.okpSettings.newValue;
-      var record = next !== null && typeof next === "object" ? next : {};
-      var shell = globalThis.__okpyeonSearchShell;
-      var controller = shell && typeof shell.controller === "function"
-        ? shell.controller()
-        : null;
-      if (!controller) return;
-      if (typeof controller.setNativeEnabled === "function") {
-        controller.setNativeEnabled(record.nativeWords === true);
-      }
-      if (typeof controller.setSinoEnabled === "function") {
-        controller.setSinoEnabled({
-          ja: record.jaReadings === true,
-          zh: record.zhReadings === true
-        });
-      }
+      handleStorageChanged(changes, area);
     });
   })();
+
+  // The loader's own change event is what re-labels: it fires once the new
+  // table is installed, after the round trip a Korean switch costs.
+  if (I18N) {
+    I18N.onChange(function () {
+      renderNav();
+      renderChrome();
+    });
+  }
 
   // The registries themselves, so a check can prove that a NEW view or a new
   // action needs nothing but an entry — the same hook content.js exposes for
@@ -717,6 +809,8 @@
     showView: showView,
     activeView: function () { return activeKey; },
     handleWorkerMessage: handleWorkerMessage,
+    handleStorageChanged: handleStorageChanged,
+    renderChrome: renderChrome,
     ready: ready
   };
 })();
