@@ -19,32 +19,33 @@ A study tool for Korean learners. Highlight hanja, hanzi, or kanji to read them 
 
 <!-- The store renders this field as PLAIN TEXT: no markdown, no bold. The
      dash-wrapped uppercase lines are the section separators, pasted as-is.
-     Kept deliberately short: one or two sentences per section, examples over
-     explanation. -->
+     Rewritten for 1.2 from the decluttered README (user-directed): user-facing
+     only, one or two sentences per section, examples over explanation, no
+     implementation reassurances. -->
 
 Okpyeon is a popup hanja dictionary for Korean learners. Much of Korean vocabulary is built from hanja roots the way English words are built from Latin, so once you know that 國 is 나라 국, the shared root in 국민, 국가, and 외국 becomes visible.
 
-Select text on any page and a card appears. Or click the toolbar icon for a sidebar with a search box that stays open across tabs; typing hj in the address bar searches from anywhere.
+Select text on any page and a card appears. Or click the toolbar icon for a sidebar with a search box; typing hj in the address bar searches from anywhere.
 
 --  CHARACTERS INTO KOREAN  --
 
-Select a hanja to get its eumhun (나라 국 for 國), English definitions, and its most common compounds. Simplified Chinese and Japanese shinjitai resolve to the same entries, so those pages work too.
+Select a hanja to see its eumhun (나라 국 for 國), English definitions, and common compounds. Simplified Chinese and Japanese forms resolve to the same entries, so those pages work too.
 
 --  KOREAN WORDS INTO HANJA  --
 
-Highlight a Sino-Korean word in hangul to see the hanja behind it: 국민 becomes 國民, and 자본주의는 in a sentence still finds 자본주의. Words break into their component words and characters, all clickable.
+Highlight a Sino-Korean word in hangul (국민) to see its hanja (國民), meaning, and component characters. A word with several spellings shows all of them (사기: 詐欺, 士氣, 沙器).
 
 --  CHARACTERS SPLIT INTO PARTS  --
 
-A character's card shows what it is made of (樂 opens into 幺, 白, 幺, and 木), each part a full entry of its own, and lists the characters it is itself a part of.
+A character's card shows what it is made of (樂 = 幺 + 白 + 幺 + 木), each part with its own reading, and which characters use it as a part.
 
 --  EVERY CHARACTER IS GRADED  --
 
-Middle school and High school mark the roughly 1,800 characters of the Korean Ministry of Education list, a natural study list for learners. Advanced and Rare cover everything else, so a glance tells you whether a character is worth your time.
+Middle school and High school mark the roughly 1,800 characters of the Korean Ministry of Education list. Advanced and Rare cover everything else, so a glance tells you whether a character is worth your time.
 
 --  NO KOREAN KEYBOARD NEEDED  --
 
-Typing toddlf with the keyboard still in English finds 생일, and gungmin or gukmin finds 국민. A query that reads both ways shows both.
+Typing toddlf with the keyboard still in English finds 생일, and gungmin or gukmin finds 국민.
 
 --  BROWSE BY SOUND  --
 
@@ -52,23 +53,19 @@ Highlight a single syllable like 국 to list every hanja read that way, most com
 
 --  FOLLOW THE CONNECTIONS  --
 
-Compound lists are complete, a page at a time, and word cards climb upward too: 학생 opens a list of 대학생, 중학생, and the rest. A breadcrumb trail returns to any earlier step.
+Everything on a card is clickable, and word cards climb upward too: 학생 opens a list with 대학생 and 중학생. A breadcrumb trail returns to any earlier step.
 
 --  SAVED WORDS AND ANKI EXPORT  --
 
-Star any card to save it into a folder. Folders export as an Anki text file (settings picks the card fields, Japanese and Chinese readings included if you want them, folder names become tags) or as a CSV.
+Star any card to save it into a folder. Folders export as an Anki text file or a CSV, and settings picks the card fields.
 
---  MULTIPLE SPELLINGS AND NATIVE WORDS  --
+--  NATIVE KOREAN WORDS (OPTIONAL)  --
 
-A word with several hanja spellings shows all of them (사기: 詐欺, 士氣, 沙器, and more). Native Korean words return nothing rather than a forced match, and an obscure hanja spelling of a common native word is labelled a rare homograph, not the word's origin.
+One setting adds native words as their own cards and an All words search scope, making Okpyeon a dictionary of all Korean.
 
---  OPTIONAL: NATIVE KOREAN WORDS TOO  --
+--  JAPANESE AND CHINESE READINGS (OPTIONAL)  --
 
-One setting turns Okpyeon into a dictionary of all Korean. Native words get their own cards, search gains an All words scope, and a word like 사랑 leads with its real meaning, the rare hanja homograph one tap away.
-
---  OPTIONAL: JAPANESE AND CHINESE READINGS  --
-
-Two settings add each character's Japanese on'yomi and Mandarin pinyin beside its Korean reading: 學 is 학 in Korean, ガク in Japanese, xué in Mandarin. For learners coming from those languages, or heading to them.
+Two settings add each character's on'yomi and pinyin beside its Korean reading: 學 is 학 in Korean, ガク in Japanese, xué in Mandarin.
 
 --  WHAT IS INSIDE  --
 
@@ -81,7 +78,7 @@ Two settings add each character's Japanese on'yomi and Mandarin pinyin beside it
 
 --  PRIVATE AND OFFLINE  --
 
-The whole dictionary ships inside the extension: no network requests, no data collection. Saved words stay on your device.
+The whole dictionary ships inside the extension. It makes no network requests and collects no data, and saved words stay on your device.
 
 --  SOURCES  --
 
