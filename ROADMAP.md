@@ -361,9 +361,26 @@ one schema entry plus its feature code:
     github.com/spellcheck-ko/korean-dict-nikl legitimately
     redistributes the full official XML (CC BY-SA 2.0 KR, example
     sentences excluded as at the source), opendict in 50k-entry
-    chunks of about 78 MB, 1M+ entries, repo refreshed 2026-08-31.
-    Next:
-    verify its shape and hanja-origin matching on our word set,
+    chunks of about 78 MB, 1.2M entries, repo refreshed 2026-08-31.
+    VERIFIED by a sampled spike (150k entries, three alphabet
+    slices): original_language_info carries exact hanja origins, so
+    matching happens on the hanja string itself and homograph
+    contamination is impossible by construction. In-range coverage
+    92.2% of words.json keys, nearly flat across frequency buckets
+    (87-97%), extrapolating to ~25,500 of 27,627; native words
+    well covered; single-hanja entries gloss ~2,100 chars in
+    Korean, so eumhun backfill stays in the design for the rest.
+    Definitions are real lexicography; debris (proper-noun and
+    dialect senses, dual-notation origins) filters on type/pos
+    fields. Example sentences and media live in separable XML
+    subtrees and are excluded from the CC BY-SA grant; dropping
+    them is a one-line filter. Build architecture when scheduled:
+    one-time fetch of the 25 chunks stored gzipped (~195 MB in
+    cache), a preprocess step emitting a small intermediate JSON,
+    build.py consuming only the intermediate. Remaining design:
+    what the Korean-mode card shows (replace or accompany
+    English), sense filtering rules, char backfill, UI chrome
+    language, the settings shape. Mockups next,
     then design and mockups, with ko-wiktionary demoted to
     reference material and eumhun backfill for the English-only
     chars part of the design. The Korean store listing below is this
