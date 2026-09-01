@@ -1960,35 +1960,47 @@ Korean. Two independent default-off toggles; off is byte-identical.
   the aligner resolved it, else `""`; unaligned readings trail
   aligned ones. A language key is omitted when it has no readings; a
   char is omitted when neither language does. Deterministic emit.
-- Coverage expectations (measured 2026-08-31): ja tier 1 covers 2,121
-  of our chars (92% of m, 86% of h); kun-only jōyō chars (串 丼 咲,
-  78 of them) correctly have NO ja entry, since there is no Sino
-  sound to show. zh covers nearly everything via kMandarin (97.7%).
-  Payload small (ja readings alone measured 36 KB).
+- Coverage (spike-measured 2026-08-31): ja tier 1 covers 2,121 of our
+  chars (92% of m, 86% of h); kun-only jōyō chars (串 丼 咲, 77 of
+  them) correctly have NO ja entry, since there is no Sino sound to
+  show. Tier 2 adds 1,409 non-jōyō chars (31 m, 92 h, 728 a, 558 r).
+  zh covers nearly everything via kMandarin (97.7%). Payload small.
 
 ### Build
 
-- Sources: the jōyō table (Wikipedia "List of jōyō kanji" wikitext,
-  new cached download, CC BY-SA like the MOE tier scrape; parse new
-  AND kyūjitai forms — the old-form column maps straight onto our
-  canonical chars — with on'yomi as the katakana tokens of the
-  readings cell); Unihan kMandarin / kXHC1983 / kHanyuPinlu (cached,
-  attributed); the ja kaikki extract (cached) for word kana; a ja
-  word-frequency list (new cached download, same source family as the
-  Korean one).
+- Sources: the jōyō table (cached as ja-wiki-joyo-kanji.wikitext, CC
+  BY-SA like the MOE tier scrape; parse new AND kyūjitai forms — the
+  old-form column maps straight onto our canonical chars — with
+  on'yomi as the katakana tokens of the readings cell; parse through
+  html.unescape, five chars ship as hex entities: 児 舎 奨 麦 晩;
+  parenthesized restricted readings are real jōyō readings and stay
+  in the set, trailing unless the corpus promotes them); Unihan
+  kMandarin / kXHC1983 / kHanyuPinlu AND kZVariant (cached,
+  attributed; kZVariant is REQUIRED in the bridging path because
+  variants.json lacks glyph-twin links like 説↔說, which silently
+  orphan such chars from the bridge); the ja kaikki extract (cached;
+  57,231 kanji words with kana as transliteration-tagged forms, 92%
+  cleanly alignable; single-char entries leak dictionary reading rows
+  as transliterations and MUST be excluded from the corpus); the ja
+  frequency list (cached as ja_full_opensubtitles.txt; spike-measured
+  WEAK: 34,504 badly tokenized entries, so it serves as ordering
+  weight ONLY, never as an attestation gate).
 - Japanese readings, two tiers, one mechanism:
-  - The mechanism: align common Japanese words' kana against each
-    char's candidate on'yomi with the regular transforms (sokuon
-    contraction of ク/キ/ツ/チ, rendaku voicing k→g s→z t→d h→b/p,
-    ハ行 p-forms), weighted by word frequency. Words that do not
-    align (jukujikun: 今日) are skipped, never guessed.
+  - The mechanism: align kanji words' kana against each char's
+    candidate on'yomi with the regular transforms (sokuon contraction
+    of ク/キ/ツ/チ, rendaku voicing k→g s→z t→d h→b/p, ハ行
+    p-forms), preferring the common kana variant when Wiktionary
+    lists several, weighted by word frequency where the list knows
+    the word. Words that do not align (jukujikun: 今日) are skipped,
+    never guessed.
   - Tier 1: jōyō chars keep the canonical jōyō on'yomi set, never
     dropped even when the corpus undersamples one.
-  - Tier 2: beyond jōyō, corpus-attested readings above a pinned
-    threshold (at least N distinct words within the top-K frequency
-    band; N and K are SET BY THE SPIKE and recorded here when it
-    reports) extend coverage to chars a Japanese-knower actually
-    meets (醤 in 醤油). Tier-2 readings render identically to tier 1.
+  - Tier 2 (spike-set): beyond jōyō, a reading is attested by at
+    least N=3 distinct aligned kaikki words, with NO frequency band
+    (the planned top-K gate died in the spike: the list is too weak
+    to gate on, and 醤油 itself is absent from it). Adds 1,409 chars
+    (諜 勿 獅 莫 榴 隕 彗 among them; 醬 admitted with 4 words, which
+    N=5 would wrongly lose). Tier-2 readings render identically.
 - Mandarin readings: the set is kMandarin plus kXHC1983's
   alternatives; kHanyuPinlu corpus frequencies order within the cap.
 - ORDER ALIGNMENT (the card's eumhun order is the master):
@@ -2006,15 +2018,33 @@ Korean. Two independent default-off toggles; off is byte-identical.
   - Within a language: aligned readings first in eum order, then
     unaligned by corpus weight, then source order (jōyō table order /
     kMandarin first). Cap applies after ordering.
-- Verify anchors: 學 ja [ガク] zh [xué]; 樂 aligned in eum order
-  (ガク・ラク / yuè·lè); 惡 (악↔アク↔è, 오↔オ↔wù); 行 (행↔コウ or
-  ギョウ per the bridge ↔ xíng, 항↔háng); 車 (차↔チャ? per data ↔
-  chē, 거↔jū — the ja side follows the data, the anchor pins the zh
-  pairing); 串 has no ja entry. Property tests: for ~95% of jōyō
-  chars the corpus's top reading is a jōyō reading (exceptions
-  reported); where the bridge and the scorer both speak they must
-  agree, and disagreements are REPORTED for curation, never silently
-  resolved.
+- Bridge and scorer expectations (spike-measured): 273 jōyō chars
+  carry 2+ on'yomi (152 excluding restricted readings), of which 223
+  are single-eum so pairing is trivial and only display order
+  matters; of the 50 genuinely multi-eum, the bridge resolves 13
+  fully and 32 partially (often legitimately: 金's 금 and 김 both use
+  キン), 5 have no shared-word evidence. Mandarin: 147 school-level
+  polyphones after tone-grouping; the scorer uniquely resolves 82.3%;
+  the 26 tied chars (伯 似 兒 冒 券 堤 宿 尺 巷 思 折 提 於 暴 泊 and
+  the rest) plus 行 seed the curated override table (NOT_RARE
+  discipline: every override must fire).
+- Verify anchors (spike-verified pairings): 學 ja [ガク] zh [xué];
+  樂 aligned in eum order (악↔ガク via 音樂, 락↔ラク via 娛樂 /
+  악↔yuè, 락↔lè); 惡 (악↔アク↔è, 오↔オ↔wù); 讀 (독↔ドク↔dú,
+  두↔トウ↔dòu); 說 (설↔セツ↔shuō, 세↔ゼイ); 車 (차↔chē, 거↔jū on
+  the zh side; ja follows the data); 行 via curated override
+  (행↔xíng, 항↔háng; the bridge alone cannot place 항, both its eums
+  use コウ in Japanese); 串 has no ja entry. Property tests: the
+  corpus's top reading is a jōyō reading for at least 95% of
+  corpus-attested jōyō chars (spike measured 99.2%; the 13 exceptions
+  are real minority usage like 銀河's ガ, plus diagnosed artifacts),
+  exceptions reported. Bridge/scorer agreement, operational form as
+  the spike proposed: both emit injective partial maps eum→reading;
+  on chars where both align 2+ eums, composing them yields
+  on'yomi↔pinyin pairs, and the mechanisms agree when no alternative
+  pinyin scores strictly higher for that on'yomi under a direct
+  ja↔zh correspondence check; ties tolerated; disagreements REPORTED
+  for curation, never silently resolved (spike: 5 of 5 agreed).
 
 ### Loading and runtime
 
@@ -2061,12 +2091,13 @@ Korean. Two independent default-off toggles; off is byte-identical.
   toggles are off; single-call-site sweep for the new section
   function.
 
-### Spike gates (run before the build waves; results update this section)
+### Spike (ran 2026-08-31; this section carries its results)
 
-Alignment anchor accuracy; the 95% jōyō validation rate; tier-2
-coverage and the N/K threshold; the bridge/scorer agreement rate; a
-probe of the cached Translingual extract for sense-tagged pinyin as a
-cross-check source for the zh aligner.
+All five gates answered; the numbers above are the spike's. One idea
+died there: the Translingual extract carries NO readings at all (樂's
+entry is radical-and-stroke trivia), so there is no sense-tagged
+pinyin cross-check; kMandarin, kXHC1983, and kHanyuPinlu are the
+complete zh source set.
 
 ## Verification expectations
 
