@@ -1972,7 +1972,7 @@
     check("the flagged request renders one line, ja then zh, separated",
       fake.__lastSino === true && fake.__sinoCalls === snFlagged + 1 &&
       api.queryAll(".sino-line").length === 1 &&
-      snMarkers().join(",") === "日,中" &&
+      snMarkers().join(",") === "JP,CN" &&
       snReadings().join(",") === "ガク,xué" &&
       api.queryAll(".sino-sep").length === 1,
       snMarkers().join(",") + " | " + snReadings().join(","));
@@ -1984,13 +1984,13 @@
     await embed.searchFor("學", { sino: { ja: true } });
     await wait(TAIL);
     check("{ja: true} renders the Japanese half alone",
-      snMarkers().join(",") === "日" && snReadings().join(",") === "ガク" &&
+      snMarkers().join(",") === "JP" && snReadings().join(",") === "ガク" &&
       !api.query(".sino-sep"),
       snMarkers().join(",") + " | " + snReadings().join(","));
     await embed.searchFor("學", { sino: { zh: true } });
     await wait(TAIL);
     check("{zh: true} renders the Mandarin half alone",
-      snMarkers().join(",") === "中" && snReadings().join(",") === "xué" &&
+      snMarkers().join(",") === "CN" && snReadings().join(",") === "xué" &&
       !api.query(".sino-sep"),
       snMarkers().join(",") + " | " + snReadings().join(","));
 

@@ -5154,9 +5154,9 @@
     api.setSettings({ jaReadings: true });
     api.showAt(anchor, snHakOn.matches);
     await wait(60);
-    check("ja alone renders one half-width line: marker 日 then the reading",
+    check("ja alone renders one half-width line: marker JP then the reading",
       api.queryAll(".sino-line").length === 1 &&
-      sinoMarkers().join(",") === "日" && sinoReadings().join(",") === "ガク" &&
+      sinoMarkers().join(",") === "JP" && sinoReadings().join(",") === "ガク" &&
       !api.query(".sino-sep"),
       sinoMarkers().join(",") + " | " + sinoReadings().join(","));
     check("the line sits under the card head, before the glosses",
@@ -5177,8 +5177,8 @@
     api.setSettings({ zhReadings: true });
     api.showAt(anchor, snHakOn.matches);
     await wait(60);
-    check("zh alone renders marker 中 and the pinyin, no separator",
-      sinoMarkers().join(",") === "中" && sinoReadings().join(",") === "xué" &&
+    check("zh alone renders marker CN and the pinyin, no separator",
+      sinoMarkers().join(",") === "CN" && sinoReadings().join(",") === "xué" &&
       !api.query(".sino-sep") &&
       sinoTitles().join("|") === "학 ↔ ガク ↔ xué",
       sinoMarkers().join(",") + " | " + sinoReadings().join(","));
@@ -5189,7 +5189,7 @@
     await wait(60);
     check("both on render ja then zh in one line, separated",
       api.queryAll(".sino-line").length === 1 &&
-      sinoMarkers().join(",") === "日,中" &&
+      sinoMarkers().join(",") === "JP,CN" &&
       sinoReadings().join(",") === "ガク,xué" &&
       api.queryAll(".sino-sep").length === 1,
       sinoMarkers().join(",") + " | " + sinoReadings().join(","));
@@ -5220,9 +5220,9 @@
     var snNested = api.queryAll(".component-list > .card.component .sino-line");
     check("both nested component cards carry their line, one language each",
       snNested.length === 2 &&
-      snNested[0].querySelector(".sino-marker").textContent === "中" &&
+      snNested[0].querySelector(".sino-marker").textContent === "CN" &&
       snNested[0].querySelector(".sino-reading").textContent === "guó" &&
-      snNested[1].querySelector(".sino-marker").textContent === "日" &&
+      snNested[1].querySelector(".sino-marker").textContent === "JP" &&
       snNested[1].querySelector(".sino-reading").textContent === "ミン" &&
       !snNested[0].querySelector(".sino-sep") &&
       !snNested[1].querySelector(".sino-sep"),

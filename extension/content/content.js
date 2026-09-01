@@ -543,10 +543,15 @@
     ".usedin-item { padding: 4px 12px; border-radius: 0; }",
     /* ---- sibling Sino readings: the quiet line under a char card's head ---- */
     // Mockup variant A: one muted sub-line between the head and the glosses.
-    // Markers are the language names 日 / 中, a shade fainter than the
-    // readings they introduce; the dots between readings recede the same way.
+    // Markers are bare uppercase JP / CN (user-directed: on a card full of
+    // han glyphs the 日 / 中 originals read as content; the ISO-cased codes
+    // read unmistakably as labels), small-caps register like the RARE sup,
+    // a shade fainter than the readings; the dots recede the same way.
     ".sino-line { margin: 1px 0 2px; font-size: 12px; color: var(--muted); }",
-    ".sino-marker { color: var(--faint); margin-right: 5px; }",
+    ".sino-marker {",
+    "  color: var(--faint); margin-right: 5px; font-size: 9px;",
+    "  font-weight: 700; letter-spacing: 0.08em;",
+    "}",
     ".sino-dot { color: var(--faint); margin: 0 4px; }",
     ".sino-sep { color: var(--faint); margin: 0 8px; }",
     // A step smaller inside a nested component card, the house pattern.
@@ -2866,8 +2871,8 @@
   }
 
   // The readings line (mockup variant A): a muted sub-line directly under the
-  // card head, before the glosses: marker 日 then the ja readings, a
-  // separator, marker 中 then the zh readings, fixed order. Only enabled
+  // card head, before the glosses: marker JP then the ja readings, a
+  // separator, marker CN then the zh readings, fixed order. Only enabled
   // languages render, and the line exists only when at least one of them has
   // data (half-width, naturally, when only one does). A reading whose eum tag
   // is non-empty (exactly those) carries a title naming its correspondence
@@ -2910,11 +2915,11 @@
         line.appendChild(span);
       });
     }
-    if (showJa.length) appendSegment("日", showJa, true);
+    if (showJa.length) appendSegment("JP", showJa, true);
     if (showJa.length && showZh.length) {
       line.appendChild(el("span", "sino-sep", "·"));
     }
-    if (showZh.length) appendSegment("中", showZh, false);
+    if (showZh.length) appendSegment("CN", showZh, false);
     card.appendChild(line);
   }
 

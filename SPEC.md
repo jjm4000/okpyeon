@@ -2067,12 +2067,17 @@ Korean. Two independent default-off toggles; off is byte-identical.
   test drives lookup through the guarded shape itself.
 - Renderer: one section function, one call site, behind the
   predicates: a muted sub-line directly under the card head, before
-  the glosses (mockup variant A): marker 日 then the ja readings,
-  separator, marker 中 then the zh readings. Markers are the han
-  chars 日 / 中 (language names, not country codes). Only enabled
+  the glosses (mockup variant A): marker JP then the ja readings,
+  separator, marker CN then the zh readings. Only enabled
   languages render; the line renders when at least one enabled
   language has data, half-width when one does; absent entirely
   otherwise (empty sections never render). Fixed order ja then zh.
+  Markers (user-adjusted after live QA): bare uppercase JP / CN in
+  the small-caps register, replacing the mocked 日 / 中, which read
+  as content on a card full of han glyphs. Country codes chosen for
+  recognition over the language codes ja / zh, with the caveat noted
+  that pinyin is not mainland-specific; the correspondence tooltip
+  carries the full story either way.
   Each reading carries a title tooltip naming its correspondence
   ("악 ↔ ガク ↔ yuè") when its eum tag is non-empty. Applies wherever
   char cards render (top-level, nested component cards, drill-downs),
