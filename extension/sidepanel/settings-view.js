@@ -56,6 +56,22 @@
       default: false
     },
     {
+      key: "jaReadings",
+      group: "Character cards",
+      type: "toggle",
+      label: "Japanese reading",
+      description: "Shows how the character is read in Japanese (on'yomi).",
+      default: false
+    },
+    {
+      key: "zhReadings",
+      group: "Character cards",
+      type: "toggle",
+      label: "Chinese reading",
+      description: "Shows how the character is read in Mandarin (pinyin).",
+      default: false
+    },
+    {
       key: "defaultFolderId",
       group: "Saving",
       type: "folder-select",

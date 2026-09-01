@@ -31,6 +31,10 @@ export const DEFAULT_SETTINGS = Object.freeze({
   defaultFolderId: DEFAULT_FOLDER_ID,
   // Native words ADDENDUM: off is byte-identical to today on every surface.
   nativeWords: false,
+  // Sibling Sino readings ADDENDUM: two independent toggles, both off is
+  // byte-identical on every surface.
+  jaReadings: false,
+  zhReadings: false,
   anki: Object.freeze({
     wordFront: "hanja",
     wordBack: Object.freeze(["hangul", "defs"]),
@@ -204,6 +208,9 @@ export function normalizeSettings(raw, savedState) {
     // Anything that is not literally `true` reads as off, so hand-edited junk
     // can never switch the native surfaces on by accident.
     nativeWords: src.nativeWords === true,
+    // The readings toggles read on the same rule, independently.
+    jaReadings: src.jaReadings === true,
+    zhReadings: src.zhReadings === true,
     anki: {
       wordFront: oneOf(anki.wordFront, WORD_FIELDS, DEFAULT_SETTINGS.anki.wordFront),
       wordBack: manyOf(anki.wordBack, WORD_FIELDS, DEFAULT_SETTINGS.anki.wordBack),

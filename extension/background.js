@@ -51,6 +51,14 @@ const DATA_FILES = {
 const NATIVE_DATA_FILE = "data/native.json";
 
 /**
+ * Sibling Sino readings ADDENDUM: sino.json follows native.json's lazy
+ * pattern, not DATA_FILES. It is fetched on the first sino-flagged request
+ * only (flag set by the client when either readings toggle is on; the worker
+ * stays stateless about the toggles), so unflagged traffic never pays for it.
+ */
+const SINO_DATA_FILE = "data/sino.json";
+
+/**
  * Shape guard for native.json: a bundle without the file must leave flagged
  * lookups working, with the native table simply empty. `maxLen` passes
  * through only as an integer; lookup.js falls back otherwise. Romanized
@@ -63,6 +71,21 @@ export function guardNative(raw) {
   const out = { version: 1, words };
   if (Number.isInteger(n.maxLen)) out.maxLen = n.maxLen;
   return out;
+}
+
+/**
+ * Shape guard for sino.json, with guardNative's lesson applied: the raw
+ * record is SPREAD through, never rebuilt field by field, so every schema
+ * field, the per-char [reading, eum] pair arrays above all, survives the
+ * one path only the real worker exercises (a guard that rebuilds the object
+ * drops fields there and nowhere a fixture-driven test would look). Only
+ * `chars` is defended: a bundle without the file, or with junk in it, leaves
+ * flagged lookups working with the table simply empty.
+ */
+export function guardSino(raw) {
+  const s = raw !== null && typeof raw === "object" ? raw : {};
+  const chars = s.chars !== null && typeof s.chars === "object" ? s.chars : {};
+  return { ...s, version: 1, chars };
 }
 
 const hasOwn = (obj, key) =>
@@ -145,6 +168,31 @@ export function attachDecomp(result, data) {
     if (!Array.isArray(rows)) continue;
     const parts = rows.map((row) => decompRow(row, charTable)).filter(Boolean);
     if (parts.length) match.parts = parts;
+  }
+  return result;
+}
+
+/**
+ * Sibling Sino readings ADDENDUM: hang the char's sino.json entry on every
+ * char match the table knows about, in the attachDecomp pattern. The entry
+ * rides WHOLE (both language keys, [reading, eum] pairs untouched) because
+ * alignment and display order are baked at build time and the renderer never
+ * sorts, so there is nothing to join or reshape here.
+ */
+export function attachSino(result, sino) {
+  if (!result || result.ok !== true || !Array.isArray(result.matches)) return result;
+  const table =
+    sino !== null && typeof sino === "object" &&
+    sino.chars !== null && typeof sino.chars === "object"
+      ? sino.chars
+      : {};
+  for (const match of result.matches) {
+    if (!match || match.kind !== "char") continue;
+    const char = typeof match.canonical === "string" ? match.canonical : "";
+    if (!char || !hasOwn(table, char)) continue;
+    const entry = table[char];
+    if (!entry || typeof entry !== "object") continue;
+    match.sino = entry;
   }
   return result;
 }
@@ -325,6 +373,25 @@ function getNative() {
 }
 
 /**
+ * Sibling Sino readings ADDENDUM: sino.json's own lazy cache, the exact
+ * native.json arrangement: only a sino-flagged request triggers the fetch, a
+ * failure clears the cache for a later retry, and the caller degrades to an
+ * empty table for this one.
+ * @type {Promise<object>|null}
+ */
+let sinoPromise = null;
+
+function getSino() {
+  if (sinoPromise === null) {
+    sinoPromise = fetchJson(SINO_DATA_FILE).then(guardSino);
+    sinoPromise.catch(() => {
+      sinoPromise = null;
+    });
+  }
+  return sinoPromise;
+}
+
+/**
  * Handle a {type:"lookup", text, interpret, native} message.
  *
  * Romanized search ADDENDUM (input-channel rule): `interpret` is set only by
@@ -336,9 +403,15 @@ function getNative() {
  * the worker stays stateless about the toggle. Only a flagged request loads
  * native.json (first one pays the fetch) and only a flagged response can
  * carry `nativeMatches`; unflagged responses are byte-identical to before.
+ *
+ * Sibling Sino readings ADDENDUM: `sino` is the same client-set flag for the
+ * readings toggles (either one on sets it). It has NO lookup semantics (the
+ * table is attached onto char matches after the lookup, never consulted
+ * during it), so only a flagged request loads sino.json and only a flagged
+ * response can carry per-char `sino` entries.
  * @returns {Promise<{ok:true, matches:object[]}|{ok:false, error:string}>}
  */
-export async function handleLookup(text, interpret, native) {
+export async function handleLookup(text, interpret, native, sino) {
   try {
     const data = await getData();
     const flagged = native === true;
@@ -356,7 +429,11 @@ export async function handleLookup(text, interpret, native) {
       interpret: interpret === true,
       native: flagged,
     });
-    return attachFoundIn(attachDecomp(result, data), () => getFoundInIndex(data));
+    const joined = attachFoundIn(attachDecomp(result, data), () => getFoundInIndex(data));
+    if (sino !== true) return joined;
+    // A missing or malformed sino.json degrades to an empty table: the
+    // lookup still answers, the cards simply carry no readings line.
+    return attachSino(joined, await getSino().catch(() => guardSino(null)));
   } catch (err) {
     return { ok: false, error: toErrorMessage(err) };
   }
@@ -773,7 +850,8 @@ export async function handleSavedExport(selection, format) {
  * set against the SPEC without a chrome.runtime.
  */
 export const MESSAGE_HANDLERS = {
-  lookup: (m) => handleLookup(m.text, m.interpret === true, m.native === true),
+  lookup: (m) =>
+    handleLookup(m.text, m.interpret === true, m.native === true, m.sino === true),
   compounds: (m) => handleCompounds(m.char),
   usedIn: (m) => handleUsedIn(m.word),
   foundIn: (m) => handleFoundIn(m.char),

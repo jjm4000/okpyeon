@@ -1595,6 +1595,8 @@ test("normalizeSettings fills the SPEC defaults and drops unknown tokens", () =>
       v: 1,
       defaultFolderId: "f0",
       nativeWords: false,
+      jaReadings: false,
+      zhReadings: false,
       anki: {
         wordFront: "hanja",
         wordBack: ["hangul", "defs"],
@@ -3086,6 +3088,120 @@ await testAsync("native: the pending query carries scope only when flagged", asy
   assert.deepEqual(await handleGetPendingQuery(), { ok: true, query: null });
 });
 
+// ---------------------------------------------------------------------------
+// Sibling Sino readings ADDENDUM: guardSino, the attach, the flag gate.
+// ---------------------------------------------------------------------------
+
+/**
+ * Schema-exact sino.json fixture (SPEC "sino.json"): [reading, eum] pairs,
+ * capped at two, display order baked at build time. 學 carries both
+ * languages, 民 is ja-only (a language with no readings omits its key, never
+ * an empty array), and 生's unaligned ショウ trails the aligned reading with
+ * an empty eum tag.
+ */
+const sino = {
+  version: 1,
+  chars: {
+    學: { ja: [["ガク", "학"]], zh: [["xué", "학"]] },
+    民: { ja: [["ミン", "민"]] },
+    生: { ja: [["セイ", "생"], ["ショウ", ""]], zh: [["shēng", "생"]] },
+  },
+};
+
+await testAsync("sino: guardSino shapes junk and SPREADS every field through", async () => {
+  const { guardSino } = await import("../extension/background.js");
+  assert.deepEqual(guardSino(null), { version: 1, chars: {} });
+  assert.deepEqual(guardSino("nonsense"), { version: 1, chars: {} });
+  assert.deepEqual(guardSino({ chars: null }), { version: 1, chars: {} });
+  assert.deepEqual(guardSino({ chars: 7 }), { version: 1, chars: {} });
+  // Pass-through: the guarded record IS the schema record, per-char entries
+  // untouched (same objects, not lookalike rebuilds).
+  const guarded = guardSino(sino);
+  assert.deepEqual(guarded, sino);
+  assert.equal(guarded.chars, sino.chars);
+  assert.equal(guarded.chars.學, sino.chars.學);
+  // The guardNative lesson, asserted directly: a field this guard was never
+  // taught about still survives, because the raw record is spread, not
+  // rebuilt field by field.
+  assert.equal(guardSino({ version: 1, chars: {}, future: 7 }).future, 7);
+});
+
+await testAsync("sino: entries ride whole onto char matches, lookup driven through the guarded shape", async () => {
+  const { guardSino, attachSino } = await import("../extension/background.js");
+  // The EXACT shape the worker holds: a parsed file put through guardSino.
+  // This is the path a rebuild-style guard would silently break (fields
+  // dropped only where the real worker runs), so the fixture goes through
+  // JSON like a fetched file does.
+  const guarded = guardSino(JSON.parse(JSON.stringify(sino)));
+
+  const res = attachSino(lookup("學生", data), guarded);
+  assert.equal(res.ok, true);
+  const hak = res.matches.find((m) => m.kind === "char" && m.canonical === "學");
+  assert.deepEqual(hak.sino, { ja: [["ガク", "학"]], zh: [["xué", "학"]] });
+  // The eum-less trailing pair survives the trip untouched, order intact.
+  const saeng = res.matches.find((m) => m.kind === "char" && m.canonical === "生");
+  assert.deepEqual(saeng.sino, {
+    ja: [["セイ", "생"], ["ショウ", ""]],
+    zh: [["shēng", "생"]],
+  });
+  // Word matches never carry the field.
+  assert.ok(res.matches.filter((m) => m.kind === "word").every((m) => !("sino" in m)));
+
+  // A ja-only char attaches exactly its one language; a char the table lacks
+  // gets NO field at all, not an empty one.
+  const gukmin = attachSino(lookup("國民", data), guarded);
+  const min = gukmin.matches.find((m) => m.kind === "char" && m.canonical === "民");
+  assert.deepEqual(min.sino, { ja: [["ミン", "민"]] });
+  const guk = gukmin.matches.find((m) => m.kind === "char" && m.canonical === "國");
+  assert.equal("sino" in guk, false);
+
+  // A variant surface attaches on the canonical, like every other join.
+  const viaVariant = attachSino(lookup("学", data), guarded);
+  assert.deepEqual(viaVariant.matches[0].sino, sino.chars.學);
+
+  // Junk tolerance: error results and non-results pass through untouched,
+  // and an empty guarded table attaches nothing.
+  const errRes = { ok: false, error: "nope" };
+  assert.equal(attachSino(errRes, guarded), errRes);
+  assert.equal(attachSino(null, guarded), null);
+  const bare = attachSino(lookup("學生", data), guardSino(null));
+  assert.ok(bare.matches.every((m) => !("sino" in m)));
+});
+
+test("sino: no lookup semantics, a sino table on the bundle is never read", () => {
+  // The feature is attach-and-render: lookup itself must never so much as
+  // touch a sino table, flagged native or not. The throwing getter fails the
+  // test on any read, native-rr-trap style.
+  const trapped = {
+    ...data,
+    get sino() {
+      throw new Error("the sino table was read inside lookup");
+    },
+  };
+  for (const q of ["學生", "國民", "학생", "국", "gukmin", "学"]) {
+    assert.equal(
+      JSON.stringify(lookup(q, trapped, { interpret: true })),
+      JSON.stringify(lookup(q, data, { interpret: true })),
+      `query ${q}`
+    );
+  }
+  // Unflagged worker responses are byte-identical because the attach only
+  // runs on the flagged path: no match of a plain lookup carries the field.
+  assert.ok(lookup("學生", data).matches.every((m) => !("sino" in m)));
+});
+
+test("sino: the readings toggles default off, read strict true, independently", () => {
+  assert.equal(DEFAULT_SETTINGS.jaReadings, false);
+  assert.equal(DEFAULT_SETTINGS.zhReadings, false);
+  // Hand-edited junk can never switch a readings surface on by accident.
+  const scrubbed = normalizeSettings({ jaReadings: "yes", zhReadings: 1 });
+  assert.equal(scrubbed.jaReadings, false);
+  assert.equal(scrubbed.zhReadings, false);
+  const jaOnly = normalizeSettings({ jaReadings: true });
+  assert.equal(jaOnly.jaReadings, true);
+  assert.equal(jaOnly.zhReadings, false, "the toggles are independent");
+});
+
 // --- optional smoke test against Agent A's real corpus -------------------
 // Read-only, and skipped (not failed) if the files are absent.
 
@@ -3852,6 +3968,52 @@ await testAsync("smoke: the real found-in index holds 人 ⊃ 依, 辶 ⊃ 道, 
       `${sizes.reduce((n, s) => n + s, 0)} credits, ` +
       `biggest ${biggest} in ${index[biggest].length}; 辶 in ${index["辶"].length})`
   );
+});
+
+// --- sibling Sino readings against the real emitted sino.json -------------
+// The pipeline emits sino.json in its own wave, possibly after this one: the
+// smoke SKIPS LOUDLY until the file lands and then runs on its own.
+
+await testAsync("smoke: real sino.json grounds the 學 and 樂 anchors through the worker's shape", async () => {
+  let real, sinoFile;
+  try {
+    const [h, w, v, s] = await Promise.all([
+      readFile(join(dataDir, "hanja.json"), "utf8"),
+      readFile(join(dataDir, "words.json"), "utf8"),
+      readFile(join(dataDir, "variants.json"), "utf8"),
+      readFile(join(dataDir, "sino.json"), "utf8"),
+    ]);
+    real = { hanja: JSON.parse(h), words: JSON.parse(w), variants: JSON.parse(v) };
+    sinoFile = JSON.parse(s);
+  } catch (err) {
+    console.log(
+      `      (SKIPPED: sino smoke needs extension/data/sino.json ` +
+        `(${err.code || err.name}); it goes live once the pipeline emits the file)`
+    );
+    return;
+  }
+
+  // The worker's exact arrangement: the parsed file through guardSino, the
+  // attach on a real lookup result.
+  const { guardSino, attachSino } = await import("../extension/background.js");
+  const guarded = guardSino(sinoFile);
+
+  // 學: single reading each side (SPEC anchor: ja [ガク], zh [xué]).
+  const hak = attachSino(lookup("學", real), guarded)
+    .matches.find((m) => m.kind === "char" && m.canonical === "學");
+  assert.ok(hak && hak.sino, "學 must carry a sino entry");
+  assert.deepEqual(hak.sino.ja.map((p) => p[0]), ["ガク"], "學 ja readings");
+  assert.deepEqual(hak.sino.zh.map((p) => p[0]), ["xué"], "學 zh readings");
+
+  // 樂, aligned in eum order per the SPEC anchor: 악↔ガク↔yuè, 락↔ラク↔lè.
+  const ak = attachSino(lookup("樂", real), guarded)
+    .matches.find((m) => m.kind === "char" && m.canonical === "樂");
+  assert.ok(ak && ak.sino, "樂 must carry a sino entry");
+  assert.deepEqual(ak.sino.ja, [["ガク", "악"], ["ラク", "락"]], "樂 ja pairs in eum order");
+  assert.deepEqual(ak.sino.zh, [["yuè", "악"], ["lè", "락"]], "樂 zh pairs in eum order");
+
+  const charCount = Object.keys(guarded.chars).length;
+  console.log(`      (sino ${charCount} chars; 學 and 樂 anchors hold through guardSino)`);
 });
 
 // ---------------------------------------------------------------------------

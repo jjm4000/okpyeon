@@ -541,6 +541,16 @@
     ".view > .card.usedin { padding: 0; }",
     ".usedin-list { padding: 3px 0 5px; }",
     ".usedin-item { padding: 4px 12px; border-radius: 0; }",
+    /* ---- sibling Sino readings: the quiet line under a char card's head ---- */
+    // Mockup variant A: one muted sub-line between the head and the glosses.
+    // Markers are the language names 日 / 中, a shade fainter than the
+    // readings they introduce; the dots between readings recede the same way.
+    ".sino-line { margin: 1px 0 2px; font-size: 12px; color: var(--muted); }",
+    ".sino-marker { color: var(--faint); margin-right: 5px; }",
+    ".sino-dot { color: var(--faint); margin: 0 4px; }",
+    ".sino-sep { color: var(--faint); margin: 0 8px; }",
+    // A step smaller inside a nested component card, the house pattern.
+    ".card.component .sino-line { font-size: 11px; }",
     /* ---- decomposition: the collapsed "Made of" row and its part rows ---- */
     // Quiet like the used-in row, except the glyphs themselves, which carry
     // full text colour because they are the content.
@@ -827,6 +837,9 @@
   // filter, so the request flag and the render gate are tracked separately.
   var embedNative = false;        // requests of the current session carry native:true
   var embedScope = "hanja";       // "hanja" renders exactly today's results
+  // Sibling Sino readings: the languages the shell asked for, per searchFor
+  // call (options.sino). Both false outside a sino-flagged embed session.
+  var embedSino = { ja: false, zh: false };
   var embedLast = null;           // {response, query}: the hint re-renders this
   var embedOnScopeChange = null;  // shell callback, from mount() options
   var embedHintCount = 0;         // consumed by the next showAt root view
@@ -2794,11 +2807,124 @@
     }
   }
 
+  /* ---- Sibling Sino readings (SPEC ADDENDUM 2026-08-31) ------------------ *
+   * One self-contained section: these predicates, appendSinoLine, and the
+   * single call in buildCharCard below, so the line appears wherever char
+   * cards render (top-level, nested component cards, drill-downs). Both
+   * toggles off must be byte-identical to today on both axes: requests carry
+   * no `sino` field at all, and no readings line can exist in the DOM.
+   * -------------------------------------------------------------------- */
+
+  // The per-language predicates, nativeEnabled style. Default OFF: an absent
+  // record, an old record and an explicit false all read the same way.
+  function sinoJaEnabled(settings) {
+    return !!settings && settings.jaReadings === true;
+  }
+
+  function sinoZhEnabled(settings) {
+    return !!settings && settings.zhReadings === true;
+  }
+
+  // The embed option, searchFor's `options.sino`: true means both languages,
+  // {ja, zh} picks them individually, anything else is off. The shell owns
+  // the toggles here, exactly the way it owns `options.native`.
+  function normalizeSinoOption(raw) {
+    if (raw === true) return { ja: true, zh: true };
+    if (raw && typeof raw === "object") {
+      return { ja: raw.ja === true, zh: raw.zh === true };
+    }
+    return { ja: false, zh: false };
+  }
+
+  // Which languages this surface shows. In embed the shell decides per
+  // searchFor call; in the popup the settings toggles decide.
+  function sinoLangs() {
+    if (IS_EMBED) return embedSino;
+    var settings = sectionSettings();
+    return { ja: sinoJaEnabled(settings), zh: sinoZhEnabled(settings) };
+  }
+
+  // Request side: a lookup carries sino:true when EITHER language is on. The
+  // worker fetches sino.json only for flagged requests and hangs per-char
+  // entries on char matches; which languages render stays a client decision.
+  function sinoRequestOn() {
+    var langs = sinoLangs();
+    return langs.ja === true || langs.zh === true;
+  }
+
+  // Ingestion: raw [reading, eum] pairs -> clean {reading, eum} rows. The
+  // display order is baked at build time; nothing here may sort.
+  function sinoPairs(rawList) {
+    var out = [];
+    asArray(rawList).forEach(function (pair) {
+      if (!Array.isArray(pair)) return;
+      var reading = nonEmptyString(pair[0]);
+      if (!reading) return;
+      out.push({ reading: reading, eum: typeof pair[1] === "string" ? pair[1] : "" });
+    });
+    return out;
+  }
+
+  // The readings line (mockup variant A): a muted sub-line directly under the
+  // card head, before the glosses: marker 日 then the ja readings, a
+  // separator, marker 中 then the zh readings, fixed order. Only enabled
+  // languages render, and the line exists only when at least one of them has
+  // data (half-width, naturally, when only one does). A reading whose eum tag
+  // is non-empty (exactly those) carries a title naming its correspondence
+  // ("악 ↔ ガク ↔ yuè"): the pair itself plus the other language's same-eum
+  // reading when the entry has one, toggles notwithstanding, because the
+  // correspondence is a fact of the character, not of the display.
+  function appendSinoLine(card, m) {
+    var langs = sinoLangs();
+    if (!langs.ja && !langs.zh) return;
+    var entry = m && m.sino && typeof m.sino === "object" ? m.sino : null;
+    if (!entry) return;
+    var ja = sinoPairs(entry.ja);
+    var zh = sinoPairs(entry.zh);
+    var showJa = langs.ja ? ja : [];
+    var showZh = langs.zh ? zh : [];
+    if (!showJa.length && !showZh.length) return;
+
+    // The other language's reading for this eum, or "" when unaligned there.
+    function eumMatch(pairs, eum) {
+      for (var i = 0; i < pairs.length; i++) {
+        if (pairs[i].eum === eum) return pairs[i].reading;
+      }
+      return "";
+    }
+
+    var line = el("div", "sino-line");
+    function appendSegment(marker, pairs, isJa) {
+      line.appendChild(el("span", "sino-marker", marker));
+      pairs.forEach(function (pair, i) {
+        if (i) line.appendChild(el("span", "sino-dot", "·"));
+        var span = el("span", "sino-reading", pair.reading);
+        if (pair.eum) {
+          var other = eumMatch(isJa ? zh : ja, pair.eum);
+          var jaReading = isJa ? pair.reading : other;
+          var zhReading = isJa ? other : pair.reading;
+          span.title = [pair.eum, jaReading, zhReading]
+            .filter(Boolean)
+            .join(" ↔ ");
+        }
+        line.appendChild(span);
+      });
+    }
+    if (showJa.length) appendSegment("日", showJa, true);
+    if (showJa.length && showZh.length) {
+      line.appendChild(el("span", "sino-sep", "·"));
+    }
+    if (showZh.length) appendSegment("中", showZh, false);
+    card.appendChild(line);
+  }
+
   function buildCharCard(m) {
     var card = el("div", "card");
 
     var meta = appendCharHead(card, m);
     appendVariantNote(meta, m);
+
+    appendSinoLine(card, m);
 
     appendGlosses(card, m.glosses);
 
@@ -4286,6 +4412,9 @@
     // Toggle off, the field is ABSENT, not false: unflagged requests must be
     // byte-identical to today's, and only flagged ones may touch native.json.
     if (nativeRequestOn()) message.native = true;
+    // The readings toggles ride the same rule: off means absent, and only a
+    // flagged request may touch sino.json.
+    if (sinoRequestOn()) message.sino = true;
     return sendToWorker(message);
   }
 
@@ -4562,6 +4691,9 @@
         var query = typeof text === "string" ? text.trim() : "";
         var interpret = !!(options && options.interpret);
         embedNative = !!(options && options.native);
+        // `options.sino` picks the readings languages for this session's
+        // requests and cards: true for both, {ja, zh} individually.
+        embedSino = normalizeSinoOption(options && options.sino);
         embedScope = (embedNative && options && options.scope === "all")
           ? "all" : "hanja";
         embedLast = null;   // a failed search must not leave the hint armed
@@ -4619,6 +4751,7 @@
 
       clear: function () {
         embedNative = false;
+        embedSino = { ja: false, zh: false };
         embedScope = "hanja";
         embedLast = null;
         hide();
