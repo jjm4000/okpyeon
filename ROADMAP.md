@@ -336,12 +336,30 @@ one schema entry plus its feature code:
   are the barrier and partly just clutter (a word card's English
   gloss explains 국민 to someone who knows 국민; the eumhun is
   already the Korean char gloss). Design space spans hiding English
-  (free), Korean definitions (a data feature: candidate sources are
-  the Korean Wiktionary edition via kaikki, thin but pipeline-shaped,
-  and 우리말샘, CC BY-SA but signup-gated bulk access), and Korean UI
-  chrome. Spike first: coverage of our word and char sets in the ko
-  edition, quality samples, size. The Korean store listing below is
-  this feature's distribution companion.
+  (free), Korean definitions (a data feature), and Korean UI chrome.
+  SPIKE RAN 2026-09-01, results:
+  - ko-wiktionary (kaikki, cached, 104k Korean headwords): good
+    lexicographer prose where it matches, head-weighted coverage
+    (85% of f<=5 words by hangul match, 62% by strict hanja-verified
+    match, collapsing to 14% on the untagged tail), 37% of native
+    words, and essentially NO individual-hanja glosses. Payload
+    trivial (0.3-0.9 MB). The engineering risk is homograph
+    contamination, not prose: hangul-only matching attaches 우리 the
+    pronoun to 牛李, so a build must parse per-sense hanja origins.
+  - 우리말샘 (Urimalsaem, NIKL): the better corpus on every axis.
+    1.1M+ headwords, CC BY-SA 2.0 KR (example sentences excluded from
+    the license), and its format carries exact hanja-origin fields
+    (original_language_info), which solves the matching problem
+    outright. Bulk XML download requires a one-time account signup,
+    which is Jesse's to do; that signup is the gate on the good path.
+  - Subtraction finding: hide-English alone is NOT viable for char
+    cards. 6,146 of 9,469 chars (65%) carry English as their only
+    meaning text (103 of the m-level 899, a third of h). A Korean
+    mode needs eumhun backfill or keeps English as the char fallback.
+  - Build recommendation when scheduled: Urimalsaem primary,
+    ko-wiktionary as the no-signup stopgap, eumhun backfill for the
+    English-only chars. The Korean store listing below is this
+    feature's distribution companion.
 - Korean-language store listing
 
 ## Non-goals for now
