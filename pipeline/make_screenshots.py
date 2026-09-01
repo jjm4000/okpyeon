@@ -85,7 +85,9 @@ SEPARATOR_DARK = (60, 64, 67)
 #
 # Every shot is either a whole-viewport page capture ("page") or a page capture
 # docked beside a side-panel capture ("composite"). `page` and `panel` are query
-# strings for the staging pages; `checks` are JS expressions that must all
+# strings for the staging pages; a "set" key in either turns the named settings
+# toggles on for the scene (the committed seeding path; no defaults are ever
+# hand-edited for a capture). `checks` are JS expressions that must all
 # evaluate true after the page signals ready, before anything is captured.
 # --------------------------------------------------------------------------
 
@@ -128,9 +130,14 @@ SHOTS = [
         # its glosses and the compounds it builds. 天 replaced 學 for variety
         # (學生 already fronts the Japanese shot) and won on glyph simplicity
         # and compound appeal (천사, 천재).
-        "page": {"scene": "1", "scroll": 0},
+        # 1.2: both readings toggles seeded, so the card carries its muted
+        # JP テン · CN tiān sub-line inside the same composition.
+        "page": {"scene": "1", "scroll": 0, "set": "jaReadings,zhReadings"},
         "checks": [POPUP_UP, head_is("\u5929"),
-                   has_text("compounds listed", ".compounds .cpd-hangul", "\ucc9c\uc0ac")],
+                   has_text("compounds listed", ".compounds .cpd-hangul", "\ucc9c\uc0ac"),
+                   ("reading sub-line carries both languages",
+                    'globalThis.__hanjaHover.query(".sino-line").textContent'
+                    ' === "JP\u30c6\u30f3\u00b7CNti\u0101n"')],
     },
     {
         "n": 2,
@@ -138,11 +145,16 @@ SHOTS = [
         # 국민 (hangul) highlighted: the hangul-to-hanja direction. Captured
         # dark: one shot of the five-store set answers "does it do dark mode",
         # and this one reads best inverted.
+        # 1.2: readings seeded, so the nested 國 and 民 component cards carry
+        # their smaller sibling-reading lines.
         "kind": "page",
         "dark": True,
-        "page": {"scene": "2", "scroll": 262},
+        "page": {"scene": "2", "scroll": 262, "set": "jaReadings,zhReadings"},
         "checks": [POPUP_UP, head_is("\u570b\u6c11"),
-                   has_text("hangul headline", ".card .hangul", "\uad6d\ubbfc")],
+                   has_text("hangul headline", ".card .hangul", "\uad6d\ubbfc"),
+                   ("a nested reading line rendered",
+                    'globalThis.__hanjaHover.queryAll(".card.component .sino-line")'
+                    ".length >= 1")],
     },
     {
         "n": 3,
@@ -172,13 +184,23 @@ SHOTS = [
         "kind": "composite",
         "panel_w": 560,
         "page": {"scene": "0", "scroll": 0},
-        "panel": {"view": "search", "q": "\uad6d\ubbfc"},
+        "panel": {"view": "search", "q": "\uad6d\ubbfc", "set": "nativeWords"},
         # The search view renders through content.js, so its nodes live in the
         # embedded panel's shadow root and only its own query hook sees them.
+        # 1.2: nativeWords seeded, so the scope pills sit above the results, in
+        # the panel page's own light DOM (hence document.* checks), All words
+        # active as the fresh-open default. 국민 is Sino-Korean, so the result
+        # list itself is unchanged.
         "checks": [head_is("國民"),
                    has_text("component cards", ".card .surface", "民"),
                    ("component section present",
-                    '!!globalThis.__hanjaHover.query(".components")')],
+                    '!!globalThis.__hanjaHover.query(".components")'),
+                   ("both scope pills render",
+                    'document.querySelectorAll(".scopebar .scope-pill")'
+                    ".length === 2"),
+                   ("All words is the active pill",
+                    'document.querySelector(".scope-pill--active")'
+                    '.textContent === "All words"')],
     },
     {
         "n": 6,
@@ -208,13 +230,21 @@ SHOTS = [
         "panel_w": 560,
         "page": {"scene": "0", "scroll": 200},
         "panel": {"view": "settings"},
+        # 1.2 made this view taller (the Search and Character cards groups, the
+        # about footer), and the product's own room rule now retires the seal:
+        # 44px remain under the content where the rule wants 230. The seal
+        # checks left with it; the footer bound proves the taller view still
+        # fits the frame uncropped.
         "checks": [
             panel_has("settings view mounted", ".view--settings"),
             panel_has("anki export section", ".view--settings", "Anki export"),
-            ("seal has room", 'document.querySelector(".view--settings")'
-                              '.classList.contains("view--roomy")'),
+            panel_has("search group present", ".settings-group", "Search"),
+            panel_has("character cards group present", ".settings-group",
+                      "Character cards"),
+            ("about footer fully in frame",
+             'document.querySelector(".settings-about")'
+             ".getBoundingClientRect().bottom < 800"),
         ],
-        "pixels": "seal",
     },
     {
         "n": 8,
@@ -222,13 +252,17 @@ SHOTS = [
         "kind": "page",
         # A Japanese page: 学生 highlighted resolves to the canonical 學生, and
         # the variant note that says so is the whole point of the shot.
-        "page": {"scene": "5", "scroll": 230},
+        # 1.2: readings seeded, the natural fit: the component cards' JP lines
+        # (ガク, セイ・ショウ) sit beside Japanese body text.
+        "page": {"scene": "5", "scroll": 230, "set": "jaReadings,zhReadings"},
         "checks": [
             POPUP_UP,
             head_is("\u5b78\u751f"),
             has_text("variant note", ".canonical", "\u5b66\u751f \u2192 \u5b78\u751f"),
             has_text("component card 學", ".card .surface", "\u5b78"),
             has_text("component card 生", ".card .surface", "\u751f"),
+            has_text("reading line on a component card",
+                     ".card.component .sino-line", "ガク"),
             ("both component heads are in frame",
              '[...globalThis.__hanjaHover.queryAll(".card .surface")]'
              ".every((n) => n.getBoundingClientRect().bottom < 800)"),
@@ -244,9 +278,15 @@ SHOTS = [
         # their readings (幺's arrives via the readings[0] fallback), and the
         # "Part of" row underneath — 樂 is inside 9 characters, 藥 among them.
         # Replaced 學 here for variety: 學生 already fronts the Japanese shot.
-        "panel": {"view": "search", "q": "樂", "expand": "madeof"},
+        # 1.2: readings seeded; 樂 is the set's richest entry, two readings in
+        # each language, aligned pairwise (악 ↔ ガク ↔ yuè).
+        "panel": {"view": "search", "q": "樂", "expand": "madeof",
+                  "set": "jaReadings,zhReadings"},
         "checks": [
             head_is("樂"),
+            ("reading line reads both languages in display order",
+             'globalThis.__hanjaHover.query(".sino-line").textContent'
+             ' === "JPガク·ラク·CNyuè·lè"'),
             ("made-of row is open",
              'globalThis.__hanjaHover.query(".madeof-row")'
              '.getAttribute("aria-expanded") === "true"'),

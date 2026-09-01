@@ -19,6 +19,7 @@
     q=TEXT                       type TEXT into the search field and search
     collapse=NAME,NAME           collapse these saved folders by name (or prefix)
     expand=madeof                open the card's "Made of" row, as a tap does
+    set=KEY,KEY                  settings keys to turn on (e.g. set=nativeWords)
 
   Signals completion by setting documentElement.dataset.shotReady.
 -->
@@ -119,7 +120,12 @@ let savedState = normalizeSavedState({
   nextFolder: 3,
   nextItem: seedItems.length,
 });
-let settings = normalizeSettings({ v: 1, defaultFolderId: "f1" }, savedState);
+// ?set=nativeWords,jaReadings names settings keys a scene turns on, through
+// the same normalize step; this replaces hand-editing the defaults for a
+// capture. Absent, the record is byte-identical to what it always was.
+const seeded = {};
+for (const key of (params.get("set") || "").split(",")) if (key) seeded[key] = true;
+let settings = normalizeSettings({ v: 1, defaultFolderId: "f1", ...seeded }, savedState);
 
 function handle(msg) {
   const m = msg || {};
@@ -128,9 +134,9 @@ function handle(msg) {
       // The flags ride through exactly as the worker passes them: interpret
       // for typed channels, native only when the client's toggle is on, and
       // sino attaches its per-char readings after the join, worker-style.
-      // The stub's default settings leave both readings toggles off, so no
-      // request here ever carries the flag and the page renders exactly as
-      // it did before the feature.
+      // Absent ?set=, the stub's defaults leave every toggle off, so no
+      // request here ever carries a flag and the page renders exactly as
+      // it did before the features.
       const joined = attachFoundIn(
         attachDecomp(lookup(String(m.text || ""), data,
           { interpret: m.interpret === true, native: m.native === true }),

@@ -19,6 +19,7 @@
     scroll=N   window scroll offset before the selection is made
     w=N        popup width handed to the product's own resizePanel
     bottom=N   gap to leave under the popup when sizing it to its content
+    set=K,K    settings keys to turn on (e.g. set=jaReadings,zhReadings)
 
   Signals completion by setting documentElement.dataset.shotReady.
 -->
@@ -198,27 +199,43 @@ import { lookup, buildFullCompounds, buildUsedIn, buildReadingIndex }
   from "/extension/lookup.js";
 import { normalizeSavedState, normalizeSettings, checkKeys, toggleItem, joinItems }
   from "/extension/saved.js";
+/* The sino join is the worker's, not a copy of it: background.js guards every
+   chrome.* touch, so importing it here runs the real guardSino / attachSino
+   against the real sino.json. */
+import { guardSino, attachSino } from "/extension/background.js";
 
 const params = new URLSearchParams(location.search);
 const scene = params.get("scene") || "1";
 const scrollY = Number(params.get("scroll") || 0);
 
-const [hanja, words, variants] = await Promise.all(
-  ["hanja", "words", "variants"].map((n) =>
+const [hanja, words, variants, sinoRaw] = await Promise.all(
+  ["hanja", "words", "variants", "sino"].map((n) =>
     fetch("/extension/data/" + n + ".json").then((r) => r.json())));
 
 let readingIndex = null;
+const sino = guardSino(sinoRaw);
 const data = {
   hanja, words, variants,
   getReadingIndex: () => (readingIndex ||= buildReadingIndex(hanja)),
 };
 
 let savedState = normalizeSavedState(null);
-const settings = normalizeSettings(null, savedState);
+// ?set=jaReadings,zhReadings names settings keys a scene turns on, through the
+// same normalize step the worker uses; this replaces hand-editing the defaults
+// for a capture. Absent, the defaults stand and the page renders as before.
+const seeded = {};
+for (const key of (params.get("set") || "").split(",")) if (key) seeded[key] = true;
+const settings = normalizeSettings(seeded, savedState);
 
 function handle(msg) {
   switch (msg && msg.type) {
-    case "lookup": return lookup(String(msg.text || ""), data);
+    // Worker-style: only a sino-flagged request (content.js sets the flag when
+    // either seeded readings toggle is on) touches sino.json, so an unseeded
+    // scene's response is byte-identical to before the feature.
+    case "lookup": {
+      const result = lookup(String(msg.text || ""), data);
+      return msg.sino === true ? attachSino(result, sino) : result;
+    }
     case "compounds": return { ok: true, compounds: buildFullCompounds(msg.char, data) };
     case "usedIn": return { ok: true, words: buildUsedIn(msg.word, data) };
     case "openTab": return { ok: true };
@@ -256,6 +273,12 @@ await new Promise((res, rej) => {
 
 const api = globalThis.__hanjaHover;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// The popup reads its toggles from a settings cache that chrome.storage seeds
+// in the shipped build; a bare page hands the record to the test hook instead.
+// Only a seeded scene touches the hook, so without ?set= the cache stays null,
+// exactly as before.
+if (params.get("set")) api.setSettings(settings);
 
 function select(id) {
   const node = document.getElementById(id);
