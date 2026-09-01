@@ -276,8 +276,29 @@ one schema entry plus its feature code:
     jukujikun like 今日 skipped), the validation property that the
     corpus's top reading is a jōyō reading for ~95% of jōyō chars
     (exceptions reported), and the measured tier-2 coverage.
-  - Open: threshold value, whether tier-2 readings render identically
-    (lean yes), display design (mockups), settings row wording.
+  - Cross-language ORDER ALIGNMENT (decided 2026-08-31): the card's
+    eumhun order is the master, and sibling readings sort to match
+    their correlate's position, so 樂 reads ガク・ラク / yuè·lè
+    because the card says 악 · 락. Japanese aligns by the COMPOUND
+    BRIDGE: shared spelled words (音樂 is 音楽) vote on which eum
+    pairs with which on'yomi, using the planned corpus alignment plus
+    the variants map, evidence only. Mandarin aligns by
+    correspondence scoring over initial and rime classes (ㄹ↔l,
+    ㅇ↔y/w, palatalized ㄱ↔j), ambiguous chars flagged into a curated
+    override table. Unmatched sibling readings trail; an eum with no
+    living sibling (요) contributes no slot. Each reading carries a
+    title tooltip naming its correspondence (악 ↔ ガク ↔ yuè).
+    Anchors: 樂, 行, 車, and 惡 (악↔アク↔è, 오↔オ↔wù); property
+    test: where the bridge and the scorer both speak they must agree,
+    disagreements reported for curation, never silently picked.
+  - Display (decided by mockups 2026-08-31): variant A, one muted
+    sub-line under the card head ("日 ガク · 中 xué"), rendering
+    whenever at least one enabled language has data, half-width when
+    only one does. Two independent default-off settings rows
+    ("Japanese reading" / "Chinese reading") in a Character cards
+    group; with both on the order is fixed, Japanese then Chinese.
+  - Open: tier-2 threshold value, whether tier-2 readings render
+    identically (lean yes), settings row copy final wording.
 - List views auto-growing taller than card views
 - Korean-language store listing
 
