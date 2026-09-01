@@ -16,41 +16,38 @@ typing `hj` in the address bar searches from anywhere.
   and Japanese shinjitai forms resolve to the same entries, so those pages
   work too.
 - **Korean words into hanja.** Highlight a Sino-Korean word in hangul (국민)
-  to see its hanja (國民), meaning, and component characters. Grammatical
-  endings are handled: 자본주의는 finds 자본주의.
+  to see its hanja (國民), meaning, and component characters.
 - **Word breakdown.** Compounds split into component words (자본주의 → 資本 +
   主義). Everything is clickable, and a breadcrumb trail returns to any
   earlier step.
 - **Character breakdown.** A character's card shows what it is made of
   (樂 = 幺 + 白 + 幺 + 木), each part clickable with its own reading,
-  and which other characters use it as a part. Pictographs like 心 stay
-  whole instead of being split into pen strokes.
+  and which other characters use it as a part.
 - **Browse by sound.** Highlight a single syllable (국) to list every hanja
   read that way. Readings on cards are links too: a character's eum opens its
   homophone list, and a word's hangul shows its other spellings.
 - **Character levels.** Each character is marked Middle school, High school,
   Advanced, or Rare. The school levels follow the Ministry of Education
-  curriculum; Advanced and Rare are Okpyeon's own classification, and the
-  tooltips say so.
-- **Sidebar search.** The sidebar shows the same cards as highlighting does,
-  and it stays open across tabs and page loads.
+  curriculum; Advanced and Rare are Okpyeon's own classification.
 - **No Korean keyboard needed.** Typing `toddlf` (the 2-set layout on an
   English keyboard) finds 생일, and typing `gungmin` or `gukmin`
   (romanization) finds 국민. A query that could be read both ways shows
   both.
-- **Saved words.** The star on any card saves the entry, with a bubble to pick
-  or create its folder. The Saved view manages folders, with batch move and
-  delete.
+- **Saved words.** The star on any card saves the entry into a folder; the
+  Saved view manages folders with batch move and delete.
 - **Export.** Saved words export as an Anki text file or as CSV. Settings
   picks the Anki card fields and the default folder, and folder names become
   Anki tags.
-- **Wiktionary links.** Every card links to its Wiktionary entry. Links open
-  in a background tab, so the card you are reading stays open.
-- **Resizable.** Drag the in-page popup's corner to resize it. The size holds
-  for the rest of the page visit.
+- **Wiktionary links.** Every card links to its Wiktionary entry.
 - **Native words.** Native Korean words show nothing rather than a forced
   match. A native word that shares its sound with an obscure hanja spelling
   (사랑 and 舍廊) is labelled a rare homograph, not the word's origin.
+- **Native Korean words (optional).** One setting adds native words as
+  their own cards and an All words search scope, making Okpyeon a
+  dictionary of all Korean.
+- **Japanese and Chinese readings (optional).** Two settings add each
+  character's on'yomi and pinyin beside its Korean reading: 學 is 학 in
+  Korean, ガク in Japanese, xué in Mandarin.
 - **Private and offline.** The whole dictionary ships inside the extension.
   It makes no network requests and collects no data. Saved words stay on your
   device. See [privacy-policy.html](privacy-policy.html).

@@ -68,7 +68,7 @@ One setting turns Okpyeon into a dictionary of all Korean. Native words get thei
 
 --  OPTIONAL: JAPANESE AND CHINESE READINGS  --
 
-Two settings add each character's Japanese on'yomi and Mandarin pinyin beside its Korean reading, matched sound for sound: 樂 is 악·락 in Korean, ガク・ラク in Japanese, yuè·lè in Mandarin. For learners coming from those languages, or heading to them.
+Two settings add each character's Japanese on'yomi and Mandarin pinyin beside its Korean reading: 學 is 학 in Korean, ガク in Japanese, xué in Mandarin. For learners coming from those languages, or heading to them.
 
 --  WHAT IS INSIDE  --
 
