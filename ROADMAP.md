@@ -365,7 +365,12 @@ one schema entry plus its feature code:
     VERIFIED by a sampled spike (150k entries, three alphabet
     slices): original_language_info carries exact hanja origins, so
     matching happens on the hanja string itself and homograph
-    contamination is impossible by construction. In-range coverage
+    contamination is impossible by construction. Matching is TWO
+    LANES (user-raised): hanja-origin entries route to words.json
+    keys, and 고유어 entries route to native.json headwords by
+    (hangul, POS), since native homographs exist too (우리 the
+    pronoun beside 우리 the animal pen). Each identity's card gets
+    its own definitions; the Same sound model is the chassis. In-range coverage
     92.2% of words.json keys, nearly flat across frequency buckets
     (87-97%), extrapolating to ~25,500 of 27,627; native words
     well covered; single-hanja entries gloss ~2,100 chars in
