@@ -1,4 +1,5 @@
 # Okpyeon: Hanja Popup Dictionary
+
 A study tool for Korean learners. Highlight hanja, hanzi, or kanji on any page
 to read them in Korean, or highlight a hangul word to see its hanja. The
 toolbar button opens a sidebar with typed search, saved words, and settings;
@@ -9,6 +10,7 @@ typing `hj` in the address bar searches from anywhere.
 ![Character lookup](screenshots/1-character-lookup.png)
 
 ## What it does
+
 - **Characters into Korean.** Select a hanja to see its eumhun (나라 국 for
   國), readings, English definitions, and common compounds. Simplified Chinese
   and Japanese shinjitai forms resolve to the same entries, so those pages
@@ -71,6 +73,7 @@ typing `hj` in the address bar searches from anywhere.
 *Saved words in folders.*
 
 ## Install
+
 From the [Chrome Web Store](https://chromewebstore.google.com/detail/enjmfjcemaiabocebnfokcmglfmnfjhl).
 
 From source: clone this repo, open `chrome://extensions`, enable Developer
@@ -78,6 +81,7 @@ mode, and use **Load unpacked** on the `extension/` folder. The dictionary
 data is committed, so no build step is needed just to run it.
 
 ## Repository layout
+
 ```
 extension/     the extension itself (MV3); data/ holds the built dictionary
 pipeline/      build tooling: dictionary build, icons, promo tiles, store zip
@@ -88,6 +92,7 @@ SPEC.md        the internal spec the implementation follows
 ```
 
 ## Building the dictionary
+
 ```
 python pipeline/build.py
 ```
@@ -108,6 +113,7 @@ UI self-checks: open `test-page/index.html` in a browser and press
 "Run self-checks".
 
 ## Licenses
+
 - **Code**: [GPL-3.0](LICENSE).
 - **Dictionary data** (`extension/data/*.json`): CC BY-SA 4.0, derived from
   English Wiktionary (via kaikki.org), the Unicode Unihan database, and the
