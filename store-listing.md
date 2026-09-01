@@ -19,9 +19,9 @@ A study tool for Korean learners. Highlight hanja, hanzi, or kanji to read them 
 
 <!-- The store renders this field as PLAIN TEXT: no markdown, no bold. The
      dash-wrapped uppercase lines are the section separators, pasted as-is.
-     Rewritten for 1.2 from the decluttered README (user-directed): user-facing
-     only, one or two sentences per section, examples over explanation, no
-     implementation reassurances. -->
+     This is Jesse's edited 1.2 text, verbatim (the uploaded version is the
+     canonical one): user-facing sections ordered by value, navigation
+     mechanics cut, and cryptic examples decoded in short parentheticals. -->
 
 Okpyeon is a popup hanja dictionary for Korean learners. Much of Korean vocabulary is built from hanja roots the way English words are built from Latin, so once you know that 國 is 나라 국, the shared root in 국민, 국가, and 외국 becomes visible.
 
@@ -34,22 +34,19 @@ Select a hanja to see its eumhun (나라 국 for 國), English definitions, and 
 Highlight a Sino-Korean word in hangul (국민) to see its hanja (國民), meaning, and component characters. A word with several spellings shows all of them (사기: 詐欺, 士氣, 沙器).
 
 --  CHARACTERS SPLIT INTO PARTS  --
-A character's card shows what it is made of (樂 = 幺 + 白 + 幺 + 木), each part with its own reading, and which characters use it as a part.
+A character's card shows what it is made of (樂 = 幺 + 白 + 幺 + 木), each part with its own reading, and which other characters use it as a component.
 
---  EVERY CHARACTER IS GRADED  --
-Middle school and High school mark the roughly 1,800 characters of the Korean Ministry of Education list. Advanced and Rare cover everything else, so a glance tells you whether a character is worth your time.
+--  SAVED WORDS AND ANKI EXPORT  --
+Star any card to save it into a folder. Folders export as an Anki text file or a CSV, with adjustable card fields in the settings section.
 
 --  NO KOREAN KEYBOARD NEEDED  --
-Typing toddlf with the keyboard still in English finds 생일, and gungmin or gukmin finds 국민.
+Typing toddlf (what would normally be the keys for ㅅㅐㅇㅇㅣㄹ on a Korean keyboard) finds 생일, and gungmin or gukmin (romanized versions) finds 국민.
 
 --  BROWSE BY SOUND  --
 Highlight a single syllable like 국 to list every hanja read that way, most common first.
 
---  FOLLOW THE CONNECTIONS  --
-Everything on a card is clickable, and word cards climb upward too: 학생 opens a list with 대학생 and 중학생. A breadcrumb trail returns to any earlier step.
-
---  SAVED WORDS AND ANKI EXPORT  --
-Star any card to save it into a folder. Folders export as an Anki text file or a CSV, and settings picks the card fields.
+--  EVERY CHARACTER IS GRADED  --
+Middle school and High school mark the roughly 1,800 characters of the Korean Ministry of Education list. Advanced and Rare cover everything else, so a glance tells you whether a character is worth your time.
 
 --  NATIVE KOREAN WORDS (OPTIONAL)  --
 One setting adds native words as their own cards and an All words search scope, making Okpyeon a dictionary of all Korean.
@@ -61,7 +58,7 @@ Two settings add each character's on'yomi and pinyin beside its Korean reading: 
 - 9,469 hanja characters with readings, eumhun, definitions, levels and compounds
 - 27,627 Sino-Korean words indexed by both hanja and hangul
 - 15,527 native Korean words, included when the option is on
-- Japanese readings for 3,566 characters and Mandarin for 9,249
+- Japanese readings for 3,566 characters and Mandarin readings for 9,249
 - 9,178 character decompositions
 - 3,737 variant mappings covering simplified Chinese and Japanese shinjitai
 
