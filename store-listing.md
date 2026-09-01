@@ -28,47 +28,36 @@ Okpyeon is a popup hanja dictionary for Korean learners. Much of Korean vocabula
 Select text on any page and a card appears. Or click the toolbar icon for a sidebar with a search box; typing hj in the address bar searches from anywhere.
 
 --  CHARACTERS INTO KOREAN  --
-
 Select a hanja to see its eumhun (나라 국 for 國), English definitions, and common compounds. Simplified Chinese and Japanese forms resolve to the same entries, so those pages work too.
 
 --  KOREAN WORDS INTO HANJA  --
-
 Highlight a Sino-Korean word in hangul (국민) to see its hanja (國民), meaning, and component characters. A word with several spellings shows all of them (사기: 詐欺, 士氣, 沙器).
 
 --  CHARACTERS SPLIT INTO PARTS  --
-
 A character's card shows what it is made of (樂 = 幺 + 白 + 幺 + 木), each part with its own reading, and which characters use it as a part.
 
 --  EVERY CHARACTER IS GRADED  --
-
 Middle school and High school mark the roughly 1,800 characters of the Korean Ministry of Education list. Advanced and Rare cover everything else, so a glance tells you whether a character is worth your time.
 
 --  NO KOREAN KEYBOARD NEEDED  --
-
 Typing toddlf with the keyboard still in English finds 생일, and gungmin or gukmin finds 국민.
 
 --  BROWSE BY SOUND  --
-
 Highlight a single syllable like 국 to list every hanja read that way, most common first.
 
 --  FOLLOW THE CONNECTIONS  --
-
 Everything on a card is clickable, and word cards climb upward too: 학생 opens a list with 대학생 and 중학생. A breadcrumb trail returns to any earlier step.
 
 --  SAVED WORDS AND ANKI EXPORT  --
-
 Star any card to save it into a folder. Folders export as an Anki text file or a CSV, and settings picks the card fields.
 
 --  NATIVE KOREAN WORDS (OPTIONAL)  --
-
 One setting adds native words as their own cards and an All words search scope, making Okpyeon a dictionary of all Korean.
 
 --  JAPANESE AND CHINESE READINGS (OPTIONAL)  --
-
 Two settings add each character's on'yomi and pinyin beside its Korean reading: 學 is 학 in Korean, ガク in Japanese, xué in Mandarin.
 
 --  WHAT IS INSIDE  --
-
 - 9,469 hanja characters with readings, eumhun, definitions, levels and compounds
 - 27,627 Sino-Korean words indexed by both hanja and hangul
 - 15,527 native Korean words, included when the option is on
@@ -77,11 +66,9 @@ Two settings add each character's on'yomi and pinyin beside its Korean reading: 
 - 3,737 variant mappings covering simplified Chinese and Japanese shinjitai
 
 --  PRIVATE AND OFFLINE  --
-
 The whole dictionary ships inside the extension. It makes no network requests and collects no data, and saved words stay on your device.
 
 --  SOURCES  --
-
 Definitions and compounds: English Wiktionary via kaikki.org (CC BY-SA). Variant mappings and Chinese readings: Wiktionary and Unicode Unihan. Japanese readings: the joyo kanji table via Wikipedia (CC BY-SA). Decompositions: BabelStone IDS (public domain). School tiers: the Korean Wikipedia article 대한민국 중고등학교 기초한자 목록 (CC BY-SA 4.0). The Advanced and Rare levels are Okpyeon's own classification.
 
 ## Privacy tab (dashboard form)
