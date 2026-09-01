@@ -2146,33 +2146,51 @@ an unmarked section never implies the character has no phonetic.
   (directly or via alias target) to a hanja.json char other than the
   char itself. All eums of both sides participate (readings plus
   eumhun eums).
-- Three detection tiers, first hit wins per part:
+- Three detection tiers were measured, best tier wins per char:
   1. SERIES: char and part share a kPhonetic series number
      (Unihan_DictionaryLikeData inside the cached Unihan.zip;
      values are space-separated tokens, the leading digits of each
      token are the series id). Survives sound drift: 江 강 pins 工 공.
   2. EXACT: some eum of the part equals some eum of the char.
   3. FUZZY: onset and coda match, vowel free (㑂 방 pins 丙 병).
+     Measured, then REJECTED by the spot-check below; it never ships.
 - Spike-measured (2026-09-01, over the 9,178 chars with usable
   candidate parts): series pins 71.9%, exact-only adds 6.8%,
   fuzzy-only 1.9%, union 80.6%. By level: m 57.6% (correctly low,
   basic chars skew pictograph), h 77.6%, a 87.6%, r 82.0%. Where a
   char has both a series and an exact-eum part, they agree 97.4%.
-- Tier 1 ships on the spike's evidence. Tiers 2 and 3 are admitted
-  ONLY after a precision spot-check during implementation (sample at
-  least 50 pins per tier; a tier that shows real error beyond the
-  odd curated fix stays out). The outcome and numbers get recorded
-  here.
+- Spot-check outcome (ran 2026-09-01, 50-pin deterministic samples
+  per tier, judged before the pipeline was written):
+  - EXACT is ADMITTED: ~94% of the sample is genuinely
+    phono-semantic (㑚 나 from 那, 俥 거 from 車, 鮟 안 from 安).
+    Its three errors share one shape, a pictograph pinned to a
+    single-stroke part whose Korean NAME is circular: 主 and 州 both
+    "pin" 丶 (점 주 is named after 主), 樂 pins 幺 via its 요
+    reading. Hence the STROKE RULE: a part whose target has Unihan
+    kTotalStrokes 1 never pins, in any tier. That kills the 丶
+    cases structurally; 樂 (幺 is 3 strokes) is a curated no-pin
+    override. Kokuji pins (込 입 from 入, 凪 지 from 止) stand: no
+    Chinese etymology exists, and the Korean eum really was taken
+    from that part.
+  - FUZZY is REJECTED: only ~40-50% of its sample is right, and the
+    errors are systematic, not curatable: when the real phonetic is
+    eum-drifted or oversplit out of the part list, fuzzy latches
+    onto a semantically central part by sound coincidence (膏 고
+    pinned 口 구 while the true phonetic 高 was split away; 要 요
+    pinned 女; 熙 희 pinned 火). This also forgoes the gukja 乙
+    pins (㐏 올), which were genuine but ride a dead tier.
+  - Shipping detection is therefore: SERIES, then EXACT, both under
+    the stroke rule, plus overrides. Expected coverage ~78% of
+    decomposable chars (the spike's 80.6% union minus the fuzzy
+    tier and the stroke-rule exclusions).
 - One pin per char: if distinct part glyphs qualify, the best tier
   wins; still ambiguous within a tier, emit NO pin (35 such chars at
   the exact tier in the spike). A pinned glyph appearing twice in
-  the part list (樂's 幺) pins the first occurrence.
-- Curated override table in the NOT_RARE discipline for wrong pins
-  the spot-check finds: every override must fire or the build aborts.
-  Overrides can force a part, or force no pin.
-- Korean-made gukja whose 乙 marks the ㄹ coda land in the fuzzy tier
-  (㐚 올). Genuine phonetic devices; they live or die with tier 3's
-  spot-check, not case by case.
+  the part list pins the first occurrence.
+- Curated override table in the NOT_RARE discipline, seeded with
+  樂 -> no pin: every override must fire (change the computed
+  result) or the build aborts. Overrides can force a part index or
+  force no pin.
 
 ### Storage and runtime
 

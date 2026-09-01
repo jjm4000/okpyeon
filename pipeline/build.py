@@ -42,13 +42,15 @@ import time
 import unicodedata
 import zipfile
 
-# Character decomposition rules (pipeline/decomp.py) and sibling Sino
-# readings (pipeline/sino.py). Local modules, stdlib only; sys.path[0] is
-# this directory whenever build.py runs as a script, which is the only
-# supported way to run it. (pipeline/rr.py is no longer imported: the
-# romanized-search v2 addendum retired the rr emits, and the RR anchors now
-# live in the node suite, which uses rr.py as its reference.)
+# Character decomposition rules (pipeline/decomp.py), phonetic-component
+# pins (pipeline/phonetic.py) and sibling Sino readings (pipeline/sino.py).
+# Local modules, stdlib only; sys.path[0] is this directory whenever
+# build.py runs as a script, which is the only supported way to run it.
+# (pipeline/rr.py is no longer imported: the romanized-search v2 addendum
+# retired the rr emits, and the RR anchors now live in the node suite,
+# which uses rr.py as its reference.)
 import decomp
+import phonetic
 import sino
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -1585,6 +1587,43 @@ def verify(hanja_obj, words_obj, variants_obj, decomp_obj=None,
             "%d dead targets%s" % (len(dead),
                                    "" if not dead else " e.g. %s" % dead[:5]))
 
+        # --- phonetic pins (SPEC phonetic-components addendum) ---------
+        ph = decomp_obj.get("phon") or {}
+
+        def pin_target(c):
+            i = ph.get(c)
+            if not isinstance(i, int) or c not in dp or not 0 <= i < len(dp[c]):
+                return None
+            r = dp[c][i]
+            return r[1] if len(r) > 1 and isinstance(r[1], str) else r[0]
+
+        add("phon anchor: 請 pins 靑 (exact tier, 청)",
+            pin_target("請") == "靑", "pins %r" % pin_target("請"))
+        add("phon anchor: 江 pins 工 (series tier despite 강/공)",
+            pin_target("江") == "工", "pins %r" % pin_target("江"))
+        absent_pin = [c for c in ("主", "州", "樂") if c in ph]
+        add("phon absences: 主/州 (stroke rule), 樂 (override)", not absent_pin,
+            "pinned but should not be: %s" % (absent_pin or "(none)"))
+        # A pin pointing at a missing, out-of-range or inert row would ship
+        # a marker the UI cannot place (the rare-flag drift lesson).
+        bad_pin = []
+        for c, i in ph.items():
+            rows = dp.get(c)
+            ok = (rows is not None and isinstance(i, int)
+                  and 0 <= i < len(rows))
+            if ok:
+                r = rows[i]
+                t = r[1] if len(r) > 1 else r[0]
+                ok = ((len(r) == 1 or isinstance(r[1], str))
+                      and t in chars_out)
+            if not ok:
+                bad_pin.append(c)
+        add("phon invariants: map non-empty, every index in range and its "
+            "row clickable", ph and not bad_pin,
+            "%s pins; %d offenders%s" % (format(len(ph), ","), len(bad_pin),
+                                         "" if not bad_pin
+                                         else " e.g. %s" % bad_pin[:5]))
+
     # --- frequency bucket (SPEC addendum) ------------------------------
     f_vals = [s.get("f") for lst in words_out.values() for s in lst]
     bad_f = [v for v in f_vals if v is not None and (not isinstance(v, int)
@@ -2312,6 +2351,26 @@ def main(argv):
            format(decomp_stats["visibility"], ",")))
     log("  decomp suppressed: %s substantiality (splits of single strokes "
         "only)" % format(decomp_stats["insubstantial"], ","))
+
+    # ---- phonetic pins (SPEC phonetic-components addendum) -----------
+    # Rides decomp.json as a sibling map ("phon": char -> part-row index).
+    # kPhonetic series numbers survive Korean sound drift (江 강 pins 工
+    # 공); the exact-eum tier covers the rest. Both run under the stroke
+    # rule, over the rows decomp just emitted.
+    with zipfile.ZipFile(UNIHAN_FILE) as z:
+        kphonetic = phonetic.parse_kphonetic(
+            z.read("Unihan_DictionaryLikeData.txt").decode("utf-8"))
+    phon_map, phon_stats = phonetic.build(decomp_obj["parts"], chars_out,
+                                          kphonetic, uni_strokes)
+    decomp_obj["phon"] = phon_map
+    log("  decomp: %s phonetic pins (%s series, %s exact), %s ambiguous "
+        "suppressed, %s stroke-rule excluded, %s override(s) fired"
+        % (format(phon_stats["pinned"], ","),
+           format(phon_stats["series"], ","),
+           format(phon_stats["exact"], ","),
+           format(phon_stats["ambiguous"], ","),
+           format(phon_stats["stroke_excluded"], ","),
+           phon_stats["override_fired"]))
 
     # ---- sino.json (SPEC "Sibling Sino readings" addendum) ------------
     # Built after chars_out and words_out are final: the card's readings

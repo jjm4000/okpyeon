@@ -100,7 +100,11 @@ const hasOwn = (obj, key) =>
 export function guardDecomp(raw) {
   const d = raw !== null && typeof raw === "object" ? raw : {};
   const parts = d.parts !== null && typeof d.parts === "object" ? d.parts : {};
-  return { v: 1, parts: d.v === 1 ? parts : {} };
+  // Phonetic components ADDENDUM: `phon` passes through EXPLICITLY, the
+  // guardNative trap again: a guard that rebuilds the record drops the
+  // sibling map, and only the real worker path would ever notice.
+  const phon = d.phon !== null && typeof d.phon === "object" ? d.phon : {};
+  return { v: 1, parts: d.v === 1 ? parts : {}, phon: d.v === 1 ? phon : {} };
 }
 
 /**
@@ -156,6 +160,10 @@ function decompRow(row, hanjaTable) {
 export function attachDecomp(result, data) {
   if (!result || result.ok !== true || !Array.isArray(result.matches)) return result;
   const table = data.decomp.parts;
+  const phonTable =
+    data.decomp.phon !== null && typeof data.decomp.phon === "object"
+      ? data.decomp.phon
+      : {};
   // hanja.json is {chars, version}; the join reads the chars table, the same
   // reach-through lookup.js does. Passing the whole file would miss every
   // target and silently degrade every part to an inert glyph.
@@ -166,7 +174,17 @@ export function attachDecomp(result, data) {
     if (!char || !hasOwn(table, char)) continue;
     const rows = table[char];
     if (!Array.isArray(rows)) continue;
-    const parts = rows.map((row) => decompRow(row, charTable)).filter(Boolean);
+    const joined = rows.map((row) => decompRow(row, charTable));
+    // Phonetic components ADDENDUM: the pin indexes the EMITTED rows, so the
+    // flag lands on the mapped array BEFORE the filter (a row dropped ahead
+    // of the pin would shift every filtered index). A pinned row that
+    // degraded to an inert {g} is never flagged: the UI claims only what
+    // resolved to a dictionary entry.
+    if (hasOwn(phonTable, char)) {
+      const pinned = joined[phonTable[char]];
+      if (pinned && typeof pinned.t === "string") pinned.phon = true;
+    }
+    const parts = joined.filter(Boolean);
     if (parts.length) match.parts = parts;
   }
   return result;

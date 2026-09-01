@@ -1922,10 +1922,28 @@ await testAsync("background.js imports cleanly in Node (guards hold)", async () 
 
 await testAsync("decomp: a missing or wrong-version file leaves an empty table", async () => {
   const { guardDecomp } = await import("../extension/background.js");
-  assert.deepEqual(guardDecomp(null), { v: 1, parts: {} });
-  assert.deepEqual(guardDecomp("nonsense"), { v: 1, parts: {} });
-  assert.deepEqual(guardDecomp({ v: 2, parts: { "依": [["衣"]] } }), { v: 1, parts: {} });
-  assert.deepEqual(guardDecomp({ v: 1 }), { v: 1, parts: {} });
+  assert.deepEqual(guardDecomp(null), { v: 1, parts: {}, phon: {} });
+  assert.deepEqual(guardDecomp("nonsense"), { v: 1, parts: {}, phon: {} });
+  assert.deepEqual(guardDecomp({ v: 2, parts: { "依": [["衣"]] } }), { v: 1, parts: {}, phon: {} });
+  assert.deepEqual(guardDecomp({ v: 1 }), { v: 1, parts: {}, phon: {} });
+});
+
+await testAsync("decomp: the guard passes `phon` through and degrades it with the file", async () => {
+  const { guardDecomp } = await import("../extension/background.js");
+  // The guardNative trap: a guard that rebuilds the record drops the sibling
+  // map, so the pass-through is asserted on the guard's own output.
+  assert.deepEqual(
+    guardDecomp({ v: 1, parts: { "請": [["言"], ["靑"]] }, phon: { "請": 1 } }),
+    { v: 1, parts: { "請": [["言"], ["靑"]] }, phon: { "請": 1 } }
+  );
+  // Junk in the slot degrades to an empty map, never to a crash.
+  assert.deepEqual(guardDecomp({ v: 1, parts: {}, phon: "nonsense" }).phon, {});
+  assert.deepEqual(guardDecomp({ v: 1, parts: {}, phon: null }).phon, {});
+  // An old bundle degrades WHOLE: no parts, and no pins into them either.
+  assert.deepEqual(
+    guardDecomp({ v: 2, parts: { "請": [["言"], ["靑"]] }, phon: { "請": 1 } }),
+    { v: 1, parts: {}, phon: {} }
+  );
 });
 
 await testAsync("decomp: rows are joined onto char matches, targets resolved", async () => {
@@ -1986,6 +2004,69 @@ await testAsync("decomp: rows are joined onto char matches, targets resolved", a
   assert.equal("parts" in il, false);
   // Word `parts` (component words) are a different field on a different kind.
   assert.deepEqual(word.parts, [{ type: "word" }]);
+});
+
+await testAsync("decomp: the phon pin flags the joined row, driven through the guard", async () => {
+  const { attachDecomp, guardDecomp } = await import("../extension/background.js");
+  // The attach path runs on guardDecomp's OUTPUT, never on a hand-built
+  // table: the drive-through-the-guard pattern, so a guard that dropped
+  // `phon` would fail HERE and not only in the shipped worker.
+  const decomp = guardDecomp({
+    v: 1,
+    parts: {
+      "請": [["言"], ["靑"]],
+      "晴": [["日"], ["靑"]],          // no phon entry at all
+      "凊": [[42], ["靑"]],            // malformed row 0 drops in the filter
+      "圊": [["囗"], ["靑", "諪"]],     // pinned row's target has no entry
+      "喆": [["吉"], ["吉"]],          // the pinned glyph appears twice
+    },
+    phon: { "請": 1, "凊": 1, "圊": 1, "喆": 1 },
+  });
+  const hanja = {
+    version: 1,
+    chars: {
+      "言": { eumhun: [{ hun: "말씀", eum: "언" }], glosses: ["speech"] },
+      "靑": { eumhun: [{ hun: "푸를", eum: "청" }], glosses: ["blue"] },
+      "日": { eumhun: [{ hun: "날", eum: "일" }], glosses: ["sun; day"] },
+      "囗": { eumhun: [{ hun: "에울", eum: "위" }], glosses: ["enclosure"] },
+      "吉": { eumhun: [{ hun: "길할", eum: "길" }], glosses: ["lucky"] },
+    },
+  };
+  const matches = [
+    { kind: "char", canonical: "請" },
+    { kind: "char", canonical: "晴" },
+    { kind: "char", canonical: "凊" },
+    { kind: "char", canonical: "圊" },
+    { kind: "char", canonical: "喆" },
+  ];
+  const out = attachDecomp({ ok: true, matches }, { decomp, hanja });
+  const [pinned, unpinned, filtered, inert, doubled] = out.matches;
+
+  // The joined row at the pinned index carries the flag; its sibling not.
+  assert.deepEqual(pinned.parts, [
+    { g: "言", t: "言", hun: "말씀", eum: "언", gloss: "speech" },
+    { g: "靑", t: "靑", hun: "푸를", eum: "청", gloss: "blue", phon: true },
+  ]);
+  // No phon entry: the match is byte-identical to the unflagged join.
+  assert.deepEqual(unpinned.parts, [
+    { g: "日", t: "日", hun: "날", eum: "일", gloss: "sun; day" },
+    { g: "靑", t: "靑", hun: "푸를", eum: "청", gloss: "blue" },
+  ]);
+  // The pin indexes the EMITTED rows: row 0 dropped in the filter, and the
+  // flag still lands on 靑, which is the map-before-filter ordering.
+  assert.deepEqual(filtered.parts, [
+    { g: "靑", t: "靑", hun: "푸를", eum: "청", gloss: "blue", phon: true },
+  ]);
+  // A pinned row that degraded to an inert {g} is NOT flagged.
+  assert.deepEqual(inert.parts, [
+    { g: "囗", t: "囗", hun: "에울", eum: "위", gloss: "enclosure" },
+    { g: "靑" },
+  ]);
+  // A repeated glyph marks ONE row: the one the pin addresses.
+  assert.deepEqual(doubled.parts, [
+    { g: "吉", t: "吉", hun: "길할", eum: "길", gloss: "lucky" },
+    { g: "吉", t: "吉", hun: "길할", eum: "길", gloss: "lucky", phon: true },
+  ]);
 });
 
 // --- recomposition: the derived found-in index ---------------------------

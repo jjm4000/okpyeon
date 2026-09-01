@@ -574,6 +574,16 @@
     ".madeof-part { padding: 3px 6px; }",
     // An inert part has no reading to show, so the whole row recedes.
     ".madeof-part.inert, .madeof-part.inert .r-glyph { color: var(--faint); }",
+    // Phonetic components (mockup C1): the collapsed cue is a dotted
+    // underline at TEXT colour; accent was mocked and rejected as link-like.
+    ".madeof-glyph.phon { text-decoration: underline dotted; text-underline-offset: 3px; }",
+    // The expanded cue, in the sino-marker register. Its own flex item after
+    // the clampwrap, which absorbs the slack, so the marker right-aligns
+    // without touching the one-line clamp.
+    ".phon-marker {",
+    "  flex: 0 0 auto; color: var(--faint); font-size: 9px;",
+    "  font-weight: 700; letter-spacing: 0.08em;",
+    "}",
     ".card.component .madeof-row { font-size: 11px; }",
     /* ---- recomposition: "Part of N characters" and its list view ---- */
     // Quiet like the used-in row it copies; the list view reuses the reading
@@ -2973,7 +2983,15 @@
     text.appendChild(document.createTextNode("Made of "));
     parts.forEach(function (p, i) {
       if (i) text.appendChild(document.createTextNode(" + "));
-      text.appendChild(el("span", "madeof-glyph", nonEmptyString(p.g)));
+      var glyph = el("span", "madeof-glyph", nonEmptyString(p.g));
+      // Phonetic components: the flag rides exactly one joined row, so the
+      // loop marks one span even when the pinned glyph repeats. Unflagged
+      // rows get no new markup of any kind.
+      if (p.phon === true) {
+        glyph.classList.add("phon");
+        glyph.title = nonEmptyString(p.g) + " gives the character its sound";
+      }
+      text.appendChild(glyph);
     });
     row.appendChild(clampWrap(text, 1));
     row.setAttribute("aria-expanded", "false");
@@ -2999,6 +3017,15 @@
         if (name) body.appendChild(el("span", "madeof-name", name));
       }
       part.appendChild(clampWrap(body, 1));
+      // Phonetic components: the marker sits OUTSIDE the clampwrap, its own
+      // flex item at the row's end, so the clamped body never wraps under
+      // it. Only a flagged row renders it; a worker flag lands only on rows
+      // that resolved, so an inert row can never carry one.
+      if (p.phon === true) {
+        var marker = el("span", "phon-marker", "PHONETIC");
+        marker.title = nonEmptyString(p.g) + " gives the character its sound";
+        part.appendChild(marker);
+      }
       // Literal navigation, like every other row: a part is a character, never
       // something to interpret.
       if (target) {

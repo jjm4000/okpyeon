@@ -444,11 +444,18 @@
     "鞠": [["革"], ["匊", null, "handful"]]
   };
 
+  // ADDENDUM phonetic components: the char's pinned row INDEX into DECOMP,
+  // emitted only for pinned chars, exactly as decomp.json carries it. The
+  // pin is mechanical, not etymological (the contract wants a CLICKABLE
+  // pinned row, and 鞠's true phonetic 匊 is inert in this fixture), so 鞠
+  // pins its 革 row and 靴 stays unpinned as the no-markup control.
+  var PHON = { "鞠": 0 };
+
   // The worker's join. The content script never sees hanja.json, so the click
   // target's eumhun and gloss are resolved here, and a target with no entry
   // degrades to an inert row.
   function decompParts(char) {
-    return (DECOMP[char] || []).map(function (row) {
+    var rows = (DECOMP[char] || []).map(function (row) {
       var clickable = row.length === 1 || typeof row[1] === "string";
       if (!clickable) {
         var inert = { g: row[0] };
@@ -465,6 +472,13 @@
         gloss: (d.glosses || [])[0] || ""
       };
     });
+    // The flag lands on the joined row at the pinned index, and only when
+    // that row came out clickable, mirroring the worker's attachDecomp.
+    var pin = PHON[char];
+    if (typeof pin === "number" && rows[pin] && typeof rows[pin].t === "string") {
+      rows[pin].phon = true;
+    }
+    return rows;
   }
 
   // ADDENDUM recomposition: the reverse index, DERIVED from DECOMP here exactly
@@ -4740,6 +4754,51 @@
     await wait(60);
     check("word cards are unchanged", !api.query(".word-body .madeof"),
       "cards=" + api.cardCount());
+    api.hide();
+
+    /* ==================================================================
+     * Phonetic components (SPEC ADDENDUM 2026-09-01): the PHON pin.
+     *
+     * 鞠 pins its 革 row; 靴 carries no pin, so the checks above already
+     * rendered a Made of section clean of phon markup, and the absence is
+     * asserted outright below.
+     * ================================================================== */
+    var phonTitle = "革 gives the character its sound";
+    api.showAt(anchor, fake.__lookup("鞠").matches);
+    await wait(60);
+    madeOfRow().click();
+    await wait(30);
+    check("the PHONETIC marker rides exactly the pinned expanded row",
+      madeOfParts().length === 2 &&
+      api.queryAll(".phon-marker").length === 1 &&
+      !!madeOfParts()[0].querySelector(".phon-marker") &&
+      madeOfParts()[0].querySelector(".phon-marker").textContent === "PHONETIC" &&
+      !madeOfParts()[1].querySelector(".phon-marker"),
+      madeOfParts().map(function (r) { return r.textContent; }).join(" | "));
+    check("the marker sits after the clamped body, at the row's end",
+      madeOfParts()[0].querySelector(".clampwrap").nextSibling ===
+        madeOfParts()[0].querySelector(".phon-marker"),
+      madeOfParts()[0].innerHTML);
+    check("the collapsed glyph span for the pinned row carries the underline class",
+      api.queryAll(".madeof-glyph").length === 2 &&
+      api.queryAll(".madeof-glyph.phon").length === 1 &&
+      api.queryAll(".madeof-glyph")[0].classList.contains("phon"),
+      api.queryAll(".madeof-glyph").map(function (s) { return s.className; }).join(" | "));
+    check("both cues decode themselves in a title tooltip",
+      api.query(".madeof-glyph.phon").title === phonTitle &&
+      api.query(".phon-marker").title === phonTitle,
+      JSON.stringify(api.query(".madeof-glyph.phon").title));
+
+    api.hide();
+    api.showAt(anchor, fake.__lookup("靴").matches);
+    await wait(60);
+    madeOfRow().click();
+    await wait(30);
+    check("an unpinned char renders its Made of section with no phon markup at all",
+      !api.query(".madeof-glyph.phon") && !api.query(".phon-marker") &&
+      api.queryAll(".madeof-glyph").every(function (s) { return !s.title; }) &&
+      madeOfParts().every(function (r) { return !r.querySelector(".phon-marker"); }),
+      api.queryAll(".madeof-glyph").map(function (s) { return s.className; }).join(" | "));
     api.hide();
 
     /* --- MODULARITY: one definition, one call site (SPEC) ---------------- *
