@@ -137,6 +137,17 @@ changes it)
   chars, cap 2-3 short defs per entry, order ~1 MB raw, well under
   0.5 MB gzipped. Own lazy file per the native.json/sino.json pattern,
   loaded behind the toggle flag only.
+- ONE CANONICAL ENTRY, TWO LANGUAGES (user-decided): the Korean
+  glosses are a per-entry field on the SAME canonical entries the
+  English glosses live on, addressed by the same keys (hanja spelling
+  for Sino, (hangul, POS) for native, canonical char). No parallel
+  dictionary, no second lookup system. The sidecar file is storage
+  only, invisible above the join: the worker attaches its contents
+  onto the same match objects at lookup time (the decomp.json and
+  sino.json idiom), so the renderer holds one entry and the toggle is
+  purely a gloss-language pick, which also makes English fallback for
+  uncovered entries automatic. Key agreement between the files is
+  build-anchored so it cannot drift (the rare-flag lesson).
 
 ## Design questions still open (mockup material)
 
