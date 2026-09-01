@@ -56,6 +56,10 @@ typing `hj` in the address bar searches from anywhere.
 
 *学生 selected on a Japanese page, resolving to 學生.*
 
+![Reverse lookup in dark mode](screenshots/2-hangul-reverse-lookup.png)
+
+*Reverse lookup in dark mode: 국민 back to 國民.*
+
 ![Character breakdown](screenshots/9-decomposition.png)
 
 *樂 split into its parts, each with a reading.*
