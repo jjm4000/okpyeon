@@ -56,16 +56,26 @@ Compound lists are complete, a page at a time, and word cards climb upward too: 
 
 --  SAVED WORDS AND ANKI EXPORT  --
 
-Star any card to save it into a folder. Folders export as an Anki text file (settings picks the card fields, folder names become tags) or as a CSV.
+Star any card to save it into a folder. Folders export as an Anki text file (settings picks the card fields, Japanese and Chinese readings included if you want them, folder names become tags) or as a CSV.
 
 --  MULTIPLE SPELLINGS AND NATIVE WORDS  --
 
 A word with several hanja spellings shows all of them (사기: 詐欺, 士氣, 沙器, and more). Native Korean words return nothing rather than a forced match, and an obscure hanja spelling of a common native word is labelled a rare homograph, not the word's origin.
 
+--  OPTIONAL: NATIVE KOREAN WORDS TOO  --
+
+One setting turns Okpyeon into a dictionary of all Korean. Native words get their own cards, search gains an All words scope, and a word like 사랑 leads with its real meaning, the rare hanja homograph one tap away.
+
+--  OPTIONAL: JAPANESE AND CHINESE READINGS  --
+
+Two settings add each character's Japanese on'yomi and Mandarin pinyin beside its Korean reading, matched sound for sound: 樂 is 악·락 in Korean, ガク・ラク in Japanese, yuè·lè in Mandarin. For learners coming from those languages, or heading to them.
+
 --  WHAT IS INSIDE  --
 
 - 9,469 hanja characters with readings, eumhun, definitions, levels and compounds
 - 27,627 Sino-Korean words indexed by both hanja and hangul
+- 15,527 native Korean words, included when the option is on
+- Japanese readings for 3,566 characters and Mandarin for 9,249
 - 9,178 character decompositions
 - 3,737 variant mappings covering simplified Chinese and Japanese shinjitai
 
@@ -75,7 +85,7 @@ The whole dictionary ships inside the extension: no network requests, no data co
 
 --  SOURCES  --
 
-Definitions and compounds: English Wiktionary via kaikki.org (CC BY-SA). Variant mappings: Wiktionary and Unicode Unihan. Decompositions: BabelStone IDS (public domain). School tiers: the Korean Wikipedia article 대한민국 중고등학교 기초한자 목록 (CC BY-SA 4.0). The Advanced and Rare levels are Okpyeon's own classification.
+Definitions and compounds: English Wiktionary via kaikki.org (CC BY-SA). Variant mappings and Chinese readings: Wiktionary and Unicode Unihan. Japanese readings: the joyo kanji table via Wikipedia (CC BY-SA). Decompositions: BabelStone IDS (public domain). School tiers: the Korean Wikipedia article 대한민국 중고등학교 기초한자 목록 (CC BY-SA 4.0). The Advanced and Rare levels are Okpyeon's own classification.
 
 ## Privacy tab (dashboard form)
 
