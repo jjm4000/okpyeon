@@ -3658,12 +3658,12 @@
     check("the readings rows carry the SPEC's exact copy, both default off",
       settingsView.schema[1].label === "Japanese reading" &&
       settingsView.schema[1].description ===
-        "Shows how the character is read in Japanese (on'yomi)." &&
+        "Shows the character's on'yomi reading, in katakana." &&
       settingsView.schema[1].default === false &&
       byId("okp-set-jaReadings").checked === false &&
       settingsView.schema[2].label === "Chinese reading" &&
       settingsView.schema[2].description ===
-        "Shows how the character is read in Mandarin (pinyin)." &&
+        "Shows the character's Mandarin reading, in pinyin." &&
       settingsView.schema[2].default === false &&
       byId("okp-set-zhReadings").checked === false,
       JSON.stringify(settingsView.schema[1].label + " / " +

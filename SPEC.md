@@ -2053,10 +2053,13 @@ Korean. Two independent default-off toggles; off is byte-identical.
 ### Loading and runtime
 
 - Settings: two rows in a new "Character cards" group, both default
-  off. Keys `jaReadings`, `zhReadings`. Copy (exact): "Japanese
-  reading" / "Shows how the character is read in Japanese (on'yomi)."
-  and "Chinese reading" / "Shows how the character is read in
-  Mandarin (pinyin)."
+  off. Keys `jaReadings`, `zhReadings`. Copy (exact, user-adjusted
+  for parity: both sentences share the anatomy "[reading], in
+  [notation]", since on'yomi is a reading type and pinyin a notation,
+  so the original parentheticals were doing different jobs):
+  "Japanese reading" / "Shows the character's on'yomi reading, in
+  katakana." and "Chinese reading" / "Shows the character's Mandarin
+  reading, in pinyin."
 - sino.json joins the worker's lazy per-file cache, fetched only on
   the first request flagged `sino: true` (client-set when EITHER
   toggle is on; the worker stays stateless about the toggles). The

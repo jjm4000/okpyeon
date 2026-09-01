@@ -60,7 +60,7 @@
       group: "Character cards",
       type: "toggle",
       label: "Japanese reading",
-      description: "Shows how the character is read in Japanese (on'yomi).",
+      description: "Shows the character's on'yomi reading, in katakana.",
       default: false
     },
     {
@@ -68,7 +68,7 @@
       group: "Character cards",
       type: "toggle",
       label: "Chinese reading",
-      description: "Shows how the character is read in Mandarin (pinyin).",
+      description: "Shows the character's Mandarin reading, in pinyin.",
       default: false
     },
     {
