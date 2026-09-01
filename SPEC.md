@@ -1171,7 +1171,8 @@ eumhun/hangul instead).
   no chrome.*, so they render the line with no number, which the
   harness pins. Renders after the groups, inside the seal-room
   measurement.
-- Shipping entries — group "Saving": "By default, save new items to"
+- Shipping entries — group "Saving": "By default, newly saved items go to"
+  (user-reworded 2026-09-01 from "By default, save new items to")
   (wording user-directed: the bubble can override per save) (folder-select,
   key defaultFolderId); group "Anki export": "Word cards: front" (select
   hanja/hangul), "Word cards: back" (checkset hanja/hangul/defs),
