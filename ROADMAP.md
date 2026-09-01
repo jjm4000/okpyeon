@@ -4,13 +4,30 @@ Working list of planned changes. Ordering within a release is not priority
 order. The next store upload ships whatever is merged and verified when the
 current review clears.
 
-## Merged on main, version call pending (fold into 1.1.1 or become 1.2)
+## 1.2: ready for upload
 
-Two features landed 2026-08-31, designed and QA'd with Jesse in one
-session; the SPEC's native-words and romanized-v2 addenda hold the
-full contracts. Suites at merge: node 166, index.html 591, embed.html
-314, plus the full-population romanization round trip.
+The 1.1.1 fixes never shipped alone; everything since the v1.1.0 tag
+is one release. The manifest reads 1.2.0, the zip builds as
+okpyeon-1.2.0.zip, and the v1.2.0 tag marks the release commit.
+Designed and QA'd with Jesse across 2026-08-31; the SPEC's
+native-words, romanized-v2, and sibling-readings addenda hold the
+full contracts. Suites at merge: node 176, index.html 613,
+embed.html 331, plus the full-population romanization round trip and
+the build's 57 anchors.
 
+- **Sibling Sino readings.** Two default-off settings (Character
+  cards group) add each character's Japanese on'yomi and Mandarin
+  pinyin as one muted line under the card head, marked JP and CN and
+  ALIGNED to the eumhun order: 樂 reads 악·락 above ガク・ラク and
+  yuè·lè, each reading's tooltip naming its correspondence
+  (악 ↔ ガク ↔ yuè). Japanese is jōyō plus corpus-attested tier 2
+  (3,566 chars); Mandarin covers 9,249. Alignment is baked at build
+  time by the compound bridge (shared spelled words vote) and a
+  correspondence scorer with a 26-char curated override table;
+  sino.json is 0.4 MB, lazily loaded on the sino flag only. The same
+  readings are available as Anki character-card back fields,
+  independent of the display toggles, fetched at export only when
+  checked.
 - **Native Korean words.** One default-off setting ("Native Korean
   word search"). On: search gains All words / Hanja only scope pills
   (All words default; Hanja-only renders exactly today's results with
@@ -41,13 +58,12 @@ full contracts. Suites at merge: node 166, index.html 591, embed.html
   lighter than it would have been.
 - **Settings about footer.** One line in the format shared with
   Etymikon: name, manifest version, data note, GitHub link.
-
-## 1.1.1: open, collecting fixes
-
-Everything after the v1.1.0 tag lands here. The manifest is bumped to
-1.1.1 and the zip builds as okpyeon-1.1.1.zip; more fixes may join
-before this goes to the store.
-
+- **Listing, README, and screenshots refreshed.** Two brief OPTIONAL
+  sections and the new counts in the listing; the README trimmed of
+  implementation reassurances (josa handling, pictograph restraint,
+  panel persistence, resize); six of the nine screenshots regenerated
+  with the new features present but not singled out, and scenes now
+  seed settings through a committed set= param instead of hand-edits.
 - **Compound index as a view.** Beside "Show 5 more (N)" on char cards,
   a "Show all (T)" control opens the complete compound index as its own
   view: the used-in view with the char standing as the word ("161 words
