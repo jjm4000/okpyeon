@@ -62,6 +62,7 @@ import {
   renameFolder,
   resolveExportSelection,
   toggleItem,
+  CHAR_FIELDS,
   CSV_COLUMNS,
   DEFAULT_SETTINGS,
 } from "../extension/saved.js";
@@ -1805,19 +1806,26 @@ test("buildCsv writes the header and every column, whatever the anki settings", 
     "readings",
     "definitions",
     "level",
+    "japanese",
+    "chinese",
     "folder",
     "added",
   ]);
-  assert.equal(lines[0], "kind,key,hangul,eumhun,readings,definitions,level,folder,added");
-  // A word has no eumhun/readings/level; the columns stay in place, empty.
+  assert.equal(
+    lines[0],
+    "kind,key,hangul,eumhun,readings,definitions,level,japanese,chinese,folder,added"
+  );
+  // A word has no eumhun/readings/level (nor sino readings); the columns stay
+  // in place, empty.
   assert.equal(
     lines[1],
-    "word,國民,국민,,,1. the people; citizens of a nation,,Verbs,2026-08-17"
+    "word,國民,국민,,,1. the people; citizens of a nation,,,,Verbs,2026-08-17"
   );
-  // A char has no hangul; the folder name is resolved, not the id.
+  // A char has no hangul; the folder name is resolved, not the id. No sino
+  // data was joined here, so the japanese/chinese columns stay empty too.
   assert.equal(
     lines[2],
-    "char,學,,배울 학,학,1. to learn; to study; 2. school; learning,m,Saved,2025-01-02"
+    "char,學,,배울 학,학,1. to learn; to study; 2. school; learning,m,,,Saved,2025-01-02"
   );
   assert.equal(lines.length, 3);
 });
@@ -1849,13 +1857,13 @@ test("buildCsv quotes commas, quotes and newlines RFC-4180 style", () => {
   const lines = csv.replace(/\n$/, "").split("\n");
   assert.equal(
     lines[1],
-    'word,特殊,특수,,,"1. R&D <special> ""quoted"" \'odd\'",,"The ""big"" list, part 2",'
+    'word,特殊,특수,,,"1. R&D <special> ""quoted"" \'odd\'",,,,"The ""big"" list, part 2",'
   );
   // An embedded newline lives inside the quoted field, so this row spans two
   // physical lines; the unresolved folder falls back to its id.
   assert.equal(lines[2], 'word,分野,분야,,,"1. field, comma\'d; 2. line');
-  assert.equal(lines[3], 'broken",,f2,');
-  assert.equal(lines[4], "word,沒有,몰유,,,1. gone,,\"The \"\"big\"\" list, part 2\",");
+  assert.equal(lines[3], 'broken",,,,f2,');
+  assert.equal(lines[4], "word,沒有,몰유,,,1. gone,,,,\"The \"\"big\"\" list, part 2\",");
   // addedAt 0 (an item normalized from junk) leaves the date column empty.
   assert.ok(lines[1].endsWith(","));
 });
@@ -3096,8 +3104,9 @@ await testAsync("native: the pending query carries scope only when flagged", asy
  * Schema-exact sino.json fixture (SPEC "sino.json"): [reading, eum] pairs,
  * capped at two, display order baked at build time. 學 carries both
  * languages, 民 is ja-only (a language with no readings omits its key, never
- * an empty array), and 生's unaligned ショウ trails the aligned reading with
- * an empty eum tag.
+ * an empty array), 生's unaligned ショウ trails the aligned reading with an
+ * empty eum tag, and 思 (a real Mandarin polyphone, SPEC's own tied-char
+ * list) is zh-only with two pinyin, for the spaced-dot join.
  */
 const sino = {
   version: 1,
@@ -3105,6 +3114,7 @@ const sino = {
     學: { ja: [["ガク", "학"]], zh: [["xué", "학"]] },
     民: { ja: [["ミン", "민"]] },
     生: { ja: [["セイ", "생"], ["ショウ", ""]], zh: [["shēng", "생"]] },
+    思: { zh: [["sī", "사"], ["sāi", ""]] },
   },
 };
 
@@ -3200,6 +3210,121 @@ test("sino: the readings toggles default off, read strict true, independently", 
   const jaOnly = normalizeSettings({ jaReadings: true });
   assert.equal(jaOnly.jaReadings, true);
   assert.equal(jaOnly.zhReadings, false, "the toggles are independent");
+});
+
+// --- sino: the Anki export fields (SPEC "Anki export" bullet) -------------
+
+test("sino export: ja/zh are charBack tokens, always valid, default unchecked", () => {
+  assert.deepEqual(CHAR_FIELDS, ["char", "eumhun", "readings", "defs", "lvl", "ja", "zh"]);
+  assert.deepEqual(DEFAULT_SETTINGS.anki.charBack, ["eumhun", "defs"]);
+  // The tokens survive normalization in the checkset's own order, whatever
+  // the display toggles say.
+  const checked = normalizeSettings({
+    jaReadings: false,
+    zhReadings: false,
+    anki: { charBack: ["ja", "eumhun", "zh"] },
+  });
+  assert.deepEqual(checked.anki.charBack, ["ja", "eumhun", "zh"]);
+  // A word back never accepts the char-only tokens.
+  const word = normalizeSettings({ anki: { wordBack: ["ja", "hangul", "zh"] } });
+  assert.deepEqual(word.anki.wordBack, ["hangul"]);
+});
+
+test("sino export: joinItems hangs the whole entry on char rows when data carries it", () => {
+  const items = [
+    { id: "i0", kind: "char", key: "學", folderId: "f0", addedAt: 1 },
+    { id: "i1", kind: "char", key: "國", folderId: "f0", addedAt: 2 },
+    { id: "i2", kind: "word", key: "國民", folderId: "f0", addedAt: 3 },
+    { id: "i3", kind: "char", key: "学", folderId: "f0", addedAt: 4 },
+  ];
+  const rows = joinItems(items, { ...data, sino });
+  assert.equal(rows[0].sino, sino.chars.學, "the entry rides whole, not a rebuild");
+  assert.equal("sino" in rows[1], false, "a char the table lacks gets no field");
+  assert.equal("sino" in rows[2], false, "word rows never carry the field");
+  assert.equal(rows[3].sino, sino.chars.學, "a variant key joins on the canonical");
+  // The ungated export path: without sino on the data, no row carries any.
+  assert.ok(joinItems(items, data).every((row) => !("sino" in row)));
+});
+
+test("sino export: a checked field emits the readings text, display separators", () => {
+  const folders = [{ id: "f0", name: "Saved" }];
+  const rows = joinItems(
+    [
+      { id: "i0", kind: "char", key: "生", folderId: "f0", addedAt: 1 },
+      { id: "i1", kind: "char", key: "思", folderId: "f0", addedAt: 2 },
+    ],
+    { ...data, sino }
+  );
+  // ja: on'yomi joined with the katakana middle dot, the eum-less trailing
+  // pair included, baked order untouched. 思 has no ja readings, so the empty
+  // field drops from its back, no placeholder.
+  const ja = tsvLines(buildAnkiTsv(rows, { anki: { charBack: ["char", "ja"] } }, folders));
+  assert.equal(ja[3], "生\t生 · セイ・ショウ\tSaved");
+  assert.equal(ja[4], "思\t思\tSaved");
+  // zh: pinyin joined with a spaced middle dot.
+  const zh = tsvLines(buildAnkiTsv(rows, { anki: { charBack: ["char", "zh"] } }, folders));
+  assert.equal(zh[3], "生\t生 · shēng\tSaved");
+  assert.equal(zh[4], "思\t思 · sī · sāi\tSaved");
+  // Both checked: two back fields, the field separator between them.
+  const both = tsvLines(buildAnkiTsv(rows, { anki: { charBack: ["ja", "zh"] } }, folders));
+  assert.equal(both[3], "生\tセイ・ショウ · shēng\tSaved");
+  assert.equal(both[4], "思\tsī · sāi\tSaved");
+  // Neither checked (the shipped default): byte-identical whether or not sino
+  // data reached the rows at all.
+  const bare = joinItems(
+    [
+      { id: "i0", kind: "char", key: "生", folderId: "f0", addedAt: 1 },
+      { id: "i1", kind: "char", key: "思", folderId: "f0", addedAt: 2 },
+    ],
+    data
+  );
+  assert.equal(buildAnkiTsv(rows, null, folders), buildAnkiTsv(bare, null, folders));
+  assert.ok(!buildAnkiTsv(rows, null, folders).includes("セイ"));
+});
+
+test("sino export: the CSV keeps its all-columns rule, filled only when joined", () => {
+  const folders = [{ id: "f0", name: "Saved" }];
+  const items = [
+    { id: "i0", kind: "char", key: "生", folderId: "f0", addedAt: Date.UTC(2026, 7, 31) },
+    { id: "i1", kind: "word", key: "國民", folderId: "f0", addedAt: Date.UTC(2026, 7, 31) },
+  ];
+  const joined = buildCsv(joinItems(items, { ...data, sino }), folders)
+    .replace(/\n$/, "")
+    .split("\n");
+  assert.equal(
+    joined[1],
+    "char,生,,날 생,생,1. to be born; to live; 2. raw; fresh,,セイ・ショウ,shēng,Saved,2026-08-31"
+  );
+  assert.equal(
+    joined[2],
+    "word,國民,국민,,,1. the people; citizens of a nation,,,,Saved,2026-08-31"
+  );
+  // The ungated path: the columns stay in place, the values are empty.
+  const ungated = buildCsv(joinItems(items, data), folders).replace(/\n$/, "").split("\n");
+  assert.equal(
+    ungated[1],
+    "char,生,,날 생,생,1. to be born; to live; 2. raw; fresh,,,,Saved,2026-08-31"
+  );
+});
+
+await testAsync("sino export: the fetch gate opens only on a charBack reading field", async () => {
+  // The handler itself stops at the storage guard in Node (like every saved
+  // handler above), so the gate it consults is exported and pinned here:
+  // handleSavedExport touches getSino() exactly when this says true.
+  const { exportWantsSino } = await import("../extension/background.js");
+  assert.equal(exportWantsSino(normalizeSettings(null)), false, "the default never fetches");
+  assert.equal(exportWantsSino({ anki: { charBack: ["eumhun", "defs"] } }), false);
+  assert.equal(exportWantsSino({ anki: { charBack: ["ja"] } }), true);
+  assert.equal(exportWantsSino({ anki: { charBack: ["zh"] } }), true);
+  assert.equal(exportWantsSino({ anki: { charBack: ["eumhun", "ja", "zh"] } }), true);
+  // The display toggles have no say, in either direction.
+  assert.equal(
+    exportWantsSino({ jaReadings: true, zhReadings: true, anki: { charBack: ["defs"] } }),
+    false
+  );
+  // Junk settings read as "no fetch", never as an accidental one.
+  assert.equal(exportWantsSino(null), false);
+  assert.equal(exportWantsSino({ anki: { charBack: "ja" } }), false);
 });
 
 // --- optional smoke test against Agent A's real corpus -------------------

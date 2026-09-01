@@ -2087,6 +2087,23 @@ Korean. Two independent default-off toggles; off is byte-identical.
   a step smaller on nested cards per the house pattern.
 - Both toggles off: byte-identical rendering and requests, no
   sino.json fetch ever (harness-checked, the native.json pattern).
+- Anki export: the "Character cards: back" checkset gains "Japanese
+  reading" (token `ja`) and "Chinese reading" (token `zh`), always
+  offered and default unchecked, independent of the jaReadings /
+  zhReadings display toggles (the checkset is its own deliberate
+  per-field choice: JP on the Anki cards without JP on every browsed
+  card is a legitimate combination). A checked field emits the
+  readings text alone, the display line's cap-two order with its
+  separators and nothing else (no markers, no eum tags): on'yomi
+  joined with the katakana middle dot (ガク・ラク), pinyin with a
+  spaced middle dot (yuè · lè). A char with no readings in that
+  language emits an empty field, never a placeholder. The export
+  handler loads sino.json through the same lazy path ONLY when the
+  charBack checkset carries `ja` or `zh`; an export with neither
+  checked never fetches it, whatever the format. The CSV keeps its
+  all-columns convention: `japanese` and `chinese` columns are always
+  present, filled from the same gated load and empty when the gate
+  stayed shut.
 
 ### Tests
 

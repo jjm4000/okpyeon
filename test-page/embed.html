@@ -1069,7 +1069,7 @@
 
   var SAVED_CSV_COLUMNS = [
     "kind", "key", "hangul", "eumhun", "readings", "definitions",
-    "level", "folder", "added"
+    "level", "japanese", "chinese", "folder", "added"
   ];
 
   var saved, settings, savedCheckCalls, savedLastCheckKeys, savedFail;
@@ -1128,7 +1128,7 @@
   // The read-time join. An item whose entry has left the dictionary becomes a
   // {missing:true} row rather than vanishing — the saved view says so and the
   // exporter skips and counts it.
-  function joinSaved(items) {
+  function joinSaved(items, withSino) {
     return items.map(function (item) {
       var row = itemCopy(item);
       if (item.kind === "char") {
@@ -1138,6 +1138,9 @@
         row.readings = c.readings || [];
         row.glosses = c.glosses || [];
         if (c.lvl) row.lvl = c.lvl;
+        // The export's sino join: the entry rides whole, and ONLY when the
+        // caller opened the gate (savedExport with a ja/zh charBack field).
+        if (withSino && SINO[item.key]) row.sino = SINO[item.key];
         return row;
       }
       var senses = WORDS[item.key];
@@ -1172,6 +1175,14 @@
     if (token === "readings") return (row.readings || []).filter(Boolean).join(", ");
     if (token === "defs") return numberedDefs(row.glosses);
     if (token === "lvl") return row.lvl || "";
+    // Sino readings text: the pairs' readings in baked order, the katakana
+    // middle dot for on'yomi and a spaced middle dot for pinyin, no markers,
+    // no eum tags. Empty when the row carries no entry for the language.
+    if (token === "ja" || token === "zh") {
+      return ((row.sino && row.sino[token]) || []).map(function (p) {
+        return p[0];
+      }).join(token === "ja" ? "・" : " · ");
+    }
     return "";
   }
 
@@ -1214,6 +1225,7 @@
         savedField(row, "key"), savedField(row, "hangul"),
         savedField(row, "eumhun"), savedField(row, "readings"),
         savedField(row, "defs"), savedField(row, "lvl"),
+        savedField(row, "ja"), savedField(row, "zh"),
         folder ? folder.name : row.folderId,
         row.addedAt > 0 ? new Date(row.addedAt).toISOString().slice(0, 10) : ""
       ];
@@ -1367,7 +1379,11 @@
     }
 
     if (msg.type === "savedExport") {
-      var rows = joinSaved(exportSelection(msg));
+      // The worker's sino fetch gate, mirrored: sino entries join the export
+      // rows only when a charBack field asks for a reading language.
+      var wantsSino = settings.anki.charBack.indexOf("ja") >= 0 ||
+                      settings.anki.charBack.indexOf("zh") >= 0;
+      var rows = joinSaved(exportSelection(msg), wantsSino);
       var skipped = rows.filter(function (r) { return r.missing === true; }).length;
       var isCsv = msg.format === "csv";
       return {
@@ -3523,7 +3539,9 @@
     var csv = savedView.lastDownload();
     var csvLines = csv.body.split("\n").filter(Boolean);
     check("the CSV file leads with the full-data header row",
-      csvLines[0] === "kind,key,hangul,eumhun,readings,definitions,level,folder,added",
+      csvLines[0] ===
+        "kind,key,hangul,eumhun,readings,definitions,level,japanese,chinese," +
+        "folder,added",
       csvLines[0]);
     check("it writes one row per exported item, folder name and date included",
       csvLines.length === 3 &&
@@ -3537,6 +3555,35 @@
       /\.csv$/.test(csv.filename) && csv.count === 2 && csv.skipped === 1 &&
       anchor.getAttribute("data-body") === csv.body,
       csv.filename);
+
+    // Sibling Sino readings ADDENDUM: a checked ja charBack field emits the
+    // readings text on a char-card back, the katakana middle dot between the
+    // pairs, no markers, no eum tags. State-restoring: the toggled char and
+    // the checkset both go back before the next block.
+    await send({ type: "settingsSet", patch: { anki: { charBack: ["eumhun", "ja"] } } });
+    var sinoSave = await send({ type: "savedToggle", kind: "char", key: "生" });
+    var sinoAnki = await send({
+      type: "savedExport", ids: [sinoSave.item.id], format: "anki"
+    });
+    var sinoLine = sinoAnki.tsv.split("\n")[3].split("\t");
+    check("a checked ja field exports the sino readings text on a char back",
+      sinoAnki.count === 1 && sinoLine[0] === "生" &&
+      sinoLine[1] === "날 생 · セイ・ショウ",
+      JSON.stringify(sinoLine));
+    var sinoCsv = await send({
+      type: "savedExport", ids: [sinoSave.item.id], format: "csv"
+    });
+    check("the CSV's japanese/chinese columns fill through the same gate",
+      sinoCsv.tsv.split("\n")[1].indexOf(",セイ・ショウ,shēng,") > 0,
+      JSON.stringify(sinoCsv.tsv.split("\n")[1]));
+    await send({ type: "settingsSet", patch: { anki: { charBack: ["eumhun", "defs"] } } });
+    var sinoOff = await send({
+      type: "savedExport", ids: [sinoSave.item.id], format: "anki"
+    });
+    check("with neither reading field checked no sino text reaches an export",
+      sinoOff.tsv.indexOf("セイ") < 0 && sinoOff.tsv.indexOf("shēng") < 0,
+      sinoOff.tsv);
+    await send({ type: "savedToggle", kind: "char", key: "生" });
 
     var rowsBeforeChange = savedRows().length;
     await send({ type: "savedToggle", kind: "char", key: "學" });
@@ -3759,6 +3806,27 @@
       checkedIn("anki.charBack").join(",") === "eumhun,defs",
       checkedIn("anki.wordBack").join(",") + " / " +
       checkedIn("anki.charBack").join(","));
+    // Sibling Sino readings ADDENDUM: the charBack checkset always offers the
+    // two reading fields, labeled like the display toggles, and they arrive
+    // unchecked (asserted just above: the default set is eumhun,defs).
+    function checksetOptions(key) {
+      return Array.prototype.map.call(
+        byId(settingsView.controlId(key)).querySelectorAll(".settings-checkbox"),
+        function (label) {
+          return label.querySelector(".settings-check").getAttribute("data-value") +
+            "=" + label.querySelector("span").textContent;
+        }
+      ).join("|");
+    }
+    check("the charBack checkset offers the seven fields, sino readings last",
+      checksetOptions("anki.charBack") ===
+        "char=Character|eumhun=Eum-hun|readings=Readings|defs=Definitions|" +
+        "lvl=Level|ja=Japanese reading|zh=Chinese reading",
+      checksetOptions("anki.charBack"));
+    check("the wordBack checkset is untouched by the sino fields",
+      checksetOptions("anki.wordBack") ===
+        "hanja=Hanja|hangul=Hangul|defs=Definitions",
+      checksetOptions("anki.wordBack"));
     check("the folder-select resolves its options from the worker's folders",
       Array.prototype.map.call(byId("okp-set-defaultFolderId").options, function (o) {
         return o.value + "=" + o.textContent;

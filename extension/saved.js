@@ -22,8 +22,12 @@ export const DEFAULT_FOLDER_NAME = "Saved";
 
 /** Anki field tokens for word items. */
 export const WORD_FIELDS = ["hanja", "hangul", "defs"];
-/** Anki field tokens for character items. */
-export const CHAR_FIELDS = ["char", "eumhun", "readings", "defs", "lvl"];
+/**
+ * Anki field tokens for character items. `ja` and `zh` (sibling Sino readings
+ * ADDENDUM) are always valid tokens, independent of the display toggles: the
+ * checkset is its own per-field choice.
+ */
+export const CHAR_FIELDS = ["char", "eumhun", "readings", "defs", "lvl", "ja", "zh"];
 
 /** SPEC defaults for `okpSettings`. */
 export const DEFAULT_SETTINGS = Object.freeze({
@@ -52,6 +56,8 @@ export const CSV_COLUMNS = [
   "readings",
   "definitions",
   "level",
+  "japanese",
+  "chinese",
   "folder",
   "added",
 ];
@@ -60,6 +66,13 @@ export const CSV_COLUMNS = [
 const FIELD_SEPARATOR = " · ";
 /** Separator between the entries inside one multi-value field. */
 const ENTRY_SEPARATOR = ", ";
+/**
+ * Separators inside one sino readings field, matching the display line's
+ * rendering in plain text: the katakana middle dot between on'yomi, a spaced
+ * middle dot between pinyin (ガク・ラク / yuè · lè).
+ */
+const JA_READING_SEPARATOR = "・";
+const ZH_READING_SEPARATOR = " · ";
 
 const hasOwn = (obj, key) =>
   obj !== null && typeof obj === "object" &&
@@ -433,13 +446,14 @@ function joinWord(item, wordTable) {
 }
 
 /** hanja.json entry -> display row, or null when the glyph is unknown. */
-function joinChar(item, charTable, variantMap) {
-  let entry = hasOwn(charTable, item.key) ? charTable[item.key] : null;
+function joinChar(item, charTable, variantMap, sinoTable) {
+  let key = item.key;
+  let entry = hasOwn(charTable, key) ? charTable[key] : null;
   if (entry === null && hasOwn(variantMap, item.key)) {
     // Saved keys are canonical, but a variant key from an older save (or a
     // data rebuild that moved a glyph) still resolves rather than going missing.
-    const canonical = variantMap[item.key];
-    entry = hasOwn(charTable, canonical) ? charTable[canonical] : null;
+    key = variantMap[item.key];
+    entry = hasOwn(charTable, key) ? charTable[key] : null;
   }
   if (entry === null || typeof entry !== "object") return null;
   const row = {
@@ -449,6 +463,11 @@ function joinChar(item, charTable, variantMap) {
     glosses: Array.isArray(entry.glosses) ? entry.glosses : [],
   };
   if (typeof entry.lvl === "string" && entry.lvl !== "") row.lvl = entry.lvl;
+  // Sibling Sino readings ADDENDUM: the sino entry rides WHOLE onto the row
+  // (attachSino's rule), keyed by the same canonical glyph the char join
+  // resolved. The table is empty unless the caller loaded sino.json.
+  const sino = hasOwn(sinoTable, key) ? sinoTable[key] : null;
+  if (sino !== null && typeof sino === "object") row.sino = sino;
   return row;
 }
 
@@ -458,24 +477,47 @@ function joinChar(item, charTable, variantMap) {
  * from the dictionary becomes a `{missing:true}` row rather than vanishing —
  * the saved view says so, and the exporter skips and counts it.
  *
+ * `data.sino` is optional (sibling Sino readings ADDENDUM): when the caller
+ * loaded sino.json, char rows carry their whole sino entry; without it the
+ * rows simply have none, and every sino field renders empty.
+ *
  * @param {object[]} items saved items
- * @param {{hanja:object, words:object, variants:object}} data
+ * @param {{hanja:object, words:object, variants:object, sino?:object}} data
  * @returns {object[]} display rows, one per item, in the given order
  */
 export function joinItems(items, data) {
   const charTable = data?.hanja?.chars ?? {};
   const wordTable = data?.words?.words ?? {};
   const variantMap = data?.variants?.map ?? {};
+  const sinoTable = data?.sino?.chars ?? {};
   const out = [];
   for (const item of Array.isArray(items) ? items : []) {
     if (item === null || typeof item !== "object") continue;
     const row =
       item.kind === "char"
-        ? joinChar(item, charTable, variantMap)
+        ? joinChar(item, charTable, variantMap, sinoTable)
         : joinWord(item, wordTable);
     out.push(row === null ? { ...item, missing: true } : row);
   }
   return out;
+}
+
+/**
+ * Sibling Sino readings ADDENDUM: one language's readings as text, exactly
+ * what the display line shows minus its markers and eum tooltips: the pairs'
+ * readings in baked order (the cap and the order live in sino.json; nothing
+ * here sorts or trims), joined with the language's separator. A char without
+ * readings in the language renders empty, never a placeholder.
+ */
+function sinoReadingsText(sino, lang) {
+  const pairs =
+    sino !== null && typeof sino === "object" && Array.isArray(sino[lang])
+      ? sino[lang]
+      : [];
+  return pairs
+    .map((pair) => (Array.isArray(pair) && typeof pair[0] === "string" ? pair[0] : ""))
+    .filter((reading) => reading !== "")
+    .join(lang === "ja" ? JA_READING_SEPARATOR : ZH_READING_SEPARATOR);
 }
 
 /** SPEC: definitions render as one numbered string over ALL glosses. */
@@ -510,6 +552,9 @@ function fieldValue(row, token) {
       return numberedDefs(row.glosses);
     case "lvl":
       return typeof row.lvl === "string" ? row.lvl : "";
+    case "ja":
+    case "zh":
+      return sinoReadingsText(row.sino, token);
     default:
       return "";
   }
@@ -594,7 +639,9 @@ function isoDate(addedAt) {
  * settings — every column is always written, so the file is a complete record
  * of what was saved. Header row first, then one row per item in CSV_COLUMNS
  * order. Missing rows are skipped (the caller counts them), exactly like
- * buildAnkiTsv. Lines end with LF, like the Anki file.
+ * buildAnkiTsv. Lines end with LF, like the Anki file. The japanese/chinese
+ * columns hold values only when the caller joined sino data in (the worker
+ * loads sino.json for an export only when a charBack field asks for it).
  *
  * @param {object[]} joinedRows rows from joinItems
  * @param {Array<{id:string, name:string}>} folders folder list, for the name column
@@ -612,6 +659,10 @@ export function buildCsv(joinedRows, folders) {
       fieldValue(row, "readings"),
       fieldValue(row, "defs"),
       fieldValue(row, "lvl"),
+      // The sino columns follow the full-data rule like every other column:
+      // always written, empty when the row carries no loaded sino entry.
+      fieldValue(row, "ja"),
+      fieldValue(row, "zh"),
       folderName(row.folderId, folders),
       isoDate(row.addedAt),
     ];

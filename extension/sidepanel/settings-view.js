@@ -122,7 +122,12 @@
         { value: "eumhun", label: "Eum-hun" },
         { value: "readings", label: "Readings" },
         { value: "defs", label: "Definitions" },
-        { value: "lvl", label: "Level" }
+        { value: "lvl", label: "Level" },
+        // Sibling Sino readings: always offered, default unchecked, and
+        // independent of the jaReadings/zhReadings display toggles. The
+        // checkset is its own per-field choice.
+        { value: "ja", label: "Japanese reading" },
+        { value: "zh", label: "Chinese reading" }
       ],
       default: ["eumhun", "defs"]
     }

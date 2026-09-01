@@ -1066,7 +1066,7 @@
 
   var SAVED_CSV_COLUMNS = [
     "kind", "key", "hangul", "eumhun", "readings", "definitions",
-    "level", "folder", "added"
+    "level", "japanese", "chinese", "folder", "added"
   ];
 
   var saved, settings, savedCheckCalls, savedLastCheckKeys, savedFail;
@@ -1125,7 +1125,7 @@
   // The read-time join. An item whose entry has left the dictionary becomes a
   // {missing:true} row rather than vanishing — the saved view says so and the
   // exporter skips and counts it.
-  function joinSaved(items) {
+  function joinSaved(items, withSino) {
     return items.map(function (item) {
       var row = itemCopy(item);
       if (item.kind === "char") {
@@ -1135,6 +1135,9 @@
         row.readings = c.readings || [];
         row.glosses = c.glosses || [];
         if (c.lvl) row.lvl = c.lvl;
+        // The export's sino join: the entry rides whole, and ONLY when the
+        // caller opened the gate (savedExport with a ja/zh charBack field).
+        if (withSino && SINO[item.key]) row.sino = SINO[item.key];
         return row;
       }
       var senses = WORDS[item.key];
@@ -1169,6 +1172,14 @@
     if (token === "readings") return (row.readings || []).filter(Boolean).join(", ");
     if (token === "defs") return numberedDefs(row.glosses);
     if (token === "lvl") return row.lvl || "";
+    // Sino readings text: the pairs' readings in baked order, the katakana
+    // middle dot for on'yomi and a spaced middle dot for pinyin, no markers,
+    // no eum tags. Empty when the row carries no entry for the language.
+    if (token === "ja" || token === "zh") {
+      return ((row.sino && row.sino[token]) || []).map(function (p) {
+        return p[0];
+      }).join(token === "ja" ? "・" : " · ");
+    }
     return "";
   }
 
@@ -1211,6 +1222,7 @@
         savedField(row, "key"), savedField(row, "hangul"),
         savedField(row, "eumhun"), savedField(row, "readings"),
         savedField(row, "defs"), savedField(row, "lvl"),
+        savedField(row, "ja"), savedField(row, "zh"),
         folder ? folder.name : row.folderId,
         row.addedAt > 0 ? new Date(row.addedAt).toISOString().slice(0, 10) : ""
       ];
@@ -1364,7 +1376,11 @@
     }
 
     if (msg.type === "savedExport") {
-      var rows = joinSaved(exportSelection(msg));
+      // The worker's sino fetch gate, mirrored: sino entries join the export
+      // rows only when a charBack field asks for a reading language.
+      var wantsSino = settings.anki.charBack.indexOf("ja") >= 0 ||
+                      settings.anki.charBack.indexOf("zh") >= 0;
+      var rows = joinSaved(exportSelection(msg), wantsSino);
       var skipped = rows.filter(function (r) { return r.missing === true; }).length;
       var isCsv = msg.format === "csv";
       return {

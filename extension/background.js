@@ -815,6 +815,17 @@ export async function handleSettingsSet(patch) {
 }
 
 /**
+ * Sibling Sino readings ADDENDUM: whether an export needs sino.json at all.
+ * True exactly when the charBack checkset carries a reading language; the
+ * jaReadings/zhReadings display toggles have no say here. Pure; exported for
+ * the tests.
+ */
+export function exportWantsSino(settings) {
+  const back = settings?.anki?.charBack;
+  return Array.isArray(back) && (back.includes("ja") || back.includes("zh"));
+}
+
+/**
  * {type:"savedExport", ids? | folderIds? | all?, format} → the export file.
  * `format` is "anki" (default) or "csv"; `tsv` carries the body either way,
  * and the filename extension follows the format. Rows whose dictionary entry
@@ -824,15 +835,23 @@ export async function handleSettingsSet(patch) {
 export async function handleSavedExport(selection, format) {
   return withStorage(async (area) => {
     const state = await readSaved(area);
+    // Both formats read the settings now: the Anki file is shaped by them,
+    // and the sino fetch gate below lives in them.
+    const settings = await readSettings(area, state);
     const data = await getData();
-    const rows = joinItems(resolveExportSelection(state, selection), data);
+    // Sino fetch gate: sino.json rides into the join only when a charBack
+    // field asks for a reading language. An export with neither checked never
+    // fetches it, whatever the format; a missing or malformed file degrades
+    // to an empty table and empty fields, like the lookup path.
+    const joinData = exportWantsSino(settings)
+      ? { ...data, sino: await getSino().catch(() => guardSino(null)) }
+      : data;
+    const rows = joinItems(resolveExportSelection(state, selection), joinData);
     const skipped = rows.filter((row) => row.missing === true).length;
     const csv = format === "csv";
-    // The Anki file is shaped by the field settings; the CSV is not, so it
-    // does not pay for the settings read.
     const body = csv
       ? buildCsv(rows, state.folders)
-      : buildAnkiTsv(rows, await readSettings(area, state), state.folders);
+      : buildAnkiTsv(rows, settings, state.folders);
     return {
       ok: true,
       tsv: body,
