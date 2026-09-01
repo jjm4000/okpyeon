@@ -4,6 +4,44 @@ Working list of planned changes. Ordering within a release is not priority
 order. The next store upload ships whatever is merged and verified when the
 current review clears.
 
+## Merged on main, version call pending (fold into 1.1.1 or become 1.2)
+
+Two features landed 2026-08-31, designed and QA'd with Jesse in one
+session; the SPEC's native-words and romanized-v2 addenda hold the
+full contracts. Suites at merge: node 166, index.html 591, embed.html
+314, plus the full-population romanization round trip.
+
+- **Native Korean words.** One default-off setting ("Native Korean
+  word search"). On: search gains All words / Hanja only scope pills
+  (All words default; Hanja-only renders exactly today's results with
+  a cross-scope hint row), the popup renders the same identity group
+  with the lead rule (best non-rare hanja, else native, else rare
+  hanja), native cards carry POS, NATIVE marker, and glosses, and
+  cross-identity links live in a "Same sound" section pointing both
+  ways. The rare-homograph hedge banner retires wherever a native
+  entry states the fact it used to guess. The omnibox becomes the All
+  words search remotely. native.json: 15,527 quality-filtered lemmas,
+  1.24 MB, lazily loaded only when flagged; off is byte-identical.
+  Known gap by design: no deconjugation, so native verbs/adjectives
+  are reachable from typed search and exact-form selection only.
+  Chips, char cards, and saved words are untouched (native cards ship
+  without a star until a native key namespace exists).
+- **Romanized search v2.** The rr maps are retired for a function:
+  forward RR ported to JS (equivalence-swept against rr.py, the kept
+  reference, over all 38,370 words), a generous letterwise-and-
+  phonological inverse generator gated by the dictionary, and the
+  parity rule: romanized input behaves exactly like the hangul it
+  de-romanizes to, segmentation included, so inflected forms
+  (mushihaesseo) finally resolve. Candidate collapse by coverage
+  class keeps junk parses out of results and roots partial parses as
+  the typed text; ambiguous romanizations render every maximal parse,
+  ordered by anchored coverage then match frequency. A measured
+  resolve cap holds garbage input near 57ms warm. rr.json and
+  native.json's rr block are deleted; the extension is 1.5 MB
+  lighter than it would have been.
+- **Settings about footer.** One line in the format shared with
+  Etymikon: name, manifest version, data note, GitHub link.
+
 ## 1.1.1: open, collecting fixes
 
 Everything after the v1.1.0 tag lands here. The manifest is bumped to
@@ -201,74 +239,6 @@ one schema entry plus its feature code:
   Court rules annex; Korean law excludes statutes/rules from copyright, so
   likely clean): deliberately deferred; an optional badge long-term, not part
   of the level taxonomy that shipped
-- Native Korean words (general dictionary mode). Unscheduled, but the
-  design was settled by mockups with Jesse (2026-08-31); when it is
-  scheduled, the SPEC section is written from these decisions:
-  - One settings toggle, OFF by default. Off is byte-identical to today.
-    Native entries live in their own lazily loaded native.json; the
-    Sino lookup path never consults it. Data source is the already
-    parsed Korean extract, so the build cost is a filter and an emit.
-  - Sidebar search gains scope pills, "Hanja only" and "All words"
-    (two, not three: a native-only scope reads as "the language" and
-    All is a strict superset anyway). All words is the default and the
-    scope resets to it whenever the panel opens (QA-adjusted
-    2026-08-31: turning the toggle on IS choosing the wide dictionary,
-    so Hanja only is the narrowing act); sticky within a panel
-    session. Hanja-only scope renders exactly today's results, and
-    when it hides native matches a quiet cross-scope hint row renders
-    after the results; tapping it switches scope for that query.
-    Never an auto-switch, and the hint exists only on the Hanja side.
-  - The selection popup IS affected when the toggle is on: it renders
-    the same identity group as the All words scope. Its one special
-    rule is the default identity: best non-rare hanja spelling, else
-    native, else the rare hanja. So 無理 and 家長 still lead, 사랑
-    leads with the native card, and a native-only selection (하늘),
-    which today shows nothing, renders the full native card.
-  - Cross-identity links are a "Same sound" card section: nav rows in
-    the used-in row's position, pointing both ways (hanja card to the
-    native homograph, native card to the hanja homographs, rare ones
-    muted). Tapping pushes the other card as its own view with a
-    breadcrumb, like every other cross-entity link. The spelling chip
-    row is UNTOUCHED: hanja spellings only, same population as today.
-    Decided for consistency and no special cases over the rejected
-    alternatives: native as a fifth chip (mixes "spellings of this
-    word" with "a different word that sounds the same", and grows chip
-    rows on cards that are chip-less today), whisper cards, disclosure
-    rows, a separate sidebar tab, and a whole-panel mode switch.
-  - The rare-homograph hedge banner retires wherever a native entry
-    exists: the native card leading with the muted rare row states
-    what the banner used to guess. The banner survives only with the
-    toggle off, or for hangul our native data does not cover.
-  - The native card is headword, part of speech, a NATIVE marker,
-    glosses, and the Same sound section. A derived-words section
-    (사랑하다 under 사랑) needs a derivation-link build step that does
-    not exist yet; v1 may ship without it.
-  - Saved words need a native key namespace before native cards get a
-    star; v1 may omit the star from native cards instead.
-  - Pill wording (decided): "All words" then "Hanja only", default first;
-    tooltips carry
-    the precision ("Sino-Korean entries, as before" / "includes native
-    Korean words").
-  - Omnibox (decided): with the toggle on, the omnibox IS the All
-    words search, remote. Suggestions draw from the All-scope result
-    set (native entries marked, non-rare first); picking a suggestion
-    deep-links to that card (a literal lookup, no scope involved); raw
-    enter opens the panel with the query IN All words scope. The
-    Hanja-default reset governs fresh panel opens only; an
-    omnibox-handed query carries its scope explicitly, so nothing
-    auto-switches. Toggle off: omnibox unchanged.
-  - Size (decided, measured 2026-08-31): no frequency cutoff. Quality
-    filters are the bar (real gloss, no alt-of/form-of stubs, content
-    POS, hangul-only): 16,331 lemmas, about 1.63 MB emitted, smaller
-    than words.json. A frequency cutoff was rejected because the
-    subtitle corpus counts conjugated surface forms, so rank-cutting
-    would gut verbs and adjectives while sparing nouns.
-  - Known gap, not a blocker: the 3,072 verbs and 1,101 adjectives are
-    mostly unreachable from SELECTION without deconjugation (selecting
-    사랑스러운 cannot find 사랑스럽다; josa stripping does not cover
-    conjugation). Typed search reaches everything. Deconjugation is
-    its own future item, possibly seedable from the kaikki `forms`
-    arrays.
 - Sino readings across the sibling languages (design settled with Jesse
   2026-08-31; queued behind the native-words merge; mockups first):
   one quiet line on char cards showing the SAME Sino root's sound in
