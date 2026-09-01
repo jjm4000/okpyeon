@@ -255,6 +255,38 @@ release:
   Wiktionary already gives. Simplicity won. If it ever returns, the natural
   home is Anki-export enrichment, not the card.
 
+## 1.0: the first store submission
+
+The base product, submitted to the store before this repository existed.
+There is no v1.0.0 tag: the initial commit (eb46a4f, 2026-08-16) matches
+the 1.0.0 submission plus the three fixes queued as 1.0.1, which then
+shipped inside 1.1.
+
+- **Selection lookup.** Highlight hanja, hanzi, or kanji on any page for a
+  popup card with the eumhun (나라 국 for 國), readings, English
+  definitions, and most common compounds. Simplified Chinese and Japanese
+  shinjitai forms resolve to the same entries through the variants map.
+- **Reverse lookup.** Highlight a Sino-Korean word in hangul (국민) for its
+  hanja (國民), meaning, and component characters, with grammatical
+  endings stripped (자본주의는 finds 자본주의) and every spelling of a
+  homograph offered as a chip.
+- **Recursive breakdown.** Compounds split into component words (자본주의
+  → 資本 + 主義), each clickable, with breadcrumb navigation.
+- **Browse by sound.** A single hangul syllable lists every hanja read that
+  way, ranked by frequency.
+- **Rare-homograph hedging.** Native words show nothing rather than a
+  forced match, and an obscure hanja homograph of a common native word
+  (사랑 → 舍廊) is labelled rare instead of presented as etymology.
+- **Private and offline.** The whole dictionary ships inside the
+  extension: no network requests, no data collection, no permissions
+  beyond the content script.
+- **Data and build.** hanja.json, words.json, and variants.json built by
+  pipeline/build.py from kaikki.org Wiktionary extracts and Unicode
+  Unihan, with the icons, promo tiles, and store zip produced by the
+  same pipeline.
+- The three 1.0.1 fixes: the canonical glyph heads variant char cards,
+  Wiktionary source links on every card, and hanja-page link targets.
+
 ## Later / unscheduled
 
 - **Korean-language descriptions** (a settings option), aimed at the
