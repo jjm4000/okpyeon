@@ -1,8 +1,8 @@
 # Dictionary data license and attribution
 
 The JSON files in this directory (`hanja.json`, `words.json`, `variants.json`,
-`decomp.json`, `native.json`, `sino.json`) are a derived database compiled
-from the following sources by `pipeline/build.py`:
+`decomp.json`, `native.json`, `sino.json`, `ko.json`) are a derived database
+compiled from the following sources by `pipeline/build.py`:
 
 - **English Wiktionary** (https://en.wiktionary.org) and the
   **Japanese-language Wiktionary** (https://ja.wiktionary.org), via the
@@ -51,10 +51,27 @@ from the following sources by `pipeline/build.py`:
 Wiktionary extract via kaikki.org listed above, CC BY-SA, so it adds no new
 licensing.
 
+- **우리말샘 (Urimalsaem)** (https://opendict.korean.go.kr), the open Korean
+  dictionary of the **National Institute of Korean Language** (국립국어원),
+  used under the **Creative Commons Attribution-ShareAlike 2.0 Korea License**
+  (https://creativecommons.org/licenses/by-sa/2.0/kr/) as the only source of
+  `ko.json`: the Korean definitions shown for words, native words and single
+  characters when the extension's language is 한국어. The data was obtained
+  through the spellcheck-ko/korean-dict-nikl mirror on GitHub
+  (https://github.com/spellcheck-ko/korean-dict-nikl, `opendict/`), a
+  redistribution of NIKL's bulk download; the mirror is provenance only, and
+  attribution belongs to NIKL / 우리말샘. The example sentences
+  (`example_info`) and multimedia (`multimedia_info`) carried by the source
+  are excluded from the license grant at the source and are not read by the
+  pipeline; nothing from them is in `ko.json`. Each entry keeps the
+  Urimalsaem sense code (`s`) so the popup can link the exact sense at
+  `https://opendict.korean.go.kr/dictionary/view?sense_no=<s>`.
+
 Accordingly, the derived dictionary data in this directory is distributed
 under **CC BY-SA 4.0** (https://creativecommons.org/licenses/by-sa/4.0/).
 This is separate from the license of the extension's source code (GPL-3.0;
 see /LICENSE at the repository root).
 
 Per-entry attribution: every entry links back to its source page on
-en.wiktionary.org via the popup's "Wiktionary" link.
+en.wiktionary.org via the popup's "Wiktionary" link; a card showing a
+Korean definition links its Urimalsaem sense instead via the "우리말샘" link.

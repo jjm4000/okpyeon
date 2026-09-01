@@ -2340,32 +2340,84 @@ korean-mode-kickoff.md; this section is the binding contract.
   mirror updates.
 - Two lanes, binding: hanja-origin senses (language_type 한자, the
   hanja string NFC, `/(병기)` alternatives SPLIT into separate
-  origins) route to words.json keys; 고유어 senses route to
-  native.json headwords by (hangul, POS) through a pinned POS mapping
-  table (명사, 동사, 형용사, 부사, 대명사, 관형사, 수사, 감탄사,
-  의존 명사 to native.json's POS vocabulary; unmapped POS never
-  match). Headword markup `-` and `^` stripped before matching.
-  Chars: single-syllable headwords whose only origin is one hanja
-  char, routed to the canonical char.
+  origins, variants.json canonicalization applied: 145 keys such as
+  絶對 and 拋棄 match only through it) route to words.json keys,
+  with a GLYPH-FORM EQUIVALENCE as the third matching stage: a
+  per-char symmetric closure over the cached Unihan kZVariant,
+  kSemanticVariant, kSpecializedSemanticVariant, and
+  kTraditionalVariant links, EXCLUDING the financial numeral forms
+  (壹貳參肆伍陸柒捌玖拾) and every simplification pair that is not
+  strictly one-to-one (the traditional char has exactly that one
+  simplified form and the simplified char exactly that one
+  traditional form, self entries counted): 穀/谷, 畫/画, and 六/陸
+  are out (they produced the 陸道 <- 六道 and 穀城 <- 谷城 merges),
+  while 狀/状 stays, since Unihan records 状 only as 狀's simplified
+  form and a blanket kSimplifiedVariant exclusion left 状態 bare.
+  Measured: 146 keys rescued (92 by substitution on the corpus side,
+  54 twins fanned out from direct matches; 奇蹟 and 棊士 ambiguous
+  and left bare). An origin decorates its direct key and every
+  glyph-twin key reachable by single-character substitution that has
+  no direct decoration of its own (映畵 from 映畫, 状態 from 狀態,
+  秘密 from 祕密: words.json holds both spellings as separate keys);
+  a direct decoration always wins on its own key, and a twin claimed
+  by two different origins stays undecorated and is reported;
+  senses of word_type 고유어, 외래어, AND 혼종어 route to native.json
+  headwords by (hangul, POS) through a pinned POS mapping table
+  (명사, 의존 명사 -> noun; 동사, 보조 동사 -> verb; 형용사, 보조
+  형용사 -> adj; 부사 -> adv; 감탄사 -> intj; 대명사 -> pron; 수사
+  -> num; 관형사 -> det; unmapped POS never match). The lane was
+  widened from 고유어 alone at build time (2026-09-01): native.json's
+  "no hanja" identities include loanwords (가드) and hybrids
+  (가공되다), which the corpus tags 외래어 and 혼종어, and the
+  (hangul, POS) match against native.json identities is what keeps
+  the lane safe, not the etymology tag. Headword markup `-`, `^`, and
+  spaces stripped before matching. Chars: single-syllable headwords
+  whose only origin is one hanja char, routed to the canonical char.
 - Sense selection (user-approved in plain terms): keep only senses of
   type 일반어 (drops 방언, 옛말, 북한어); drop senses whose cat_info
-  is a proper-noun class (pinned list, at minimum 지명, 인명, 책명,
-  매체) and senses whose definition marks a specific work or slang
-  (pinned patterns, at minimum "이 지은", "작사", "작곡", "의 희곡",
-  "의 소설", "은어로", "속되게 이르는", "낮잡아 이르는"); drop
-  cross-reference stubs ("의 방언", "의 옛말", "의 준말" bodies, and
-  the ⇒규범 표기 trailer is cut from any kept sense); strip inline
-  tags (`<FL>`, `<DR>`, and kin). Then the first TWO survivors in
-  sense_no order. Anchors: 학생 shows "학예를 배우는 사람." then
-  "학교에 다니면서 공부하는 사람."; 학교 shows exactly ONE sense
-  (the prison slang and the 鶴橋 / 學橋 villages are gone); 가족
-  keeps 家族's first sense only (the play by that title dropped; 假足
-  lands on its own key); 생일 shows "세상에 태어난 날…" alone (the village
-  and the pop song dropped); 學 glosses "어떤 원리에 따라 조직된
+  is a proper-noun class (pinned list: 지명, 인명, 책명, 매체, 고유명
+  일반) and senses whose definition marks a specific work or slang
+  (pinned patterns, the SPEC minimum "이 지은", "작사", "작곡", "의
+  희곡", "의 소설", "은어로", "속되게 이르는", "낮잡아 이르는"
+  extended at build time by inspected film / painting / choreography
+  / album patterns, with "가 지은", "이 쓴", and bare "안무" REJECTED
+  as false-positive sources: 告解's "신자가 지은 죄" is a definition);
+  drop cross-reference stubs ("의 방언", "의 옛말", "의 준말", "의
+  원말", "의 잘못", "전 용어" bodies, and the ⇒규범 표기 trailer is
+  cut from any kept sense); strip inline tags (`<FL>`, `<DR>`, and
+  kin). PLACE-NAME SURVIVAL (build-time correction, 2026-09-01): a
+  sense with cat 지명 is dropped only when an ordinary sense survives
+  on the same key; a words or natives key that would otherwise be
+  empty keeps its 지명 senses. Without this, 中國 and 美國, whose
+  only senses are tagged 지명, had no Korean definition at all. The
+  rule is 지명 ONLY and NEVER on the chars lane: a first cut that let
+  every held sense survive gave 麥 a novella and 히어로 a pop song as
+  their only definition, and the native noun 세 two economists'
+  biographies (인명), so 인명, 책명, 매체, 고유명 일반, and every
+  work/slang sense drop unconditionally, and chars fall back to the
+  hun. CURATED OVERRIDES (KO_OVERRIDES in pipeline/urimalsaem.py,
+  NOT_RARE discipline: a code missing under its key, a key outside
+  the decorated file, or an override that leaves the computed result
+  unchanged aborts the build): key -> ordered target_codes used as
+  the definitions. Seeded with 韓國 -> its 대한민국 sense first (the
+  corpus's first ordinary sense is the 대한 제국 abbreviation, and
+  the 대한민국 sense is tagged 지명, so the rules alone put the
+  historical sense first). Then the first TWO survivors in sense_no
+  order. Anchors: 학생 shows "학예를
+  배우는 사람." then "학교에 다니면서 공부하는 사람."; 학교 shows
+  exactly ONE sense (the prison slang and the 鶴橋 / 學橋 villages
+  are gone); 가족 keeps 家族's first sense only (the play by that
+  title dropped; 假足 lands on its own key); 생일 shows "세상에
+  태어난 날…" alone (the village and the pop song dropped); 中國 and
+  美國 each have a definition; 學 glosses "어떤 원리에 따라 조직된
   지식의 체계." then "‘학문’의 뜻을 더하는 접미사."; 江 glosses
-  "넓고 길게 흐르는 큰 물줄기."; 우리 the pronoun lands on the
-  native entry and 牛李 keeps its own; 거란 (契丹) has NO Korean
-  definition (a verified corpus miss) and is the fallback anchor.
+  "넓고 길게 흐르는 큰 물줄기." (its second corpus sense, the 1951
+  film, dropped); 우리 the pronoun lands on the native entry and 牛李
+  keeps its own. 거란 (契丹) is NOT a corpus miss after all (the
+  corpus files it under the reading 계단 with origin 契丹, in a chunk
+  the spike never sampled); the fallback anchor is a words.json key
+  the full build proves has no corpus sense, recorded in the build's
+  anchor list.
 - Emitted file `extension/data/ko.json`:
   ```json
   { "version": 1,
@@ -2380,10 +2432,19 @@ korean-mode-kickoff.md; this section is the binding contract.
   integer per entry and no further download). Keys are the canonical
   keys of the entries they decorate; the build aborts on any key
   absent from the file it decorates (build-anchored agreement, the
-  rare-flag lesson). Deterministic emit; expected order 1 MB raw,
-  well under 0.5 MB gzipped. Coverage report at build: words matched
-  of 27,627 (spike extrapolation ~25,500), natives matched of 15,527,
-  chars glossed (~2,100).
+  rare-flag lesson). Deterministic emit. MEASURED at the first full
+  build (2026-09-01), replacing the spike's guesses: the corpus holds
+  only 1,885 distinct single-char hanja origins before any filter
+  (the ~2,100 was an extrapolation), words land near 90% of 27,627
+  (the spike's 92.2% was in-range only), and the file is definition
+  text, so it weighs about 4.8 MB raw and 1.7 MB gzipped rather than
+  the ~1 MB guessed here; it loads only under 한국어, so English mode
+  pays nothing. The 6,146 vs 6,735 discrepancy is reconciled: 6,735
+  chars have no eumhun at all, 6,146 of those have an English gloss,
+  and the remaining 589 have no meaning text of any kind (readings
+  only). Coverage report at build: words matched, natives matched
+  (rows and headwords), chars glossed, and chars with neither hun nor
+  Korean gloss.
 - SOURCE LINK (user-settled 2026-09-01): a card's source link points
   at where the definition on screen came from. Word and native cards
   showing a Korean definition link "우리말샘 ↗" to

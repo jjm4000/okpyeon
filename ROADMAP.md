@@ -345,6 +345,12 @@ correctness" bullet of 1.1, the same way 1.1.1 folded into 1.2.
   shared-spelling words the bridge corpus already parses, partial
   coverage with no honest synthesis fallback. Ship shape when
   designed: zh broadly via alignment, ja attested-only.
+- **Proper-noun hangul words** (서울, 부산, 한강). native.json is
+  built from Wiktionary's common nouns, so these have no card at all
+  in any language; the Korean-mode build found 서울's Urimalsaem
+  sense with nothing to attach it to. A small proper-noun lane in
+  the native build (Wiktionary tags them) would give them cards and
+  Korean definitions in one step.
 - **Deconjugation for native words.** Native verbs and adjectives are
   reachable only by their dictionary form (typed search or exact-form
   selection); a selected 먹었어 finds nothing. Romanized v2's

@@ -9,6 +9,8 @@ Sources
     * kaikki.org postprocessed Korean Wiktionary extract (JSONL, ~190 MB)
     * Unicode Unihan database (Unihan_Variants.txt inside Unihan.zip)
     * BabelStone IDS (character decomposition, ~3.3 MB)
+    * Urimalsaem (NIKL open dictionary) via the spellcheck-ko mirror, through
+      pipeline/urimalsaem.py's fetch + preprocess (1.73 GiB, once)
 
 Outputs (UTF-8, no BOM, compact / no indentation)
     extension/data/hanja.json
@@ -17,6 +19,7 @@ Outputs (UTF-8, no BOM, compact / no indentation)
     extension/data/decomp.json
     extension/data/native.json
     extension/data/sino.json
+    extension/data/ko.json
 
 Usage
     python pipeline/build.py            # download if missing, parse, emit, verify
@@ -43,15 +46,16 @@ import unicodedata
 import zipfile
 
 # Character decomposition rules (pipeline/decomp.py), phonetic-component
-# pins (pipeline/phonetic.py) and sibling Sino readings (pipeline/sino.py).
-# Local modules, stdlib only; sys.path[0] is this directory whenever
-# build.py runs as a script, which is the only supported way to run it.
-# (pipeline/rr.py is no longer imported: the romanized-search v2 addendum
-# retired the rr emits, and the RR anchors now live in the node suite,
-# which uses rr.py as its reference.)
+# pins (pipeline/phonetic.py), sibling Sino readings (pipeline/sino.py) and
+# Korean definitions (pipeline/urimalsaem.py). Local modules, stdlib only;
+# sys.path[0] is this directory whenever build.py runs as a script, which
+# is the only supported way to run it. (pipeline/rr.py is no longer
+# imported: the romanized-search v2 addendum retired the rr emits, and the
+# RR anchors now live in the node suite, which uses rr.py as its reference.)
 import decomp
 import phonetic
 import sino
+import urimalsaem
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -1197,7 +1201,8 @@ NOT_RARE_OVERRIDES = {
 
 
 def verify(hanja_obj, words_obj, variants_obj, decomp_obj=None,
-           native_obj=None, sino_obj=None, sino_report=None):
+           native_obj=None, sino_obj=None, sino_report=None,
+           ko_obj=None, ko_report=None):
     chars_out = hanja_obj["chars"]
     words_out = words_obj["words"]
     by_hangul = words_obj["byHangul"]
@@ -1771,6 +1776,179 @@ def verify(hanja_obj, words_obj, variants_obj, decomp_obj=None,
                " ".join("%s=%d" % (k, v) for k, v in
                         sorted(sino_report["tier2_lvl"].items()))))
 
+    # --- ko.json (SPEC "Korean language mode" addendum) ----------------
+    if ko_obj is not None:
+        kw, kn, kc = ko_obj["words"], ko_obj["natives"], ko_obj["chars"]
+
+        def kd(tbl, k):
+            e = tbl.get(k)
+            return e["d"] if e else None
+
+        def ks(tbl, k):
+            e = tbl.get(k)
+            return e["s"] if e else None
+
+        # Schema: {version, words, natives, chars}; every entry is {d, s}
+        # with 1-2 non-empty definitions and a positive integer sense code.
+        bad_schema = []
+        for lane, tbl in (("words", kw), ("natives", kn), ("chars", kc)):
+            for k, e in tbl.items():
+                d, s = e.get("d"), e.get("s")
+                if (set(e) != {"d", "s"} or not isinstance(d, list)
+                        or not 1 <= len(d) <= 2
+                        or any(not (isinstance(x, str) and x.strip())
+                               for x in d)
+                        or not isinstance(s, int) or isinstance(s, bool)
+                        or s <= 0):
+                    bad_schema.append("%s:%s" % (lane, k))
+        add("ko: schema (version 1; d = 1-2 definitions; s = positive int)",
+            ko_obj.get("version") == 1
+            and set(ko_obj) == {"version", "words", "natives", "chars"}
+            and not bad_schema,
+            "words %s, natives %s, chars %s; %d offenders%s" % (
+                format(len(kw), ","), format(len(kn), ","),
+                format(len(kc), ","), len(bad_schema),
+                "" if not bad_schema else " e.g. " + " ".join(bad_schema[:5])))
+
+        # Key agreement: every key exists in the file it decorates, with
+        # the native key as hangul|pos against native.json's own rows.
+        native_rows = set()
+        if native_obj is not None:
+            for hangul, rows in native_obj["words"].items():
+                for r in rows:
+                    native_rows.add(hangul + "|" + r["pos"])
+        foreign = ([k for k in kw if k not in words_out]
+                   + [k for k in kn if native_obj is not None
+                      and k not in native_rows]
+                   + [k for k in kc if k not in chars_out])
+        add("ko: key agreement (words / natives / chars keys all exist)",
+            not foreign,
+            "%d foreign%s" % (len(foreign), "" if not foreign else
+                              " e.g. " + " ".join(foreign[:5])))
+
+        want = ["학예를 배우는 사람.", "학교에 다니면서 공부하는 사람."]
+        add("ko anchor: 學生 = 학예를 배우는 사람 / 학교에 다니면서 공부하는 사람",
+            kd(kw, "學生") == want,
+            json.dumps(kw.get("學生"), ensure_ascii=False))
+        add("ko anchor: 學生's s opens sense 27143 (verified live)",
+            ks(kw, "學生") == 27143, "s = %s" % ks(kw, "學生"))
+        add("ko anchor: 學校 has exactly one definition (은어, 鶴橋/學橋 gone)",
+            kd(kw, "學校") is not None and len(kd(kw, "學校")) == 1
+            and "교도소" not in kd(kw, "學校")[0],
+            json.dumps(kw.get("學校"), ensure_ascii=False))
+        jajok = kd(kw, "家族")
+        add("ko anchor: 家族 keeps its first sense only; 假足 on its own key",
+            jajok is not None and len(jajok) == 1
+            and jajok[0].startswith("주로 부부를 중심으로")
+            and ("假足" not in words_out
+                 or (kd(kw, "假足") or [""])[0].startswith("세포 표면")),
+            "家族 %s | 假足 %s%s" % (
+                json.dumps(jajok, ensure_ascii=False),
+                json.dumps(kd(kw, "假足"), ensure_ascii=False),
+                "" if "假足" in words_out else " (not a words.json key)"))
+        add("ko anchor: 生日 = 세상에 태어난 날 alone (village, pop song gone)",
+            kd(kw, "生日") == ["세상에 태어난 날. 또는 태어난 날을 기념하는 "
+                              "해마다의 그날."],
+            json.dumps(kw.get("生日"), ensure_ascii=False))
+        add("ko anchor: 學 char = 지식의 체계 / ‘학문’의 뜻을 더하는 접미사",
+            kd(kc, "學") == ["어떤 원리에 따라 조직된 지식의 체계.",
+                            "‘학문’의 뜻을 더하는 접미사."],
+            json.dumps(kc.get("學"), ensure_ascii=False))
+        add("ko anchor: 江 char first def 넓고 길게 흐르는 큰 물줄기.",
+            (kd(kc, "江") or [""])[0] == "넓고 길게 흐르는 큰 물줄기.",
+            json.dumps(kc.get("江"), ensure_ascii=False))
+        uri = kd(kn, "우리|pron")
+        add("ko anchor: 우리|pron is the pronoun; 牛李 keeps its own",
+            uri is not None
+            and ("말하는 이" in uri[0] or "대명사" in uri[0])
+            and ("牛李" not in kw or kd(kw, "牛李") != uri),
+            "우리|pron %s | 우리|noun %s | 牛李 %s" % (
+                json.dumps(kn.get("우리|pron"), ensure_ascii=False),
+                json.dumps(kd(kn, "우리|noun"), ensure_ascii=False),
+                json.dumps(kw.get("牛李"), ensure_ascii=False)
+                if "牛李" in words_out else "(not a words.json key)"))
+        # The SPEC expected 契丹 to be a corpus miss (the spike saw 거란
+        # carrying no origin). The full corpus also has the headword 계단,
+        # the regular Sino reading of 契丹, with the origin and the Khitan
+        # definition, so under the hanja-string rule the key IS decorated.
+        add("ko anchor: 契丹 decorated through 계단 (spike miss was partial)",
+            "契丹" in words_out and "契丹" in kw
+            and "유목 민족" in kd(kw, "契丹")[0],
+            json.dumps(kw.get("契丹"), ensure_ascii=False)[:120])
+        # Fallback anchor (integrator rule): a common key with NO corpus
+        # sense of any type, not merely a filtered one. 生覺 (생각, f2) is
+        # a folk hanja spelling that Wiktionary records; Urimalsaem lists
+        # 생각 as 고유어 with no origin, so 生覺 never appears as an
+        # origin. (The only other f<=3 key without any corpus sense is
+        # 對韓, a gloss-less entry.)
+        add("ko anchor: 生覺 (생각) absent from words (no corpus sense at all)",
+            "生覺" in words_out and "生覺" not in kw,
+            json.dumps(kw.get("生覺"), ensure_ascii=False))
+        # Place-name survival (integrator rule): a key whose only senses
+        # are 지명 keeps them, so country and place names are defined.
+        jungguk = kd(kw, "中國") or [""]
+        places = [k for k in ("中國", "美國", "大韓民國", "京畿", "公州",
+                              "日本", "亞洲") if k in words_out]
+        add("ko anchor: 中國 美國 大韓民國 京畿 公州 日本 亞洲 keep 지명 senses",
+            "中國" in kw and ("나라" in jungguk[0] or "아시아" in jungguk[0])
+            and all(k in kw for k in places),
+            "中國 %s | 美國 %s | missing: %s | 서울|noun %s" % (
+                json.dumps(jungguk, ensure_ascii=False)[:80],
+                json.dumps(kd(kw, "美國"), ensure_ascii=False)[:80],
+                " ".join(k for k in places if k not in kw) or "(none)",
+                json.dumps(kd(kn, "서울|noun"), ensure_ascii=False)[:80]))
+        # Survival never applies to other proper-noun classes, to work or
+        # slang senses, or to the chars lane (麥 the novella, 히어로 the
+        # pop song).
+        maek = kd(kc, "麥")
+        add("ko anchor: 麥 char carries no held work sense; 히어로|noun absent",
+            (maek is None or not any(("소설" in d or "지은" in d)
+                                     for d in maek))
+            and "히어로|noun" not in kn,
+            "麥 %s | 히어로|noun %s" % (
+                json.dumps(maek, ensure_ascii=False),
+                json.dumps(kn.get("히어로|noun"), ensure_ascii=False)))
+        # Glyph-form fan-out: words.json holds both spellings as keys, the
+        # corpus writes only one; the twin takes the direct key's entry.
+        twins = [("映畵", "映畫"), ("状態", "狀態"), ("秘密", "祕密")]
+        bad_twins = [t for t, src in twins
+                     if t in words_out and src in words_out
+                     and (kd(kw, t) or [None])[0] != (kd(kw, src) or [""])[0]]
+        add("ko anchor: 映畵 状態 秘密 share their twins' first definition",
+            not bad_twins,
+            " | ".join("%s %s" % (t, json.dumps((kd(kw, t) or ["-"])[0],
+                                                 ensure_ascii=False)[:40])
+                       for t, _ in twins))
+        # Exclusions: no numeral (陸/六) or simplification (穀/谷) merges.
+        yukdo, gokseong = kd(kw, "陸道"), kd(kw, "穀城")
+        add("ko anchor: 陸道 and 穀城 not merged through 六道 / 谷城",
+            not (yukdo and "삼악도" in yukdo[0])
+            and not (gokseong and "곡성군" in gokseong[0]),
+            "陸道 %s | 穀城 %s" % (json.dumps(yukdo, ensure_ascii=False),
+                                 json.dumps(gokseong, ensure_ascii=False)))
+        # Curated override (KO_OVERRIDES): the republic sense leads.
+        hanguk = kd(kw, "韓國") or [""]
+        add("ko anchor: 韓國 first definition is the 대한민국 sense (override)",
+            "공화국" in hanguk[0] or "한반도" in hanguk[0],
+            json.dumps(kw.get("韓國"), ensure_ascii=False)[:160])
+
+    if ko_report is not None:
+        # Coverage bands, derived from the first full build under the
+        # survival rule and the widened natives lane: words 25,568 of
+        # 27,627, natives 12,278 of 15,797 rows, chars 1,818 (the corpus
+        # holds 1,885 distinct single-char hanja origins in total). Build
+        # data only, so --verify skips them.
+        add("ko: coverage sane (words >= 25,000; natives >= 11,500; "
+            "chars 1,700..2,100)",
+            ko_report["words"] >= 25000
+            and ko_report["natives"] >= 11500
+            and 1700 <= ko_report["chars"] <= 2100,
+            "words %s of %s, natives %s rows, chars %s" % (
+                format(ko_report["words"], ","),
+                format(ko_report["words_total"], ","),
+                format(ko_report["natives"], ","),
+                format(ko_report["chars"], ",")))
+
     failed = 0
     log("=============== SPOT CHECKS ================")
     for name, ok, detail in checks:
@@ -1797,14 +1975,19 @@ def verify_only():
         s = rd("sino.json")
     except (OSError, ValueError):
         s = None
+    try:
+        k = rd("ko.json")
+    except (OSError, ValueError):
+        k = None
     log("chars %s | words %s | byHangul %s | variants %s | decomp %s | "
-        "native %s | sino %s" % (
+        "native %s | sino %s | ko %s" % (
             format(len(h["chars"]), ","), format(len(w["words"]), ","),
             format(len(w["byHangul"]), ","), format(len(v["map"]), ","),
             format(len(d["parts"]), ",") if d else "-",
             format(len(n["words"]), ",") if n else "-",
-            format(len(s["chars"]), ",") if s else "-"))
-    return verify(h, w, v, d, n, s)
+            format(len(s["chars"]), ",") if s else "-",
+            format(len(k["words"]), ",") if k else "-"))
+    return verify(h, w, v, d, n, s, None, k)
 
 
 # ---------------------------------------------------------------- main
@@ -1827,6 +2010,11 @@ def main(argv):
     download(IDS_URL, IDS_FILE, force)
     download_small(JA_JOYO_URL, JA_JOYO_FILE, force)
     download(JA_EXTFREQ_URL, JA_EXTFREQ_FILE, force)
+    # Urimalsaem: the build reads only the preprocessed intermediate; on a
+    # cold cache the module fetches the 1.73 GiB corpus and preprocesses
+    # it here. --force-download does not re-fetch it (run
+    # `python pipeline/urimalsaem.py fetch --force` when the mirror moves).
+    ko_inter = urimalsaem.ensure_intermediate()
 
     log("[2/5] streaming kaikki Korean JSONL (line by line)")
     parse_kaikki(KAIKKI_FILE)
@@ -2431,12 +2619,61 @@ def main(argv):
     native_obj = {"version": 1,
                   "maxLen": max((len(h) for h in native_words), default=0),
                   "words": native_words}
+
+    # ---- ko.json (SPEC "Korean language mode" addendum) ---------------
+    # Built last: its keys are the canonical keys of the three files it
+    # decorates, and every one must exist there (build-anchored agreement).
+    ko_obj, ko_report = urimalsaem.build(
+        ko_inter, words_out, native_words, chars_out, variant_map,
+        unihan_text)
+    kr = ko_report
+    log("  ko: words %s of %s (%.1f%%; spike extrapolation ~25,500), "
+        "%s via variants.json, %s via glyph-form equivalence (%s ambiguous), "
+        "%s hanja keys unmatched, %s matched keys with no hangul agreement"
+        % (format(kr["words"], ","), format(kr["words_total"], ","),
+           100.0 * kr["words"] / max(kr["words_total"], 1),
+           format(kr["words_via_variants"], ","),
+           format(kr["words_via_glyph"], ","), kr["words_glyph_ambiguous"],
+           format(kr["words_unmatched"], ","),
+           format(kr["words_hangul_disagree"], ",")))
+    log("  ko: glyph-form fan-out from direct keys: %s twins decorated, "
+        "%d ambiguous%s; rescues most frequent: %s"
+        % (format(kr["words_fanout"], ","), len(kr["words_fanout_ambiguous"]),
+           "" if not kr["words_fanout_ambiguous"] else
+           " (" + " ".join(kr["words_fanout_ambiguous"][:8]) + ")",
+           " ".join(kr["words_glyph_top"])))
+    log("  ko: %d curated override(s) fired" % kr["overrides"])
+    log("  ko: natives %s of %s (hangul, POS) rows (%s of %s headwords), "
+        "%s unmatched; unmapped POS: %s"
+        % (format(kr["natives"], ","), format(kr["native_rows_total"], ","),
+           format(kr["native_heads"], ","),
+           format(kr["native_heads_total"], ","),
+           format(kr["natives_unmatched"], ","),
+           " ".join("%s=%d" % (k, v) for k, v in
+                    list(kr["natives_unmapped_pos"].items())[:8])))
+    log("  ko: chars %s glossed of %s (expect ~1,800), %s unmatched"
+        % (format(kr["chars"], ","), format(kr["chars_total"], ","),
+           kr["chars_unmatched"]))
+    log("  ko: entries kept only by 지명 senses: words %s, natives %s "
+        "(never chars: %s)"
+        % (format(kr["words_rescued"], ","),
+           format(kr["natives_rescued"], ","), kr["chars_rescued"]))
+    log("  ko: %s words.json keys without a Korean definition; most "
+        "frequent: %s" % (format(kr["words_koless"], ","),
+                          " ".join(kr["words_koless_top"])))
+    log("  ko: chars with no hun %s = %s English-only + %s with no meaning "
+        "text; no hun and no ko gloss %s (English-only and no ko gloss %s)"
+        % (format(kr["no_hun"], ","), format(kr["english_only"], ","),
+           format(kr["no_text"], ","), format(kr["no_hun_no_ko"], ","),
+           format(kr["english_only_no_ko"], ",")))
+
     s_h = write_json("hanja.json", hanja_obj)
     s_w = write_json("words.json", words_obj)
     s_v = write_json("variants.json", variants_obj)
     s_d = write_json("decomp.json", decomp_obj)
     s_n = write_json("native.json", native_obj)
     s_s = write_json("sino.json", sino_obj)
+    s_k = write_json("ko.json", ko_obj)
 
     # ---- report -------------------------------------------------------
     log("\n================= COUNTS ===================")
@@ -2450,6 +2687,10 @@ def main(argv):
         % (format(sino_report["chars"], ","),
            format(sino_report["ja_chars"], ","),
            format(sino_report["zh_chars"], ",")))
+    log("ko         : words %s / natives %s / chars %s (expect ~ 25500 / "
+        "~ 12000 / ~ 1800)"
+        % (format(ko_report["words"], ","), format(ko_report["natives"], ","),
+           format(ko_report["chars"], ",")))
     log("  variant sources: " + ", ".join(
         "%s=%d" % (PRIO_NAMES[k], v) for k, v in sorted(src_counts.items())))
     zones = collections.Counter(e["lvl"] for e in chars_out.values())
@@ -2471,10 +2712,11 @@ def main(argv):
     log("decomp.json   : %s" % mb(s_d))
     log("native.json   : %s" % mb(s_n))
     log("sino.json     : %s" % mb(s_s))
-    log("total         : %s" % mb(s_h + s_w + s_v + s_d + s_n + s_s))
+    log("ko.json       : %s" % mb(s_k))
+    log("total         : %s" % mb(s_h + s_w + s_v + s_d + s_n + s_s + s_k))
 
     failed = verify(hanja_obj, words_obj, variants_obj, decomp_obj,
-                    native_obj, sino_obj, sino_report)
+                    native_obj, sino_obj, sino_report, ko_obj, ko_report)
     log("============================================")
     log("done in %.1fs; %d failed check(s)" % (time.time() - t0, failed))
     raise SystemExit(1 if failed else 0)

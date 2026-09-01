@@ -57,6 +57,7 @@ verification check fails.
 | `cache/ko_full_opensubtitles.txt`| `https://raw.githubusercontent.com/hermitdave/FrequencyWords/master/content/2018/ko/ko_full.txt` | ~11 MB |
 | `cache/ko-wiki-edu-tier.wikitext` | `https://ko.wikipedia.org/w/index.php?title=대한민국_중고등학교_기초한자_목록&action=raw` (percent-encoded in `build.py`) | ~22 KB |
 | `cache/babelstone-ids.txt`       | `https://www.babelstone.co.uk/CJK/IDS.TXT`                           | ~3 MB   |
+| `cache/urimalsaem/*.xml.gz`      | `https://raw.githubusercontent.com/spellcheck-ko/korean-dict-nikl/master/opendict/<name>.xml` (25 chunks, listed via the GitHub contents API) | ~182 MB (gz) |
 
 The Translingual and Japanese extracts are used **only to establish variant
 links**. Nothing from them is ever displayed: every gloss, reading and eumhun
@@ -406,6 +407,67 @@ one, and are inert in the UI. Of 9,469 characters, 9,191 get an entry:
 2 drop on an operator, 83 on a placeholder, 108 on skip-through, 85 on the
 visibility rule.
 
+## Korean definitions (`ko.json`)
+
+`pipeline/urimalsaem.py` supplies the Korean definitions for the 한국어
+language setting from 우리말샘 (NIKL's open dictionary, CC BY-SA 2.0 KR),
+fetched from the spellcheck-ko/korean-dict-nikl mirror. The corpus is 25 XML
+chunks, 1.73 GiB, one `<item>` per sense. It runs in three steps:
+
+* **fetch** (`python pipeline/urimalsaem.py fetch`): reads the chunk list from
+  the GitHub contents API, downloads each chunk with curl and stores it
+  gzipped as `cache/urimalsaem/<name>.xml.gz` (~7.5 MB each, 182 MB total).
+  Chunks already present are skipped, a partial download resumes, and an
+  uncompressed chunk left in the directory is size-checked and gzipped in
+  place. `--force` re-fetches everything; `build.py --force-download` does
+  not touch this corpus.
+* **preprocess** (`python pipeline/urimalsaem.py preprocess`, about 35 s):
+  iterparses every chunk from gzip, never reads the `example_info` and
+  `multimedia_info` subtrees (outside the license grant), applies the SPEC's
+  sense selection (type 일반어 only; cross-reference stubs, the proper-noun
+  categories 인명, 책명, 매체 and 고유명 일반, and the work or slang
+  patterns "이 지은", "작사", "은어로" and the rest of the pinned list
+  dropped; inline tags and the ⇒규범 표기 trailer removed) and keeps the
+  first two survivors per headword and origin. One class survives: a 지명
+  (place name) sense is dropped only when the same key has an ordinary
+  sense, and a key with nothing else keeps it, which is how 中國 and 美國
+  get their definitions while 生日 loses its village. That rule never
+  applies to single characters, whose cards fall back to the hun. The
+  result is one file, `cache/urimalsaem/intermediate.json.gz` (~39 MB),
+  with three lanes: hanja-origin senses keyed by the NFC hanja string,
+  senses of every word that is not a pure hanja-origin word (word types
+  고유어, 외래어, 혼종어) keyed by `hangul|pos` in Urimalsaem's own POS
+  terms, and single-character senses keyed by the character. It also
+  collects the definitions named by `KO_OVERRIDES`. Rerun it only when the
+  mirror updates or the override table changes.
+* **build** (inside `build.py`): reads only the intermediate. On a cold cache
+  it runs fetch and preprocess itself. Hanja senses match `words.json` keys
+  directly, else through `variants.json` (絕對 reaches 絶對), else through a
+  glyph-form equivalence built from Unihan's kZVariant, kSemanticVariant,
+  kSpecializedSemanticVariant and kTraditionalVariant fields, minus the
+  financial numerals 壹貳參肆伍陸柒捌玖拾 and every simplification pair
+  that is not one-to-one (谷 stands for 穀 and for itself, so 穀/谷 is
+  out; 状 stands for 狀 alone, so 狀/状 stays), substituting one
+  character per position. A direct match always wins and a variant match
+  never touches a directly decorated key; the reverse also runs: a
+  directly decorated key fans out to every glyph-twin key that has no
+  direct decoration (映畫 decorates 映畵, 狀態 decorates 状態, 祕密
+  decorates 秘密), and a twin claimed by two different direct keys stays
+  undecorated. The `hangul|pos` lane matches
+  `native.json` rows through the pinned POS table (명사 and 의존 명사 to
+  `noun`, 동사 and 보조 동사 to `verb`, and so on; any other POS never
+  matches); single characters match `hanja.json` characters through
+  `variants.json`. `KO_OVERRIDES` in `urimalsaem.py` then replaces the
+  computed definitions of a key with the listed Urimalsaem sense codes, in
+  order (seeded with 韓國, whose 대한민국 sense the corpus files under 지명
+  behind the 대한 제국 abbreviation); an override whose code is missing or
+  that changes nothing aborts the build, the same discipline as
+  `NOT_RARE_OVERRIDES`. Every emitted key must exist in the file it
+  decorates or the build aborts. The verify step anchors 學生, 學校, 家族,
+  生日, 學, 江, 우리, 契丹, 中國 and the other place names, 韓國, 麥, 히어로
+  and the ko-less 生覺, and prints the coverage report with the glyph-form
+  rescues and the ten most frequent keys still lacking a Korean definition.
+
 ## Canonical words keys, and how long a key can be
 
 The service worker NFC-normalizes a selection and maps every character through
@@ -562,3 +624,14 @@ Per shot, before the pixels are kept:
 The `scroll` in each scene is the page offset that frames it; the `bottom` is
 how much page to leave visible under the popup, which is what decides how much
 of a long list the popup shows.
+
+## Browser self-checks, headless
+
+```sh
+python pipeline/run_selfchecks.py            # both pages; --page index|embed, --port N, --keep
+```
+
+Runs `test-page/index.html` and `test-page/embed.html` in headless Chrome on the
+shared CDP client in `cdp.py`, prints the check count per page and every
+failing check by name, and exits non-zero on any failure. Header docstring has
+the details.
