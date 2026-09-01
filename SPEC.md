@@ -1937,6 +1937,137 @@ would have computed. Decided with Jesse across this QA session.
   窮民 still rendered; haneul roots 하늘; gukmin, gungmin and kukmin
   root 국민; su and toddlf unchanged.
 
+## Sibling Sino readings (ADDENDUM 2026-08-31, design settled by mockups)
+
+One quiet line on char cards showing the same Sino root's sound in
+Japanese and Mandarin beside the card's eum, so a learner who knows
+any of the three languages can ground the other two. On'yomi ONLY,
+never kun: on'yomi is the Sino reading, the sibling of the eum; kun
+is a native gloss, the analog of the hun the card already shows in
+Korean. Two independent default-off toggles; off is byte-identical.
+
+### sino.json
+
+```json
+{ "version": 1,
+  "chars": { "樂": {
+    "ja": [["ガク", "악"], ["ラク", "락"]],
+    "zh": [["yuè", "악"], ["lè", "락"]] } } }
+```
+- Per char, per language: an array of `[reading, eum]` pairs, capped
+  at TWO, emitted in display order (alignment is baked at build time;
+  the runtime never sorts). `eum` is the aligned Korean reading when
+  the aligner resolved it, else `""`; unaligned readings trail
+  aligned ones. A language key is omitted when it has no readings; a
+  char is omitted when neither language does. Deterministic emit.
+- Coverage expectations (measured 2026-08-31): ja tier 1 covers 2,121
+  of our chars (92% of m, 86% of h); kun-only jōyō chars (串 丼 咲,
+  78 of them) correctly have NO ja entry, since there is no Sino
+  sound to show. zh covers nearly everything via kMandarin (97.7%).
+  Payload small (ja readings alone measured 36 KB).
+
+### Build
+
+- Sources: the jōyō table (Wikipedia "List of jōyō kanji" wikitext,
+  new cached download, CC BY-SA like the MOE tier scrape; parse new
+  AND kyūjitai forms — the old-form column maps straight onto our
+  canonical chars — with on'yomi as the katakana tokens of the
+  readings cell); Unihan kMandarin / kXHC1983 / kHanyuPinlu (cached,
+  attributed); the ja kaikki extract (cached) for word kana; a ja
+  word-frequency list (new cached download, same source family as the
+  Korean one).
+- Japanese readings, two tiers, one mechanism:
+  - The mechanism: align common Japanese words' kana against each
+    char's candidate on'yomi with the regular transforms (sokuon
+    contraction of ク/キ/ツ/チ, rendaku voicing k→g s→z t→d h→b/p,
+    ハ行 p-forms), weighted by word frequency. Words that do not
+    align (jukujikun: 今日) are skipped, never guessed.
+  - Tier 1: jōyō chars keep the canonical jōyō on'yomi set, never
+    dropped even when the corpus undersamples one.
+  - Tier 2: beyond jōyō, corpus-attested readings above a pinned
+    threshold (at least N distinct words within the top-K frequency
+    band; N and K are SET BY THE SPIKE and recorded here when it
+    reports) extend coverage to chars a Japanese-knower actually
+    meets (醤 in 醤油). Tier-2 readings render identically to tier 1.
+- Mandarin readings: the set is kMandarin plus kXHC1983's
+  alternatives; kHanyuPinlu corpus frequencies order within the cap.
+- ORDER ALIGNMENT (the card's eumhun order is the master):
+  - Japanese aligns by the COMPOUND BRIDGE: shared spelled words
+    (音樂 is 音楽 through the variants map, canonical keys both
+    sides) vote, weighted by word frequency, on which eum pairs with
+    which on'yomi: 음악 uses 악 and おんがく uses ガク, so
+    (악 ↔ ガク). Evidence only, no phonology.
+  - Mandarin aligns by CORRESPONDENCE SCORING over initial and rime
+    classes (ㄹ↔l, null-ㅇ↔y/w, palatalized ㄱ↔j beside plain ㄱ↔g/k,
+    and the rest of a small class table that lives in the pipeline
+    with its own anchors, not enumerated here). Ambiguous chars land
+    in a curated override table with the NOT_RARE discipline: every
+    override must fire or the build aborts.
+  - Within a language: aligned readings first in eum order, then
+    unaligned by corpus weight, then source order (jōyō table order /
+    kMandarin first). Cap applies after ordering.
+- Verify anchors: 學 ja [ガク] zh [xué]; 樂 aligned in eum order
+  (ガク・ラク / yuè·lè); 惡 (악↔アク↔è, 오↔オ↔wù); 行 (행↔コウ or
+  ギョウ per the bridge ↔ xíng, 항↔háng); 車 (차↔チャ? per data ↔
+  chē, 거↔jū — the ja side follows the data, the anchor pins the zh
+  pairing); 串 has no ja entry. Property tests: for ~95% of jōyō
+  chars the corpus's top reading is a jōyō reading (exceptions
+  reported); where the bridge and the scorer both speak they must
+  agree, and disagreements are REPORTED for curation, never silently
+  resolved.
+
+### Loading and runtime
+
+- Settings: two rows in a new "Character cards" group, both default
+  off. Keys `jaReadings`, `zhReadings`. Copy (exact): "Japanese
+  reading" / "Shows how the character is read in Japanese (on'yomi)."
+  and "Chinese reading" / "Shows how the character is read in
+  Mandarin (pinyin)."
+- sino.json joins the worker's lazy per-file cache, fetched only on
+  the first request flagged `sino: true` (client-set when EITHER
+  toggle is on; the worker stays stateless about the toggles). The
+  worker attaches per-char readings onto char matches in the
+  attachDecomp pattern. `guardSino` passes EVERY schema field through
+  (the guardNative lesson: a guard that rebuilds the object drops new
+  fields in the one path only the real worker exercises), and a node
+  test drives lookup through the guarded shape itself.
+- Renderer: one section function, one call site, behind the
+  predicates: a muted sub-line directly under the card head, before
+  the glosses (mockup variant A): marker 日 then the ja readings,
+  separator, marker 中 then the zh readings. Markers are the han
+  chars 日 / 中 (language names, not country codes). Only enabled
+  languages render; the line renders when at least one enabled
+  language has data, half-width when one does; absent entirely
+  otherwise (empty sections never render). Fixed order ja then zh.
+  Each reading carries a title tooltip naming its correspondence
+  ("악 ↔ ガク ↔ yuè") when its eum tag is non-empty. Applies wherever
+  char cards render (top-level, nested component cards, drill-downs),
+  a step smaller on nested cards per the house pattern.
+- Both toggles off: byte-identical rendering and requests, no
+  sino.json fetch ever (harness-checked, the native.json pattern).
+
+### Tests
+
+- Build: the anchors and both property reports above; determinism;
+  byte-identity of every other emitted file.
+- Node: guardSino pass-through driven end to end; flagged shapes;
+  unflagged byte-identity; attach logic; real-data smokes on the
+  anchor chars.
+- Harness (fixture blocks byte-identical, mini sino table): the four
+  toggle states (off / ja only / zh only / both) against a
+  two-language fixture char; polyphonic order matches the fixture's
+  eum order; tooltips present exactly on eum-tagged readings; nested
+  component cards carry the smaller line; no sino fetch while both
+  toggles are off; single-call-site sweep for the new section
+  function.
+
+### Spike gates (run before the build waves; results update this section)
+
+Alignment anchor accuracy; the 95% jōyō validation rate; tier-2
+coverage and the N/K threshold; the bridge/scorer agreement rate; a
+probe of the cached Translingual extract for sense-tagged pinyin as a
+cross-check source for the zh aligner.
+
 ## Verification expectations
 
 - A: after build, spot-check in the output: 國 has eumhun 나라/국 and compounds;
