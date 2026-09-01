@@ -356,9 +356,14 @@ one schema entry plus its feature code:
     cards. 6,146 of 9,469 chars (65%) carry English as their only
     meaning text (103 of the m-level 899, a third of h). A Korean
     mode needs eumhun backfill or keeps English as the char fallback.
-  - Build recommendation when scheduled: Urimalsaem primary,
-    ko-wiktionary as the no-signup stopgap, eumhun backfill for the
-    English-only chars. The Korean store listing below is this
+  - DECIDED 2026-09-01: Urimalsaem primary. Waiting on the one-time
+    manual step only Jesse can do: an account at
+    opendict.korean.go.kr, then the bulk XML ZIP from the dictionary
+    download page, saved into pipeline/cache/. When the file lands:
+    verify its shape and hanja-origin matching on our word set,
+    then design and mockups, with ko-wiktionary demoted to
+    reference material and eumhun backfill for the English-only
+    chars part of the design. The Korean store listing below is this
     feature's distribution companion.
 - Korean-language store listing
 
