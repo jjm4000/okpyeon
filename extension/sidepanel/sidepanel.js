@@ -163,6 +163,7 @@
   // the same reason: the shell takes both at init time.
   var bootScope = null;
   var bootNative = false;
+  var bootSino = { ja: false, zh: false };
 
   function findView(key) {
     for (var i = 0; i < SIDEBAR_VIEWS.length; i++) {
@@ -349,6 +350,7 @@
         status: container.querySelector("#okp-status"),
         scopeBox: document.getElementById("okp-scope"),
         nativeEnabled: bootNative,
+        sinoEnabled: bootSino,
         initialScope: bootScope,
         onState: function () { scheduleSeal(); },
         // Focus rules: the input is focused ONLY on an empty boot — the
@@ -505,14 +507,18 @@
     return pendingQuery();
   }
 
-  // The Korean-word-search toggle, read once at boot. Every failure reads as
-  // off, which is the setting's own default.
-  function nativeToggle() {
+  // The search-affecting toggles, read once at boot: Korean word search and
+  // the two sibling-reading languages (sino ADDENDUM). Every failure reads
+  // as off, which is each setting's own default.
+  function searchToggles() {
     return sendToWorker({ type: "settingsGet" }).then(function (res) {
-      return !!(res && res.ok === true && res.settings &&
-                res.settings.nativeWords === true);
+      var s = (res && res.ok === true && res.settings) || {};
+      return {
+        native: s.nativeWords === true,
+        sino: { ja: s.jaReadings === true, zh: s.zhReadings === true }
+      };
     }, function () {
-      return false;
+      return { native: false, sino: { ja: false, zh: false } };
     });
   }
 
@@ -524,11 +530,12 @@
     return renderHeaderActions(actionsBox, HEADER_ACTIONS);
   }
 
-  var ready = Promise.all([resolveInitialQuery(), nativeToggle()])
+  var ready = Promise.all([resolveInitialQuery(), searchToggles()])
     .then(function (resolved) {
       bootQuery = resolved[0].query;
       bootScope = resolved[0].scope;
-      bootNative = resolved[1];
+      bootNative = resolved[1].native;
+      bootSino = resolved[1].sino;
       renderActions();
       showView(SIDEBAR_VIEWS[0].key); // mounts the search view and wires the shell
       return bootQuery;
@@ -680,14 +687,20 @@
     storage.onChanged.addListener(function (changes, area) {
       if (area !== "local" || !changes || !changes.okpSettings) return;
       var next = changes.okpSettings.newValue;
-      var on = next !== null && typeof next === "object" &&
-        next.nativeWords === true;
+      var record = next !== null && typeof next === "object" ? next : {};
       var shell = globalThis.__okpyeonSearchShell;
       var controller = shell && typeof shell.controller === "function"
         ? shell.controller()
         : null;
-      if (controller && typeof controller.setNativeEnabled === "function") {
-        controller.setNativeEnabled(on);
+      if (!controller) return;
+      if (typeof controller.setNativeEnabled === "function") {
+        controller.setNativeEnabled(record.nativeWords === true);
+      }
+      if (typeof controller.setSinoEnabled === "function") {
+        controller.setSinoEnabled({
+          ja: record.jaReadings === true,
+          zh: record.zhReadings === true
+        });
       }
     });
   })();

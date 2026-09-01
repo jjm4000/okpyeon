@@ -191,6 +191,21 @@
       if (lastQuery) search(lastQuery);
     }
 
+    // Sibling readings (sino ADDENDUM): the shell only ferries the two
+    // toggles to the embed; the embed renders. Same live rule as native:
+    // a change re-runs the current query so the screen matches.
+    var sinoEnabled = {
+      ja: opts.sinoEnabled && opts.sinoEnabled.ja === true,
+      zh: opts.sinoEnabled && opts.sinoEnabled.zh === true
+    };
+    function setSinoEnabled(next) {
+      var ja = !!(next && next.ja === true);
+      var zh = !!(next && next.zh === true);
+      if (ja === sinoEnabled.ja && zh === sinoEnabled.zh) return;
+      sinoEnabled = { ja: ja, zh: zh };
+      if (lastQuery) search(lastQuery);
+    }
+
     api.mount(results, { onScopeChange: syncScope });
     renderPills();
 
@@ -229,11 +244,14 @@
       // interpretation. Non-typed shell rides (wordmark, saved-row opens)
       // pass hanja/hangul, which the interpreters' Latin gate ignores.
       var searchOpts = { interpret: true };
-      // Toggle off omits BOTH new fields, so the request is byte-identical
+      // Toggles off omit EVERY new field, so the request is byte-identical
       // to today's (native words ADDENDUM: off is identical on every surface).
       if (nativeEnabled) {
         searchOpts.native = true;
         searchOpts.scope = scope;
+      }
+      if (sinoEnabled.ja || sinoEnabled.zh) {
+        searchOpts.sino = { ja: sinoEnabled.ja, zh: sinoEnabled.zh };
       }
       return api.searchFor(query, searchOpts).then(function (res) {
         // A newer search already owns the panel; its own .then will set state.
@@ -315,6 +333,7 @@
       scope: function () { return scope; },
       syncScope: syncScope,
       setNativeEnabled: setNativeEnabled,
+      setSinoEnabled: setSinoEnabled,
       destroy: function () {
         if (destroyed) return;
         destroyed = true;

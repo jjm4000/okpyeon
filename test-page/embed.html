@@ -642,6 +642,37 @@
     return out;
   }
 
+  // --- Sibling Sino readings (SPEC ADDENDUM 2026-08-31) ------------------
+  // sino.json in miniature: per char, per language, [reading, eum] pairs in
+  // baked display order, capped at two. Consulted ONLY when a lookup carries
+  // sino:true; the read counter lets checks prove the unflagged path never
+  // touches it, and __swapSinoTable stands in for the file being absent.
+  // 學 carries both languages (the SPEC's own anchor pairing), 生 is
+  // polyphonic in ja with an eum-less TRAILING pair (no tooltip there),
+  // 民 is ja-only and 國 zh-only, so one 국민 lookup nests two half-width
+  // lines, one per language.
+  var SINO = {
+    "學": { ja: [["ガク", "학"]], zh: [["xué", "학"]] },
+    "生": { ja: [["セイ", "생"], ["ショウ", ""]], zh: [["shēng", "생"]] },
+    "民": { ja: [["ミン", "민"]] },
+    "國": { zh: [["guó", "국"]] }
+  };
+  var sinoReads = 0;
+
+  // The worker's attach: the char's entry rides WHOLE onto every char match
+  // the table knows about, after the lookup itself is done. Alignment and
+  // display order are baked at build time, so nothing here sorts or joins.
+  function attachSinoMatches(resp) {
+    sinoReads++;
+    if (!resp || resp.ok !== true || !Array.isArray(resp.matches)) return resp;
+    resp.matches.forEach(function (m) {
+      if (!m || m.kind !== "char") return;
+      var entry = SINO[m.canonical];
+      if (entry) m.sino = entry;
+    });
+    return resp;
+  }
+
   var HAN = /\p{Script=Han}/u;
   var HANGUL = /[가-힣]/;
   var MAX_WORD = 6;
@@ -1382,6 +1413,9 @@
     // whether the LAST one did. The toggle-off checks watch both stay put.
     __nativeCalls: 0,
     __lastNative: null,
+    // Sibling Sino readings ADDENDUM: the same pair for sino:true.
+    __sinoCalls: 0,
+    __lastSino: null,
     __compoundCalls: 0,  // {type:"compounds"} only
     __lastChar: null,
     __failCompounds: false,  // flip on to exercise the retry path
@@ -1411,6 +1445,8 @@
           if (msg.interpret === true) this.__interpretCalls++;
           this.__lastNative = msg.native === true;
           if (msg.native === true) this.__nativeCalls++;
+          this.__lastSino = msg.sino === true;
+          if (msg.sino === true) this.__sinoCalls++;
           resp = lookup(String(msg.text || ""),
             { interpret: msg.interpret === true, native: msg.native === true });
           // SPEC gate: only flagged requests may touch the native table. An
@@ -1420,6 +1456,12 @@
               resp.ok === true) {
             var nm = nativeMatchesFor(String(msg.text || ""), resp.matches);
             if (nm.length) resp.nativeMatches = nm;
+          }
+          // Same gate for the sino table. The attach lands AFTER the lookup
+          // settles, so interpreted (promise) responses carry their per-char
+          // entries too, exactly like the worker's post-join attach.
+          if (msg.sino === true) {
+            resp = Promise.resolve(resp).then(attachSinoMatches);
           }
         } else if (msg && msg.type === "compounds") {
           this.__compoundCalls++;
@@ -1469,6 +1511,13 @@
     __swapNativeTable: function (table) {
       var prev = NATIVE;
       NATIVE = table || {};
+      return prev;
+    },
+    // The sino twins: read count and the absent-file stand-in.
+    __sinoReads: function () { return sinoReads; },
+    __swapSinoTable: function (table) {
+      var prev = SINO;
+      SINO = table || {};
       return prev;
     },
     __fullCompounds: fullCompounds,
@@ -1878,6 +1927,89 @@
     embed.clear();
     check("clear() drops the native session state with the panel",
       !api.isVisible());
+
+    /* ==================================================================
+     * Sibling Sino readings: the embed option (SPEC ADDENDUM 2026-08-31).
+     *
+     * Driven through searchFor's `sino` option directly: true turns both
+     * languages on, {ja} / {zh} pick one, absent is off — and off must be
+     * byte-identical to before the feature, requests included.
+     * ================================================================== */
+    function snHtml() { return api.query(".view").innerHTML; }
+    function snMarkers() {
+      return api.queryAll(".sino-line .sino-marker")
+        .map(function (m) { return m.textContent; });
+    }
+    function snReadings() {
+      return api.queryAll(".sino-line .sino-reading")
+        .map(function (r) { return r.textContent; });
+    }
+
+    // --- unflagged searchFor is byte-identical to before the feature ------
+    var snReads = fake.__sinoReads();
+    var snFlagged = fake.__sinoCalls;
+    await embed.searchFor("學");
+    await wait(TAIL);
+    var snPlainHtml = snHtml();
+    check("an unflagged search renders today's char card, no readings line",
+      !!api.query(".card") && !api.query(".sino-line"),
+      JSON.stringify(api.panelText().slice(0, 30)));
+    var snTable = fake.__swapSinoTable(null);
+    await embed.searchFor("學");
+    await wait(TAIL);
+    check("...and is byte-identical with the sino table absent",
+      snHtml() === snPlainHtml,
+      "with=" + snPlainHtml.length + " without=" + snHtml().length);
+    fake.__swapSinoTable(snTable);
+    check("no unflagged request carried the flag or read the table",
+      fake.__sinoCalls === snFlagged && fake.__lastSino === false &&
+      fake.__sinoReads() === snReads,
+      "sinoCalls=" + fake.__sinoCalls + " reads=" + fake.__sinoReads());
+
+    // --- sino: true means both languages ----------------------------------
+    await embed.searchFor("學", { sino: true });
+    await wait(TAIL);
+    check("the flagged request renders one line, ja then zh, separated",
+      fake.__lastSino === true && fake.__sinoCalls === snFlagged + 1 &&
+      api.queryAll(".sino-line").length === 1 &&
+      snMarkers().join(",") === "日,中" &&
+      snReadings().join(",") === "ガク,xué" &&
+      api.queryAll(".sino-sep").length === 1,
+      snMarkers().join(",") + " | " + snReadings().join(","));
+    check("the tooltip names the whole correspondence",
+      api.query(".sino-line .sino-reading").title === "학 ↔ ガク ↔ xué",
+      JSON.stringify(api.query(".sino-line .sino-reading").title));
+
+    // --- {ja} / {zh} pick one language each -------------------------------
+    await embed.searchFor("學", { sino: { ja: true } });
+    await wait(TAIL);
+    check("{ja: true} renders the Japanese half alone",
+      snMarkers().join(",") === "日" && snReadings().join(",") === "ガク" &&
+      !api.query(".sino-sep"),
+      snMarkers().join(",") + " | " + snReadings().join(","));
+    await embed.searchFor("學", { sino: { zh: true } });
+    await wait(TAIL);
+    check("{zh: true} renders the Mandarin half alone",
+      snMarkers().join(",") === "中" && snReadings().join(",") === "xué" &&
+      !api.query(".sino-sep"),
+      snMarkers().join(",") + " | " + snReadings().join(","));
+
+    // --- absent option is off, and clear() resets the session -------------
+    await embed.searchFor("學");
+    await wait(TAIL);
+    check("an option-less search after a flagged one is off again",
+      fake.__lastSino === false && !api.query(".sino-line"),
+      "last=" + fake.__lastSino);
+    await embed.searchFor("學", { sino: true });
+    await wait(TAIL);
+    embed.clear();
+    var snCallsClear = fake.__sinoCalls;
+    await embed.searchFor("學");
+    await wait(TAIL);
+    check("clear() resets the sino option: the next plain search is today's",
+      fake.__sinoCalls === snCallsClear && fake.__lastSino === false &&
+      snHtml() === snPlainHtml && !api.query(".sino-line"),
+      "sinoCalls=" + fake.__sinoCalls + " len=" + snHtml().length);
 
     shell = reinit();
 
@@ -3506,10 +3638,12 @@
     }
 
     var settingsOk = await settingsView.render();
-    check("the shipped schema is the SPEC's six entries, in its three groups",
+    check("the shipped schema is the SPEC's eight entries, in its four groups",
       settingsOk === true &&
       settingsView.schema.map(function (e) { return e.group + "/" + e.key + ":" + e.type; })
-        .join(" ") === "Search/nativeWords:toggle Saving/defaultFolderId:folder-select " +
+        .join(" ") === "Search/nativeWords:toggle " +
+        "Character cards/jaReadings:toggle Character cards/zhReadings:toggle " +
+        "Saving/defaultFolderId:folder-select " +
         "Anki export/anki.wordFront:select Anki export/anki.wordBack:checkset " +
         "Anki export/anki.charFront:select Anki export/anki.charBack:checkset",
       settingsView.schema.map(function (e) { return e.key; }).join(","));
@@ -3521,13 +3655,27 @@
       settingsView.schema[0].default === false &&
       byId("okp-set-nativeWords").checked === false,
       JSON.stringify(settingsView.schema[0].label));
+    check("the readings rows carry the SPEC's exact copy, both default off",
+      settingsView.schema[1].label === "Japanese reading" &&
+      settingsView.schema[1].description ===
+        "Shows how the character is read in Japanese (on'yomi)." &&
+      settingsView.schema[1].default === false &&
+      byId("okp-set-jaReadings").checked === false &&
+      settingsView.schema[2].label === "Chinese reading" &&
+      settingsView.schema[2].description ===
+        "Shows how the character is read in Mandarin (pinyin)." &&
+      settingsView.schema[2].default === false &&
+      byId("okp-set-zhReadings").checked === false,
+      JSON.stringify(settingsView.schema[1].label + " / " +
+        settingsView.schema[2].label));
     check("the renderer emits one heading per group, in schema order",
-      settingsGroups().length === 3 &&
+      settingsGroups().length === 4 &&
       settingsGroups()[0].getAttribute("data-group") === "Search" &&
       settingsGroups()[0].querySelector("h2.settings-heading").textContent === "Search" &&
-      settingsGroups()[1].getAttribute("data-group") === "Saving" &&
-      settingsGroups()[2].getAttribute("data-group") === "Anki export" &&
-      settingsGroups()[2].querySelector("h2.settings-heading").textContent ===
+      settingsGroups()[1].getAttribute("data-group") === "Character cards" &&
+      settingsGroups()[2].getAttribute("data-group") === "Saving" &&
+      settingsGroups()[3].getAttribute("data-group") === "Anki export" &&
+      settingsGroups()[3].querySelector("h2.settings-heading").textContent ===
         "Anki export",
       Array.prototype.map.call(settingsGroups(), function (g) {
         return g.getAttribute("data-group");
@@ -3588,9 +3736,10 @@
       "roomy=" + settingsSealView.classList.contains("view--roomy"));
     var sealFrame = document.querySelector(".panel-frame");
     var sealFrameH = sealFrame.style.height;
-    // 880, not 780: the Search group (native words ADDENDUM) made the
-    // settings column a row taller, and the check is about the tall case.
-    sealFrame.style.height = "880px";
+    // 1040, not 880: the Character cards group (sibling Sino readings
+    // ADDENDUM) made the settings column a heading and two rows taller
+    // again, and the check is about the tall case.
+    sealFrame.style.height = "1040px";
     await settingsView.render();
     await wait(250);
     check("a taller panel has room under the settings and the seal shows",
@@ -3660,16 +3809,16 @@
     });
     await settingsView.render();
     check("a new setting is ONE schema entry: new heading, new row, nothing else",
-      settingsGroups().length === 4 &&
-      settingsGroups()[3].getAttribute("data-group") === "Harness" &&
-      settingsGroups()[3].querySelector(".settings-heading").textContent === "Harness" &&
+      settingsGroups().length === 5 &&
+      settingsGroups()[4].getAttribute("data-group") === "Harness" &&
+      settingsGroups()[4].querySelector(".settings-heading").textContent === "Harness" &&
       !!settingsBody.querySelector('.settings-row[data-key="probeSetting"]') &&
       byId("okp-set-probeSetting").value === "a",
       "groups=" + settingsGroups().length + " rows=" + settingsRows().length);
     settingsView.schema.pop();
     await settingsView.render();
     check("removing the entry removes its row and its heading again",
-      settingsGroups().length === 3 && settingsRows().length === 6 &&
+      settingsGroups().length === 4 && settingsRows().length === 8 &&
       !settingsBody.querySelector('.settings-row[data-key="probeSetting"]'),
       "groups=" + settingsGroups().length);
 
@@ -3684,7 +3833,7 @@
     await settingsView.render();
     check("and the controls come straight back, on the values that were written",
       !settingsBody.querySelector(".settings-unavailable") &&
-      settingsRows().length === 6 &&
+      settingsRows().length === 8 &&
       byId("okp-set-anki-wordFront").value === "hangul" &&
       checkedIn("anki.charBack").join(",") === "char,eumhun,lvl",
       checkedIn("anki.charBack").join(","));

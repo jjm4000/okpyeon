@@ -639,6 +639,37 @@
     return out;
   }
 
+  // --- Sibling Sino readings (SPEC ADDENDUM 2026-08-31) ------------------
+  // sino.json in miniature: per char, per language, [reading, eum] pairs in
+  // baked display order, capped at two. Consulted ONLY when a lookup carries
+  // sino:true; the read counter lets checks prove the unflagged path never
+  // touches it, and __swapSinoTable stands in for the file being absent.
+  // 學 carries both languages (the SPEC's own anchor pairing), 生 is
+  // polyphonic in ja with an eum-less TRAILING pair (no tooltip there),
+  // 民 is ja-only and 國 zh-only, so one 국민 lookup nests two half-width
+  // lines, one per language.
+  var SINO = {
+    "學": { ja: [["ガク", "학"]], zh: [["xué", "학"]] },
+    "生": { ja: [["セイ", "생"], ["ショウ", ""]], zh: [["shēng", "생"]] },
+    "民": { ja: [["ミン", "민"]] },
+    "國": { zh: [["guó", "국"]] }
+  };
+  var sinoReads = 0;
+
+  // The worker's attach: the char's entry rides WHOLE onto every char match
+  // the table knows about, after the lookup itself is done. Alignment and
+  // display order are baked at build time, so nothing here sorts or joins.
+  function attachSinoMatches(resp) {
+    sinoReads++;
+    if (!resp || resp.ok !== true || !Array.isArray(resp.matches)) return resp;
+    resp.matches.forEach(function (m) {
+      if (!m || m.kind !== "char") return;
+      var entry = SINO[m.canonical];
+      if (entry) m.sino = entry;
+    });
+    return resp;
+  }
+
   var HAN = /\p{Script=Han}/u;
   var HANGUL = /[가-힣]/;
   var MAX_WORD = 6;
@@ -1379,6 +1410,9 @@
     // whether the LAST one did. The toggle-off checks watch both stay put.
     __nativeCalls: 0,
     __lastNative: null,
+    // Sibling Sino readings ADDENDUM: the same pair for sino:true.
+    __sinoCalls: 0,
+    __lastSino: null,
     __compoundCalls: 0,  // {type:"compounds"} only
     __lastChar: null,
     __failCompounds: false,  // flip on to exercise the retry path
@@ -1408,6 +1442,8 @@
           if (msg.interpret === true) this.__interpretCalls++;
           this.__lastNative = msg.native === true;
           if (msg.native === true) this.__nativeCalls++;
+          this.__lastSino = msg.sino === true;
+          if (msg.sino === true) this.__sinoCalls++;
           resp = lookup(String(msg.text || ""),
             { interpret: msg.interpret === true, native: msg.native === true });
           // SPEC gate: only flagged requests may touch the native table. An
@@ -1417,6 +1453,12 @@
               resp.ok === true) {
             var nm = nativeMatchesFor(String(msg.text || ""), resp.matches);
             if (nm.length) resp.nativeMatches = nm;
+          }
+          // Same gate for the sino table. The attach lands AFTER the lookup
+          // settles, so interpreted (promise) responses carry their per-char
+          // entries too, exactly like the worker's post-join attach.
+          if (msg.sino === true) {
+            resp = Promise.resolve(resp).then(attachSinoMatches);
           }
         } else if (msg && msg.type === "compounds") {
           this.__compoundCalls++;
@@ -1466,6 +1508,13 @@
     __swapNativeTable: function (table) {
       var prev = NATIVE;
       NATIVE = table || {};
+      return prev;
+    },
+    // The sino twins: read count and the absent-file stand-in.
+    __sinoReads: function () { return sinoReads; },
+    __swapSinoTable: function (table) {
+      var prev = SINO;
+      SINO = table || {};
       return prev;
     },
     __fullCompounds: fullCompounds,
@@ -5028,6 +5077,186 @@
 
     api.setSettings(null);
     api.hide();
+
+    /* ==================================================================
+     * Sibling Sino readings: the popup path (SPEC ADDENDUM 2026-08-31).
+     *
+     * The two toggles reach the renderer through setSettings; flagged
+     * responses come from the fake worker's sino attach, and the table can
+     * be swapped out to stand in for sino.json being absent.
+     * ================================================================== */
+    function sendSino(text) {
+      return fake.sendMessage({ type: "lookup", text: text, sino: true });
+    }
+    function sinoMarkers() {
+      return api.queryAll(".sino-line .sino-marker")
+        .map(function (m) { return m.textContent; });
+    }
+    function sinoReadings() {
+      return api.queryAll(".sino-line .sino-reading")
+        .map(function (r) { return r.textContent; });
+    }
+    function sinoTitles() {
+      return api.queryAll(".sino-line .sino-reading")
+        .map(function (r) { return r.title || ""; });
+    }
+
+    api.resetPanelSize();
+
+    // --- both toggles off: byte-identical, and the table is never read ----
+    var snReadsOff = fake.__sinoReads();
+    var snCallsOff = fake.__sinoCalls;
+    api.showAt(anchor, fake.__lookup("學").matches);
+    await wait(60);
+    var snOffHtml = viewHtml();
+    check("toggles off render today's char card, no readings line anywhere",
+      !!api.query(".card") && !api.query(".sino-line") &&
+      !api.query(".sino-marker") && !api.query(".sino-reading"),
+      JSON.stringify(api.panelText().slice(0, 30)));
+    var snTable = fake.__swapSinoTable(null);
+    api.showAt(anchor, fake.__lookup("學").matches);
+    await wait(60);
+    check("toggles off render byte-identically with the sino table absent",
+      viewHtml() === snOffHtml,
+      "with=" + snOffHtml.length + " without=" + viewHtml().length);
+    fake.__swapSinoTable(snTable);
+    api.setSettings({ jaReadings: false, zhReadings: false });
+    api.showAt(anchor, fake.__lookup("學").matches);
+    await wait(60);
+    check("explicit jaReadings/zhReadings false render the very same bytes",
+      viewHtml() === snOffHtml, "len=" + viewHtml().length);
+
+    // A drill-down goes through sendLookup: the request must stay unflagged.
+    api.setSettings(null);
+    api.showAt(anchor, fake.__lookup("자본주의").matches, "자본주의");
+    api.query(".part-row").click();
+    await wait(90);
+    check("toggles off: no request carries a sino flag",
+      fake.__sinoCalls === snCallsOff && fake.__lastSino === false,
+      "sinoCalls=" + fake.__sinoCalls + " last=" + fake.__lastSino);
+    check("toggles off: the sino table was never read",
+      fake.__sinoReads() === snReadsOff, "reads=" + fake.__sinoReads());
+
+    // Even a response CARRYING sino entries renders the same bytes off.
+    var snHakOn = await sendSino("學");
+    check("sanity: the harness's flagged lookup did read the table",
+      fake.__sinoReads() === snReadsOff + 1 &&
+      !!snHakOn.matches[0].sino &&
+      snHakOn.matches[0].sino.ja[0][0] === "ガク" &&
+      snHakOn.matches[0].sino.zh[0][0] === "xué",
+      JSON.stringify(snHakOn.matches[0].sino));
+    api.showAt(anchor, snHakOn.matches);
+    await wait(60);
+    check("toggles off ignore sino entries on the wire, byte for byte",
+      viewHtml() === snOffHtml, "len=" + viewHtml().length);
+
+    // --- ja only: half-width line, marker, composed tooltip ---------------
+    api.setSettings({ jaReadings: true });
+    api.showAt(anchor, snHakOn.matches);
+    await wait(60);
+    check("ja alone renders one half-width line: marker 日 then the reading",
+      api.queryAll(".sino-line").length === 1 &&
+      sinoMarkers().join(",") === "日" && sinoReadings().join(",") === "ガク" &&
+      !api.query(".sino-sep"),
+      sinoMarkers().join(",") + " | " + sinoReadings().join(","));
+    check("the line sits under the card head, before the glosses",
+      inDocOrder(api.query(".card .head"), api.query(".sino-line")) &&
+      inDocOrder(api.query(".sino-line"), api.query(".glosses")));
+    check("the tooltip names the whole correspondence, toggles notwithstanding",
+      sinoTitles().join("|") === "학 ↔ ガク ↔ xué",
+      JSON.stringify(sinoTitles()));
+    // A drill-down with a toggle on must carry the flag on the wire.
+    var snCallsOn = fake.__sinoCalls;
+    api.query(".compound-row").click();
+    await wait(90);
+    check("a request with a toggle on carries sino:true",
+      fake.__lastSino === true && fake.__sinoCalls === snCallsOn + 1,
+      "sinoCalls=" + fake.__sinoCalls + " last=" + fake.__lastSino);
+
+    // --- zh only: the other half, same composed tooltip -------------------
+    api.setSettings({ zhReadings: true });
+    api.showAt(anchor, snHakOn.matches);
+    await wait(60);
+    check("zh alone renders marker 中 and the pinyin, no separator",
+      sinoMarkers().join(",") === "中" && sinoReadings().join(",") === "xué" &&
+      !api.query(".sino-sep") &&
+      sinoTitles().join("|") === "학 ↔ ガク ↔ xué",
+      sinoMarkers().join(",") + " | " + sinoReadings().join(","));
+
+    // --- both on: fixed order ja then zh, one separator -------------------
+    api.setSettings({ jaReadings: true, zhReadings: true });
+    api.showAt(anchor, snHakOn.matches);
+    await wait(60);
+    check("both on render ja then zh in one line, separated",
+      api.queryAll(".sino-line").length === 1 &&
+      sinoMarkers().join(",") === "日,中" &&
+      sinoReadings().join(",") === "ガク,xué" &&
+      api.queryAll(".sino-sep").length === 1,
+      sinoMarkers().join(",") + " | " + sinoReadings().join(","));
+    check("markers are a shade fainter than the readings they introduce",
+      getComputedStyle(api.query(".sino-marker")).color !==
+        getComputedStyle(api.query(".sino-reading")).color,
+      getComputedStyle(api.query(".sino-marker")).color + " vs " +
+        getComputedStyle(api.query(".sino-reading")).color);
+
+    // --- polyphony: baked pair order, tooltips exactly on eum-tagged ------
+    var snSaeng = await sendSino("生");
+    api.showAt(anchor, snSaeng.matches);
+    await wait(60);
+    check("polyphonic readings keep the fixture's pair order, dotted",
+      sinoReadings().join(",") === "セイ,ショウ,shēng" &&
+      api.queryAll(".sino-line .sino-dot").length === 1,
+      sinoReadings().join(","));
+    check("tooltips sit exactly on the eum-tagged readings",
+      sinoTitles().join("|") === "생 ↔ セイ ↔ shēng||생 ↔ セイ ↔ shēng",
+      JSON.stringify(sinoTitles()));
+
+    // --- nested component cards carry the smaller line --------------------
+    api.showAt(anchor, snHakOn.matches);
+    var snTopSize = parseFloat(getComputedStyle(api.query(".sino-line")).fontSize);
+    var snKukmin = await sendSino("국민");
+    api.showAt(anchor, snKukmin.matches);
+    await wait(60);
+    var snNested = api.queryAll(".component-list > .card.component .sino-line");
+    check("both nested component cards carry their line, one language each",
+      snNested.length === 2 &&
+      snNested[0].querySelector(".sino-marker").textContent === "中" &&
+      snNested[0].querySelector(".sino-reading").textContent === "guó" &&
+      snNested[1].querySelector(".sino-marker").textContent === "日" &&
+      snNested[1].querySelector(".sino-reading").textContent === "ミン" &&
+      !snNested[0].querySelector(".sino-sep") &&
+      !snNested[1].querySelector(".sino-sep"),
+      snNested.map(function (l) { return l.textContent; }).join(" | "));
+    check("a one-language entry composes a two-part tooltip",
+      snNested[1].querySelector(".sino-reading").title === "민 ↔ ミン" &&
+      snNested[0].querySelector(".sino-reading").title === "국 ↔ guó",
+      JSON.stringify(snNested.map(function (l) {
+        return l.querySelector(".sino-reading").title;
+      })));
+    check("the nested line is a step smaller",
+      parseFloat(getComputedStyle(snNested[0]).fontSize) < snTopSize,
+      snTopSize + " → " + parseFloat(getComputedStyle(snNested[0]).fontSize));
+    check("the word card itself never carries a readings line",
+      !api.query(".word-body .sino-line"),
+      "lines=" + api.queryAll(".sino-line").length);
+
+    api.setSettings(null);
+    api.hide();
+
+    /* --- MODULARITY: one definition, one call site (SPEC) ---------------- */
+    if (location.protocol === "file:") {
+      skip("appendSinoLine is defined once and called once",
+        "file:// blocks fetching the content script; serve the repo over http://");
+    } else {
+      var sinoSrc = await (await fetch("../extension/content/content.js")).text();
+      var sinoDefs = sinoSrc.match(/function appendSinoLine\s*\(/g) || [];
+      var sinoMentions = sinoSrc.match(/appendSinoLine\s*\(/g) || [];
+      check("appendSinoLine is defined once and called once",
+        sinoDefs.length === 1 && sinoMentions.length === 2,
+        "definitions=" + sinoDefs.length + " mentions=" + sinoMentions.length);
+      check("its call site sits between the variant note and the glosses",
+        /appendVariantNote\(meta, m\);\s*appendSinoLine\(card, m\);\s*appendGlosses\(card, m\.glosses\);/.test(sinoSrc));
+    }
 
     /* --- MODULARITY: one definition, one call site (SPEC) ---------------- */
     if (location.protocol === "file:") {

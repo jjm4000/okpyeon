@@ -73,18 +73,20 @@ import {
 /* The decomposition join is the worker's, not a copy of it: background.js
    guards every chrome.* touch, so importing it here runs the real
    attachDecomp / attachFoundIn / buildFoundIn against the real decomp.json. */
-import { guardDecomp, attachDecomp, attachFoundIn, buildFoundIn, buildFoundInIndex }
+import { guardDecomp, attachDecomp, attachFoundIn, buildFoundIn, buildFoundInIndex,
+  guardSino, attachSino }
   from "/extension/background.js";
 
 const params = new URLSearchParams(location.search);
 const view = params.get("view") || "search";
 
-const [hanja, words, variants, decompRaw, native] = await Promise.all(
-  ["hanja", "words", "variants", "decomp", "native"].map((n) =>
+const [hanja, words, variants, decompRaw, native, sinoRaw] = await Promise.all(
+  ["hanja", "words", "variants", "decomp", "native", "sino"].map((n) =>
     fetch("/extension/data/" + n + ".json").then((r) => r.json())));
 
 let readingIndex = null;
 const decomp = guardDecomp(decompRaw);
+const sino = guardSino(sinoRaw);
 let foundInIndex = null;
 const getFoundInIndex = () => (foundInIndex ||= buildFoundInIndex(decomp.parts));
 const data = {
@@ -122,13 +124,19 @@ let settings = normalizeSettings({ v: 1, defaultFolderId: "f1" }, savedState);
 function handle(msg) {
   const m = msg || {};
   switch (m.type) {
-    case "lookup":
+    case "lookup": {
       // The flags ride through exactly as the worker passes them: interpret
-      // for typed channels, native only when the client's toggle is on.
-      return attachFoundIn(
+      // for typed channels, native only when the client's toggle is on, and
+      // sino attaches its per-char readings after the join, worker-style.
+      // The stub's default settings leave both readings toggles off, so no
+      // request here ever carries the flag and the page renders exactly as
+      // it did before the feature.
+      const joined = attachFoundIn(
         attachDecomp(lookup(String(m.text || ""), data,
           { interpret: m.interpret === true, native: m.native === true }),
           data), getFoundInIndex);
+      return m.sino === true ? attachSino(joined, sino) : joined;
+    }
     case "foundIn":
       return { ok: true, chars: buildFoundIn(String(m.char || ""), getFoundInIndex(), hanja) };
     case "compounds": return { ok: true, compounds: buildFullCompounds(m.char, data) };
