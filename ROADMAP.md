@@ -234,6 +234,21 @@ one schema entry plus its feature code:
   lighter. The round-trip completeness test (every word reachable
   from each of its forms) is the safety story the maps used to
   provide by construction.
+- Word-level sibling pronunciations (음악 -> おんがく / yīnyuè), a
+  designed follow-up to the char-level sino line, with the analysis
+  recorded 2026-08-31 so design starts from what the sino build
+  taught: the two languages are asymmetric in opposite directions.
+  Mandarin is nearly free and mostly correct BECAUSE of the eum
+  alignment: naive per-char pinyin fails on polyphones (音樂 needs
+  yuè, not lè), but the word's hangul names each char's eum (음악 =
+  음+악) and sino.json's eum-aligned pairs select the right pinyin
+  per position; unmodeled tone sandhi is a nicety, not an error.
+  Japanese is the hard side: real readings involve rendaku and sokuon
+  (がっこう), so synthesis from on'yomi is wrong too often to ship;
+  attested kana exist for the ~11k shared-spelling words the bridge
+  corpus already parses, which is partial coverage with no honest
+  synthesis fallback. Ship shape when designed: zh broadly via
+  alignment, ja attested-only.
 - Selection support inside `<textarea>`/`<input>`; `all_frames` for iframes
 - 대법원 인명용 badge ("usable in given names", ~8,000 chars from the Supreme
   Court rules annex; Korean law excludes statutes/rules from copyright, so
