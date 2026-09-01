@@ -61,6 +61,14 @@ const NATIVE_DATA_FILE = "data/native.json";
 const SINO_DATA_FILE = "data/sino.json";
 
 /**
+ * Korean language mode ADDENDUM: ko.json follows the same lazy pattern. It
+ * is fetched on the first ko-flagged request only (the client sets the flag
+ * exactly when the language setting is 한국어; the worker stays stateless
+ * about the setting), so English-mode traffic never pays for it.
+ */
+const KO_DATA_FILE = "data/ko.json";
+
+/**
  * Shape guard for native.json: a bundle without the file must leave flagged
  * lookups working, with the native table simply empty. `maxLen` passes
  * through only as an integer; lookup.js falls back otherwise. Romanized
@@ -88,6 +96,19 @@ export function guardSino(raw) {
   const s = raw !== null && typeof raw === "object" ? raw : {};
   const chars = s.chars !== null && typeof s.chars === "object" ? s.chars : {};
   return { ...s, version: 1, chars };
+}
+
+/**
+ * Korean language mode ADDENDUM: shape guard for ko.json, in the guardSino
+ * idiom: the raw record is SPREAD through, never rebuilt, so every schema
+ * field survives the one path only the real worker exercises. The three
+ * tables are defended individually: a bundle without the file, or with junk
+ * in any table, leaves flagged lookups working with that table empty.
+ */
+export function guardKo(raw) {
+  const k = raw !== null && typeof raw === "object" ? raw : {};
+  const table = (t) => (t !== null && typeof t === "object" && !Array.isArray(t) ? t : {});
+  return { ...k, version: 1, words: table(k.words), natives: table(k.natives), chars: table(k.chars) };
 }
 
 const hasOwn = (obj, key) =>
@@ -213,6 +234,87 @@ export function attachSino(result, sino) {
     const entry = table[char];
     if (!entry || typeof entry !== "object") continue;
     match.sino = entry;
+  }
+  return result;
+}
+
+/**
+ * Korean language mode ADDENDUM: the ko.json entry ({d, s}) for one key of
+ * one table, or null. The entry rides WHOLE, attachSino's rule: the renderer
+ * reads `d` and composes the source link from `s`, and nothing here reshapes
+ * either.
+ */
+function koEntry(table, key) {
+  if (typeof key !== "string" || key === "" || !hasOwn(table, key)) return null;
+  const entry = table[key];
+  return entry !== null && typeof entry === "object" ? entry : null;
+}
+
+/**
+ * Korean language mode ADDENDUM: hang `ko` on every ROW the worker already
+ * joined an English gloss for, so the renderer never needs data access.
+ * `kind` names the table the rows key into: "word" rows carry a `hanja`
+ * spelling (compound, used-in, and component-word rows), "char" rows carry
+ * a `char` (reading-list and part-of rows) or, for joined decomposition
+ * parts, a target `t`. Rows the table lacks get NO field, not an empty one.
+ */
+export function attachKoRows(rows, ko, kind) {
+  if (!Array.isArray(rows)) return rows;
+  const guarded = guardKo(ko);
+  const table = kind === "char" ? guarded.chars : guarded.words;
+  for (const row of rows) {
+    if (!row || typeof row !== "object") continue;
+    const key = kind === "char"
+      ? (typeof row.char === "string" ? row.char : row.t)
+      : row.hanja;
+    const entry = koEntry(table, key);
+    if (entry !== null) row.ko = entry;
+  }
+  return rows;
+}
+
+/**
+ * Korean language mode ADDENDUM: hang the ko.json entry on the SAME match
+ * objects, in the attachSino idiom. Word matches key into `words` by their
+ * canonical spelling, char matches into `chars` by the canonical glyph (the
+ * same key a nested component card renders from), reading candidates into
+ * `chars`, and native matches into `natives` by "hangul|pos". The rows a
+ * match carries (inline compounds, component-word parts, joined
+ * decomposition parts) go through attachKoRows, so every gloss-bearing row
+ * in a response has its Korean sense beside it.
+ */
+export function attachKo(result, ko) {
+  if (!result || result.ok !== true) return result;
+  const guarded = guardKo(ko);
+  for (const match of Array.isArray(result.matches) ? result.matches : []) {
+    if (!match || typeof match !== "object") continue;
+    if (match.kind === "word") {
+      const entry = koEntry(guarded.words, match.canonical);
+      if (entry !== null) match.ko = entry;
+      attachKoRows(match.parts, guarded, "word");
+    } else if (match.kind === "char") {
+      const entry = koEntry(guarded.chars, match.canonical);
+      if (entry !== null) match.ko = entry;
+      // The inline compound rows are hanja.json's OWN row objects, shared by
+      // every lookup of the char, so they are copied on attach: the loaded
+      // table is never written to, and an unflagged response can never
+      // inherit a Korean entry from an earlier flagged one.
+      if (Array.isArray(match.compounds)) {
+        match.compounds = match.compounds.map((row) => {
+          const rowEntry = row && typeof row === "object" ? koEntry(guarded.words, row.hanja) : null;
+          return rowEntry !== null ? { ...row, ko: rowEntry } : row;
+        });
+      }
+      attachKoRows(match.parts, guarded, "char");
+    } else if (match.kind === "reading") {
+      attachKoRows(match.candidates, guarded, "char");
+    }
+  }
+  for (const match of Array.isArray(result.nativeMatches) ? result.nativeMatches : []) {
+    if (!match || typeof match !== "object" || match.kind !== "native") continue;
+    if (typeof match.word !== "string" || typeof match.pos !== "string") continue;
+    const entry = koEntry(guarded.natives, `${match.word}|${match.pos}`);
+    if (entry !== null) match.ko = entry;
   }
   return result;
 }
@@ -412,6 +514,30 @@ function getSino() {
 }
 
 /**
+ * Korean language mode ADDENDUM: ko.json's own lazy cache, the sino.json
+ * arrangement: only a ko-flagged request triggers the fetch, a failure
+ * clears the cache for a later retry, and the caller degrades to an empty
+ * table for this one.
+ * @type {Promise<object>|null}
+ */
+let koPromise = null;
+
+function getKo() {
+  if (koPromise === null) {
+    koPromise = fetchJson(KO_DATA_FILE).then(guardKo);
+    koPromise.catch(() => {
+      koPromise = null;
+    });
+  }
+  return koPromise;
+}
+
+/** The ko table for a flagged request; a missing or malformed file reads as empty. */
+function koForRequest() {
+  return getKo().catch(() => guardKo(null));
+}
+
+/**
  * Handle a {type:"lookup", text, interpret, native} message.
  *
  * Romanized search ADDENDUM (input-channel rule): `interpret` is set only by
@@ -429,9 +555,14 @@ function getSino() {
  * table is attached onto char matches after the lookup, never consulted
  * during it), so only a flagged request loads sino.json and only a flagged
  * response can carry per-char `sino` entries.
+ *
+ * Korean language mode ADDENDUM: `ko` is the client-set flag for the
+ * language setting (set exactly when it is 한국어). Like `sino` it has no
+ * lookup semantics: ko.json is attached after the join, so only a flagged
+ * request loads it and only a flagged response carries `ko` entries.
  * @returns {Promise<{ok:true, matches:object[]}|{ok:false, error:string}>}
  */
-export async function handleLookup(text, interpret, native, sino) {
+export async function handleLookup(text, interpret, native, sino, ko) {
   try {
     const data = await getData();
     const flagged = native === true;
@@ -449,11 +580,15 @@ export async function handleLookup(text, interpret, native, sino) {
       interpret: interpret === true,
       native: flagged,
     });
-    const joined = attachFoundIn(attachDecomp(result, data), () => getFoundInIndex(data));
-    if (sino !== true) return joined;
-    // A missing or malformed sino.json degrades to an empty table: the
-    // lookup still answers, the cards simply carry no readings line.
-    return attachSino(joined, await getSino().catch(() => guardSino(null)));
+    let joined = attachFoundIn(attachDecomp(result, data), () => getFoundInIndex(data));
+    if (sino === true) {
+      // A missing or malformed sino.json degrades to an empty table: the
+      // lookup still answers, the cards simply carry no readings line.
+      joined = attachSino(joined, await getSino().catch(() => guardSino(null)));
+    }
+    if (ko !== true) return joined;
+    // The same degradation for ko.json: the cards fall back to English.
+    return attachKo(joined, await koForRequest());
   } catch (err) {
     return { ok: false, error: toErrorMessage(err) };
   }
@@ -462,12 +597,18 @@ export async function handleLookup(text, interpret, native, sino) {
 /**
  * Handle a {type:"compounds", char} message (cw ADDENDUM): the char's complete
  * compound index joined against words.json, in ranked order.
+ *
+ * Korean language mode ADDENDUM: the row messages carry the same client-set
+ * `ko` flag as lookups, and a flagged response's rows carry their Korean
+ * entry beside the English gloss; unflagged responses are unchanged.
  * @returns {Promise<{ok:true, compounds:object[]}|{ok:false, error:string}>}
  */
-export async function handleCompounds(char) {
+export async function handleCompounds(char, ko) {
   try {
     const data = await getData();
-    return { ok: true, compounds: buildFullCompounds(char, data) };
+    const rows = buildFullCompounds(char, data);
+    if (ko === true) attachKoRows(rows, await koForRequest(), "word");
+    return { ok: true, compounds: rows };
   } catch (err) {
     return { ok: false, error: toErrorMessage(err) };
   }
@@ -478,10 +619,12 @@ export async function handleCompounds(char) {
  * word containing this one, ranked, joined against words.json.
  * @returns {Promise<{ok:true, words:object[]}|{ok:false, error:string}>}
  */
-export async function handleUsedIn(word) {
+export async function handleUsedIn(word, ko) {
   try {
     const data = await getData();
-    return { ok: true, words: buildUsedIn(word, data) };
+    const rows = buildUsedIn(word, data);
+    if (ko === true) attachKoRows(rows, await koForRequest(), "word");
+    return { ok: true, words: rows };
   } catch (err) {
     return { ok: false, error: toErrorMessage(err) };
   }
@@ -493,14 +636,16 @@ export async function handleUsedIn(word) {
  * incoming char is NFC-normalized and variant-mapped like any lookup input.
  * @returns {Promise<{ok:true, chars:object[]}|{ok:false, error:string}>}
  */
-export async function handleFoundIn(char) {
+export async function handleFoundIn(char, ko) {
   try {
     const data = await getData();
     if (typeof char !== "string" || char === "") return { ok: true, chars: [] };
     const variantMap = data.variants?.map ?? {};
     const normalized = char.normalize("NFC");
     const canonical = hasOwn(variantMap, normalized) ? variantMap[normalized] : normalized;
-    return { ok: true, chars: buildFoundIn(canonical, getFoundInIndex(data), data.hanja) };
+    const rows = buildFoundIn(canonical, getFoundInIndex(data), data.hanja);
+    if (ko === true) attachKoRows(rows, await koForRequest(), "char");
+    return { ok: true, chars: rows };
   } catch (err) {
     return { ok: false, error: toErrorMessage(err) };
   }
@@ -514,21 +659,30 @@ export async function handleFoundIn(char) {
  */
 export const WIKI_URL_PREFIX = "https://en.wiktionary.org/wiki/";
 
-/** True only for a Wiktionary article URL. Pure; exported for the tests. */
+/**
+ * Korean language mode ADDENDUM: the second allowed prefix. A word or native
+ * card showing a Korean definition links the Urimalsaem sense it came from,
+ * composed at render time from the entry's `s` and this fixed pattern, and
+ * opens it through the same background-tab path as the Wiktionary link.
+ */
+export const URIMALSAEM_URL_PREFIX = "https://opendict.korean.go.kr/dictionary/view?sense_no=";
+
+/** True only for a Wiktionary article or an Urimalsaem sense URL. Pure; exported for the tests. */
 export function isAllowedTabUrl(url) {
-  return typeof url === "string" && url.startsWith(WIKI_URL_PREFIX);
+  return typeof url === "string" &&
+    (url.startsWith(WIKI_URL_PREFIX) || url.startsWith(URIMALSAEM_URL_PREFIX));
 }
 
 /**
- * Handle a {type:"openTab", url} message: open a Wiktionary article in a
+ * Handle a {type:"openTab", url} message: open a dictionary page in a
  * BACKGROUND tab (the in-page popup cannot call chrome.tabs itself). Rejects
- * anything that is not a Wiktionary article, and any environment without
- * chrome.tabs, with {ok:false}.
+ * anything that is not a Wiktionary article or an Urimalsaem sense, and any
+ * environment without chrome.tabs, with {ok:false}.
  * @returns {Promise<{ok:boolean, error?:string}>}
  */
 export async function handleOpenTab(url) {
   if (!isAllowedTabUrl(url)) {
-    return { ok: false, error: "refused: not a Wiktionary URL" };
+    return { ok: false, error: "refused: not a Wiktionary or Urimalsaem URL" };
   }
   if (typeof chrome === "undefined" || !chrome.tabs || !chrome.tabs.create) {
     return { ok: false, error: "tabs unavailable" };
@@ -758,11 +912,15 @@ function exportFilename(format, date = new Date()) {
  * the live data cache (identity-only storage, joined at read time).
  * @returns {Promise<{ok:true, folders:object[], items:object[]}|{ok:false, error:string}>}
  */
-export async function handleSavedGet() {
+export async function handleSavedGet(ko) {
   return withStorage(async (area) => {
     const state = await readSaved(area);
     const data = await getData();
-    return { ok: true, folders: state.folders, items: joinItems(state.items, data) };
+    // Korean language mode ADDENDUM: the same client-set flag as lookups.
+    // A flagged request's rows carry their Korean entry, so the saved view
+    // can show the first sense; unflagged rows are unchanged.
+    const joinData = ko === true ? { ...data, ko: await koForRequest() } : data;
+    return { ok: true, folders: state.folders, items: joinItems(state.items, joinData) };
   });
 }
 
@@ -983,6 +1141,23 @@ export function exportWantsSino(settings) {
 }
 
 /**
+ * Korean language mode ADDENDUM: whether an export needs ko.json at all.
+ * True exactly when the language is 한국어 AND a definitions field is in
+ * play: every CSV (its definitions column is always written), or an Anki
+ * file whose fronts or backs carry `defs`. Anything else, English mode
+ * above all, never fetches it. Pure; exported for the tests.
+ */
+export function exportWantsKo(settings, format) {
+  if (!settings || settings.language !== "ko") return false;
+  if (format === "csv") return true;
+  const anki = settings.anki !== null && typeof settings.anki === "object" ? settings.anki : {};
+  const fields = [anki.wordFront, anki.charFront]
+    .concat(Array.isArray(anki.wordBack) ? anki.wordBack : [])
+    .concat(Array.isArray(anki.charBack) ? anki.charBack : []);
+  return fields.includes("defs");
+}
+
+/**
  * {type:"savedExport", ids? | folderIds? | all?, format} → the export file.
  * `format` is "anki" (default) or "csv"; `tsv` carries the body either way,
  * and the filename extension follows the format. Rows whose dictionary entry
@@ -1000,12 +1175,19 @@ export async function handleSavedExport(selection, format) {
     // field asks for a reading language. An export with neither checked never
     // fetches it, whatever the format; a missing or malformed file degrades
     // to an empty table and empty fields, like the lookup path.
-    const joinData = exportWantsSino(settings)
+    const csv = format === "csv";
+    let joinData = exportWantsSino(settings)
       ? { ...data, sino: await getSino().catch(() => guardSino(null)) }
       : data;
+    // Korean fetch gate (Korean language mode ADDENDUM): ko.json rides into
+    // the join only under 한국어 with a definitions field in play, so the
+    // definition fields emit what the cards show. Rows the table lacks keep
+    // their English definitions, like the cards' fallback.
+    if (exportWantsKo(settings, csv ? "csv" : "anki")) {
+      joinData = { ...joinData, ko: await koForRequest() };
+    }
     const rows = joinItems(resolveExportSelection(state, selection), joinData);
     const skipped = rows.filter((row) => row.missing === true).length;
-    const csv = format === "csv";
     const body = csv
       ? buildCsv(rows, state.folders)
       : buildAnkiTsv(rows, settings, state.folders);
@@ -1027,13 +1209,14 @@ export async function handleSavedExport(selection, format) {
  */
 export const MESSAGE_HANDLERS = {
   lookup: (m) =>
-    handleLookup(m.text, m.interpret === true, m.native === true, m.sino === true),
-  compounds: (m) => handleCompounds(m.char),
-  usedIn: (m) => handleUsedIn(m.word),
-  foundIn: (m) => handleFoundIn(m.char),
+    handleLookup(m.text, m.interpret === true, m.native === true, m.sino === true,
+      m.ko === true),
+  compounds: (m) => handleCompounds(m.char, m.ko === true),
+  usedIn: (m) => handleUsedIn(m.word, m.ko === true),
+  foundIn: (m) => handleFoundIn(m.char, m.ko === true),
   openTab: (m) => handleOpenTab(m.url),
   getPendingQuery: () => handleGetPendingQuery(),
-  savedGet: () => handleSavedGet(),
+  savedGet: (m) => handleSavedGet(m.ko === true),
   savedToggle: (m) => handleSavedToggle(m.kind, m.key),
   savedCheck: (m) => handleSavedCheck(m.keys),
   savedRemove: (m) => handleSavedRemove(m.ids),

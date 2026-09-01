@@ -24,8 +24,10 @@
  *     messages,       // optional: partial override of the default strings
  *     autofocus,      // optional: focus the input, caret at the end
  *     initialQuery    // optional: ?q= deep link — searched immediately
+ *     koEnabled,      // optional: the language is 한국어; lookups carry ko:true
  *   }) -> controller { search, searchSoon, state, query, scope,
- *                      syncScope, setNativeEnabled, destroy }
+ *                      syncScope, setNativeEnabled, setSinoEnabled,
+ *                      setKoEnabled, destroy }
  *
  * Loaded as a CLASSIC script, after boot.js and content.js: it needs
  * globalThis.__okpyeonEmbedApi, which content.js only exposes when the boot
@@ -216,6 +218,18 @@
       if (lastQuery) search(lastQuery);
     }
 
+    // Korean definitions (Korean language mode ADDENDUM): the shell ferries
+    // the language as one flag, set exactly when it is 한국어; the embed
+    // renders. Same live rule as the toggles above: a change re-runs the
+    // current query, so the definitions on screen follow the language.
+    var koEnabled = opts.koEnabled === true;
+    function setKoEnabled(next) {
+      var on = next === true;
+      if (on === koEnabled) return;
+      koEnabled = on;
+      if (lastQuery) search(lastQuery);
+    }
+
     api.mount(results, { onScopeChange: syncScope });
     renderPills();
 
@@ -268,6 +282,7 @@
       if (sinoEnabled.ja || sinoEnabled.zh) {
         searchOpts.sino = { ja: sinoEnabled.ja, zh: sinoEnabled.zh };
       }
+      if (koEnabled) searchOpts.ko = true;
       return api.searchFor(query, searchOpts).then(function (res) {
         // A newer search already owns the panel; its own .then will set state.
         if (destroyed || (res && res.stale)) return res;
@@ -357,6 +372,7 @@
       syncScope: syncScope,
       setNativeEnabled: setNativeEnabled,
       setSinoEnabled: setSinoEnabled,
+      setKoEnabled: setKoEnabled,
       destroy: function () {
         if (destroyed) return;
         destroyed = true;

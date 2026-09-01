@@ -20,6 +20,10 @@
     collapse=NAME,NAME           collapse these saved folders by name (or prefix)
     expand=madeof                open the card's "Made of" row, as a tap does
     set=KEY,KEY                  settings keys to turn on (e.g. set=nativeWords)
+    lang=ko                      the Korean UI: the ko message table is installed
+                                 in the loader, the language setting is 한국어, and
+                                 flagged lookups carry Korean definitions (ko.json
+                                 is fetched only then)
 
   Signals completion by setting documentElement.dataset.shotReady.
 -->
@@ -75,19 +79,31 @@ import {
    guards every chrome.* touch, so importing it here runs the real
    attachDecomp / attachFoundIn / buildFoundIn against the real decomp.json. */
 import { guardDecomp, attachDecomp, attachFoundIn, buildFoundIn, buildFoundInIndex,
-  guardSino, attachSino }
+  guardSino, attachSino, guardKo, attachKo, attachKoRows }
   from "/extension/background.js";
 
 const params = new URLSearchParams(location.search);
 const view = params.get("view") || "search";
+// ?lang=ko renders the Korean UI (Korean language mode ADDENDUM). Absent, the
+// page is English and never touches ko.json or the ko message table.
+const lang = params.get("lang") === "ko" ? "ko" : "en";
 
 const [hanja, words, variants, decompRaw, native, sinoRaw] = await Promise.all(
   ["hanja", "words", "variants", "decomp", "native", "sino"].map((n) =>
     fetch("/extension/data/" + n + ".json").then((r) => r.json())));
+// Worker-style: ko.json is loaded only for the Korean UI, whose requests
+// carry the flag; the message table rides in beside it.
+const [koRaw, koMessages] = lang === "ko"
+  ? await Promise.all([
+      fetch("/extension/data/ko.json").then((r) => r.json()),
+      fetch("/extension/_locales/ko/messages.json").then((r) => r.json()),
+    ])
+  : [null, null];
 
 let readingIndex = null;
 const decomp = guardDecomp(decompRaw);
 const sino = guardSino(sinoRaw);
+const ko = guardKo(koRaw);
 let foundInIndex = null;
 const getFoundInIndex = () => (foundInIndex ||= buildFoundInIndex(decomp.parts));
 const data = {
@@ -125,7 +141,10 @@ let savedState = normalizeSavedState({
 // capture. Absent, the record is byte-identical to what it always was.
 const seeded = {};
 for (const key of (params.get("set") || "").split(",")) if (key) seeded[key] = true;
-let settings = normalizeSettings({ v: 1, defaultFolderId: "f1", ...seeded }, savedState);
+// The language rides the same record; "en" is the default, so an English
+// scene's record is byte-identical to what it always was.
+let settings = normalizeSettings(
+  { v: 1, defaultFolderId: "f1", language: lang, ...seeded }, savedState);
 
 function handle(msg) {
   const m = msg || {};
@@ -133,20 +152,34 @@ function handle(msg) {
     case "lookup": {
       // The flags ride through exactly as the worker passes them: interpret
       // for typed channels, native only when the client's toggle is on, and
-      // sino attaches its per-char readings after the join, worker-style.
-      // Absent ?set=, the stub's defaults leave every toggle off, so no
-      // request here ever carries a flag and the page renders exactly as
-      // it did before the features.
+      // sino attaches its per-char readings after the join, worker-style;
+      // ko (set by the client under 한국어) attaches the Korean entries last.
+      // Absent ?set= and ?lang=, the stub's defaults leave every toggle off,
+      // so no request here ever carries a flag and the page renders exactly
+      // as it did before the features.
       const joined = attachFoundIn(
         attachDecomp(lookup(String(m.text || ""), data,
           { interpret: m.interpret === true, native: m.native === true }),
           data), getFoundInIndex);
-      return m.sino === true ? attachSino(joined, sino) : joined;
+      const withSino = m.sino === true ? attachSino(joined, sino) : joined;
+      return m.ko === true ? attachKo(withSino, ko) : withSino;
     }
-    case "foundIn":
-      return { ok: true, chars: buildFoundIn(String(m.char || ""), getFoundInIndex(), hanja) };
-    case "compounds": return { ok: true, compounds: buildFullCompounds(m.char, data) };
-    case "usedIn": return { ok: true, words: buildUsedIn(m.word, data) };
+    case "foundIn": {
+      const rows = buildFoundIn(String(m.char || ""), getFoundInIndex(), hanja);
+      return { ok: true, chars: m.ko === true ? attachKoRows(rows, ko, "char") : rows };
+    }
+    case "compounds": {
+      const rows = buildFullCompounds(m.char, data);
+      return { ok: true, compounds: m.ko === true ? attachKoRows(rows, ko, "word") : rows };
+    }
+    case "usedIn": {
+      const rows = buildUsedIn(m.word, data);
+      return { ok: true, words: m.ko === true ? attachKoRows(rows, ko, "word") : rows };
+    }
+    case "messagesGet":
+      return m.lang === "ko" && koMessages
+        ? { ok: true, lang: "ko", messages: koMessages }
+        : { ok: false, error: "messages unavailable" };
     case "openTab": return { ok: true };
     case "getPendingQuery": return { ok: true, query: null };
     case "savedGet":
@@ -232,8 +265,12 @@ const load = (src) => new Promise((res, rej) => {
   document.head.appendChild(s);
 });
 
+// The message-table loader first, as the panel page has it; the Korean UI
+// installs its table through init() before any surface renders, so the
+// language setting activates it without a round trip.
+await load("/extension/i18n.js");
+if (koMessages) globalThis.__okpyeonI18n.init(koMessages, "ko");
 for (const src of [
-  "/extension/i18n.js",
   "/extension/sidepanel/boot.js",
   "/extension/content/content.js",
   "/extension/sidepanel/search-shell.js",

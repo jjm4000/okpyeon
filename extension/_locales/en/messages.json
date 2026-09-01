@@ -180,6 +180,17 @@
   "link_wiktionary": {
     "message": "Wiktionary ↗"
   },
+  "link_urimalsaem": {
+    "message": "Urimalsaem ↗"
+  },
+  "tooltip_urimalsaem": {
+    "message": "Urimalsaem entry for $WORD$ (opens in a new tab)",
+    "placeholders": {
+      "word": {
+        "content": "$1"
+      }
+    }
+  },
   "link_opened": {
     "message": "Opened ↗"
   },

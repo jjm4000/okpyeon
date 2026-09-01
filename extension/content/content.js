@@ -597,6 +597,13 @@
     "  flex: 0 0 auto; color: var(--faint); font-size: 9px;",
     "  font-weight: 700; letter-spacing: 0.08em;",
     "}",
+    /* ---- Korean definitions: the 한국어 없음 marker over an English fallback ---- */
+    // The same small-caps register as the markers above, on its own line
+    // directly before the English text it qualifies.
+    ".ko-marker {",
+    "  color: var(--faint); font-size: 9px; font-weight: 700;",
+    "  letter-spacing: 0.08em; margin-bottom: 2px;",
+    "}",
     ".card.component .madeof-row { font-size: 11px; }",
     /* ---- recomposition: "Part of N characters" and its list view ---- */
     // Quiet like the used-in row it copies; the list view reuses the reading
@@ -868,6 +875,9 @@
   // Sibling Sino readings: the languages the shell asked for, per searchFor
   // call (options.sino). Both false outside a sino-flagged embed session.
   var embedSino = { ja: false, zh: false };
+  // Korean definitions: the shell's language flag, per searchFor call
+  // (options.ko). False outside a ko-flagged embed session.
+  var embedKo = false;
   var embedLast = null;           // {response, query}: the hint re-renders this
   var embedOnScopeChange = null;  // shell callback, from mount() options
   var embedHintCount = 0;         // consumed by the next showAt root view
@@ -895,6 +905,7 @@
   var charCardIndex = null;   // char -> the card element showing it, this view
   var viewStack = [];         // the descent; last entry is the current view
   var currentSrcText = "";    // source text of the view being rendered (see noteApplies)
+  var sessionKo = false;      // the ko flag this session's lookups carried
   var wordStates = [];        // one per word surface in the current view
   // One entry per interpretation group in the current view (exactly one for
   // an ordinary view): the chars that are nobody's component, the cards built
@@ -1139,6 +1150,7 @@
     viewStack = [];
     wordStates = [];
     pendingScrollTop = null;
+    sessionKo = koRequestOn();
   }
 
   function hide() {
@@ -1274,6 +1286,109 @@
       saveCurrentViewState();
       renderCurrentView();
       refreshLayout();
+      refreshViewForLanguage();
+    });
+  }
+
+  /* ---- Korean definitions (SPEC "Korean definitions data", runtime) ---- *
+   * Two gates, the native pattern. The REQUEST gate flags lookups and row
+   * fetches with ko:true exactly when the language setting is 한국어 (in
+   * embed the shell decides per searchFor call), so ko.json is fetched only
+   * then. The RENDER gate is the loader's active language: under English
+   * every path below is inert and the DOM is byte-identical to today.
+   * -------------------------------------------------------------------- */
+
+  function koRequestOn() {
+    if (IS_EMBED) return embedKo === true;
+    var settings = sectionSettings();
+    return !!settings && settings.language === "ko";
+  }
+
+  function koRenderOn() {
+    return !!I18N && I18N.language() === "ko";
+  }
+
+  // The usable Korean entry of a match or row: {d: [senses], s: code}, or
+  // null. `s` is 0 when the entry names no sense code.
+  function koEntryOf(m) {
+    var entry = m && m.ko && typeof m.ko === "object" ? m.ko : null;
+    if (!entry) return null;
+    var senses = asArray(entry.d).map(nonEmptyString).filter(Boolean);
+    if (!senses.length) return null;
+    var code = (typeof entry.s === "number" && isFinite(entry.s) && entry.s > 0)
+      ? Math.floor(entry.s) : 0;
+    return { d: senses, s: code };
+  }
+
+  // A row's gloss: the FIRST Korean sense under 한국어 when the row carries
+  // one, else the English gloss the row always showed. Rows never carry the
+  // fallback marker.
+  function rowGloss(row, english) {
+    if (koRenderOn()) {
+      var entry = koEntryOf(row);
+      if (entry) return entry.d[0];
+    }
+    return english;
+  }
+
+  // A CHAR row's gloss (a reading-list, part-of, or Made of row, whose hun
+  // stands beside it): the char-card rule. Under 한국어 the first Korean
+  // sense when the row carries one; else nothing when the row shows a hun
+  // (the hun IS the Korean gloss); else the English gloss. Word rows have no
+  // hun and keep rowGloss.
+  function charRowGloss(row, hun, english) {
+    if (koRenderOn()) {
+      var entry = koEntryOf(row);
+      if (entry) return entry.d[0];
+      if (hun) return "";
+    }
+    return english;
+  }
+
+  // Whether the eumhun head shows a hun, which under 한국어 IS the char's
+  // Korean gloss.
+  function hasHun(m) {
+    return asArray(m && m.eumhun).some(function (e) {
+      return !!e && typeof e === "object" && !!nonEmptyString(e.hun);
+    });
+  }
+
+  // The language switch: the current view was fetched under the other flag,
+  // so its matches carry Korean entries for the wrong language. Re-request
+  // the view's own text with the new flag and swap the matches in; the
+  // caches go too, since everything in them was fetched the same way. Views
+  // that are not a plain lookup (a used-in or part-of list, a native lead)
+  // keep what they have until the next navigation. Popup only: in embed the
+  // shell re-runs its query itself.
+  function refreshViewForLanguage() {
+    if (IS_EMBED || sessionKo === koRequestOn()) return;
+    sessionKo = koRequestOn();
+    lookupCache = Object.create(null);
+    compoundsCache = Object.create(null);
+    usedInCache = Object.create(null);
+    foundInCache = Object.create(null);
+    var view = viewStack[viewStack.length - 1];
+    var text = nonEmptyString(view.query);
+    if (!text || view.nativeLead === true) return;
+    var plain = usableMatches(view.matches).every(function (m) {
+      return m.kind === "word" || m.kind === "char" || m.kind === "reading";
+    });
+    if (!plain) return;
+    var seq = requestSeq;
+    fetchLookup(text).then(function (response) {
+      if (seq !== requestSeq || viewStack[viewStack.length - 1] !== view) return;
+      if (!response || response.ok !== true) return;
+      var list = usableMatches(response.matches);
+      if (!list.length) return;
+      view.matches = list;
+      view.native = nativeRenderOn() ? normalizeNativeMatches(response.nativeMatches) : [];
+      if (view.groups) {
+        view.groups = interpretationGroups(response.matches, response.interpretations);
+      }
+      charDataIndex = Object.create(null);
+      saveCurrentViewState();
+      renderCurrentView();
+      refreshLayout();
     });
   }
 
@@ -1312,11 +1427,14 @@
       if (!e || typeof e !== "object" || e.kind !== "native") return;
       var word = nonEmptyString(e.word);
       if (!word) return;
-      out.push({
+      var entry = {
         word: word,
         pos: nonEmptyString(e.pos),
         glosses: asArray(e.glosses).map(nonEmptyString).filter(Boolean)
-      });
+      };
+      // The Korean entry rides through as the worker attached it.
+      if (e.ko && typeof e.ko === "object") entry.ko = e.ko;
+      out.push(entry);
     });
     return out;
   }
@@ -1369,19 +1487,67 @@
   }
 
   // Numbered sense list with hanging indent; a lone sense needs no number.
-  function appendGlosses(parent, glosses) {
+  // `options.raw` keeps the text as the data has it (Korean senses are not
+  // capitalized); `options.marker` puts the 한국어 없음 marker ahead of English
+  // text standing in for a missing Korean definition. Callers under English
+  // pass neither, and the DOM is exactly what it was.
+  function appendGlosses(parent, glosses, options) {
     if (!glossesEnabled(sectionSettings())) return;
     var list = asArray(glosses).map(nonEmptyString).filter(Boolean);
     if (!list.length) return;
+    var raw = !!(options && options.raw);
     var box = el("div", "glosses");
     if (list.length > 1) box.classList.add("numbered");
+    if (options && options.marker) appendKoMarker(box);
     list.forEach(function (text, i) {
       var row = el("div", "gloss");
       if (list.length > 1) row.appendChild(el("span", "gloss-num", (i + 1) + "."));
-      row.appendChild(clampWrap(el("span", "gloss-text", capitalizeSense(text)), 2));
+      row.appendChild(clampWrap(el("span", "gloss-text", raw ? text : capitalizeSense(text)), 2));
       box.appendChild(row);
     });
     parent.appendChild(box);
+  }
+
+  // The fallback marker, in the small-caps marker register, immediately
+  // before the English text. Cards only, never rows. Under English the
+  // message is empty and nothing renders.
+  function appendKoMarker(box) {
+    var text = t("marker.noKorean");
+    if (!text) return;
+    box.appendChild(el("div", "ko-marker", text));
+  }
+
+  // The gloss slot of a word or native card. Under 한국어 the Korean senses
+  // REPLACE the English gloss, numbered when two; a match without them shows
+  // its English under the marker.
+  function appendDefinitions(parent, m, glosses) {
+    if (!koRenderOn()) {
+      appendGlosses(parent, glosses);
+      return;
+    }
+    var entry = koEntryOf(m);
+    if (entry) {
+      appendGlosses(parent, entry.d, { raw: true });
+      return;
+    }
+    appendGlosses(parent, glosses, { marker: true });
+  }
+
+  // The gloss slot of a char card (the char rule): the Korean single-hanja
+  // gloss where one exists; else, when the head shows a hun, nothing at all
+  // (the hun IS the Korean gloss); else the English under the marker.
+  function appendCharDefinitions(card, m) {
+    if (!koRenderOn()) {
+      appendGlosses(card, m.glosses);
+      return;
+    }
+    var entry = koEntryOf(m);
+    if (entry) {
+      appendGlosses(card, entry.d, { raw: true });
+      return;
+    }
+    if (hasHun(m)) return;
+    appendGlosses(card, m.glosses, { marker: true });
   }
 
   // Does this text still need clamping? The question is always asked of the
@@ -1514,14 +1680,45 @@
   function appendWikiLink(head, title) {
     var url = wiktionaryUrl(title);
     if (!url) return null;
-    var link = el("a", "wiki", t("link.wiktionary"));
+    return appendSourceLink(head, url, "link.wiktionary", "tooltip.wiktionary", title);
+  }
+
+  // Korean definitions (SPEC "SOURCE LINK"): a word or native card showing a
+  // Korean definition links the Urimalsaem sense it came from, composed at
+  // render time from the entry's `s` and the fixed pattern, exactly as the
+  // Wiktionary link is composed from the headword. Same element, same
+  // background-tab path; the worker validates this prefix too.
+  var URIMALSAEM_BASE = "https://opendict.korean.go.kr/dictionary/view?sense_no=";
+
+  function appendUrimalsaemLink(head, senseCode, word) {
+    if (!senseCode) return null;
+    var link = appendSourceLink(head, URIMALSAEM_BASE + senseCode,
+      "link.urimalsaem", "tooltip.urimalsaem", word);
+    if (link) link.classList.add("urimalsaem");
+    return link;
+  }
+
+  // The card's one source link: where the definition on screen came from.
+  // Urimalsaem under 한국어 when the match carries a Korean entry with a
+  // sense code, Wiktionary otherwise. Char cards never call this: they keep
+  // Wiktionary in both languages.
+  function appendSourceLinkFor(head, m, wikiTitle, word) {
+    if (koRenderOn()) {
+      var entry = koEntryOf(m);
+      if (entry && entry.s) return appendUrimalsaemLink(head, entry.s, word);
+    }
+    return appendWikiLink(head, wikiTitle);
+  }
+
+  function appendSourceLink(head, url, labelKey, tooltipKey, word) {
+    var link = el("a", "wiki", t(labelKey));
     // The href/target/rel stay real: a MODIFIED click is still handled by the
     // browser, and the link must remain a link for middle-click-paste, "copy
     // link address", and assistive tech.
     link.href = url;
     link.target = "_blank";
     link.rel = "noopener noreferrer";
-    link.setAttribute("aria-label", t("tooltip.wiktionary", { WORD: title }));
+    link.setAttribute("aria-label", t(tooltipKey, { WORD: word }));
     link.addEventListener("mousedown", function (ev) { ev.stopPropagation(); });
 
     // Restoring to a CAPTURED previous label would latch on the opened label
@@ -1533,7 +1730,7 @@
       if (restoreTimer) clearTimeout(restoreTimer);
       restoreTimer = setTimeout(function () {
         restoreTimer = null;
-        link.textContent = t("link.wiktionary");
+        link.textContent = t(labelKey);
       }, WIKI_FLASH_MS);
     }
 
@@ -2131,7 +2328,7 @@
     // matches were harvested from the hanja-spelling page (大韓民國), which
     // also hosts the Chinese/Japanese entries, so link there instead.
     // Rebuilt with the rest of the body, so a chip swap re-points it too.
-    appendWikiLink(head, m.hp === true ? (big || hangul) : (hangul || big));
+    appendSourceLinkFor(head, m, m.hp === true ? (big || hangul) : (hangul || big), hangul || big);
     body.appendChild(head);
   }
 
@@ -2172,7 +2369,7 @@
 
     appendWordHead(body, m);
 
-    appendGlosses(body, m.glosses);
+    appendDefinitions(body, m, m.glosses);
 
     appendCharChips(body, m);
 
@@ -2200,7 +2397,7 @@
       var text = el("span", "compound");
       text.appendChild(el("span", "cpd-hangul", word));
       text.appendChild(el("span", "native-tag", t("marker.native")));
-      var gloss = asArray(entry.glosses).map(nonEmptyString).filter(Boolean)[0] || "";
+      var gloss = rowGloss(entry, asArray(entry.glosses).map(nonEmptyString).filter(Boolean)[0] || "");
       if (gloss) text.appendChild(el("span", "cpd-gloss", ": " + gloss));
       row.appendChild(clampWrap(text, 1));
       row.setAttribute("aria-label",
@@ -2359,7 +2556,7 @@
       var text = el("span", "p-text");
       var hangul = nonEmptyString(p.hangul);
       if (hangul) text.appendChild(el("span", "p-hangul", hangul));
-      var gloss = asArray(p.glosses).map(nonEmptyString).filter(Boolean)[0] || "";
+      var gloss = rowGloss(p, asArray(p.glosses).map(nonEmptyString).filter(Boolean)[0] || "");
       if (gloss) text.appendChild(el("span", "p-gloss", (hangul ? "  " : "") + gloss));
       row.appendChild(clampWrap(text, 1));
       makeNavRow(row, hanja);
@@ -2499,17 +2696,20 @@
     meta.appendChild(line);
     head.appendChild(meta);
     // Korean native entries live at the hangul title, which is exactly what
-    // appendWikiLink builds: /wiki/<hangul>#Korean.
-    appendWikiLink(head, word);
+    // appendWikiLink builds: /wiki/<hangul>#Korean. One link per card: with
+    // several POS entries, the first one carrying a Korean entry names the
+    // Urimalsaem sense.
+    var linkEntry = entries.filter(koEntryOf)[0] || entries[0];
+    appendSourceLinkFor(head, linkEntry, word, word);
     card.appendChild(head);
 
     if (entries.length === 1) {
-      appendGlosses(card, entries[0].glosses);
+      appendDefinitions(card, entries[0], entries[0].glosses);
     } else {
       entries.forEach(function (entry) {
         var block = el("div", "native-pos");
         if (entry.pos) block.appendChild(el("span", "pos-chip", capitalizeSense(entry.pos)));
-        appendGlosses(block, entry.glosses);
+        appendDefinitions(block, entry, entry.glosses);
         if (block.firstChild) card.appendChild(block);
       });
     }
@@ -2536,7 +2736,8 @@
         hangul: nonEmptyString(m.hangul),
         hanja: hanja,
         gloss: asArray(m.glosses).map(nonEmptyString).filter(Boolean)[0] || "",
-        rare: m.rare === true
+        rare: m.rare === true,
+        ko: m.ko
       }, "samesound-row");
       if (row) box.appendChild(row);
     });
@@ -2709,7 +2910,7 @@
       var label = hun && eum ? hun + " " + eum : (eum || hun);
       if (label) text.appendChild(el("span", "r-eumhun", label));
       appendBadges(text, c);
-      var gloss = nonEmptyString(c.gloss);
+      var gloss = charRowGloss(c, hun, nonEmptyString(c.gloss));
       if (gloss) text.appendChild(el("span", "r-gloss", (label ? "  " : "") + gloss));
       row.appendChild(text);
 
@@ -2970,7 +3171,7 @@
 
     appendSinoLine(card, m);
 
-    appendGlosses(card, m.glosses);
+    appendCharDefinitions(card, m);
 
     appendMadeOf(card, m);
 
@@ -3045,7 +3246,7 @@
         var eum = nonEmptyString(p.eum);
         var label = hun && eum ? hun + " " + eum : (eum || hun);
         if (label) body.appendChild(el("span", "r-eumhun", label));
-        var gloss = nonEmptyString(p.gloss);
+        var gloss = charRowGloss(p, hun, nonEmptyString(p.gloss));
         if (gloss) body.appendChild(el("span", "r-gloss", (label ? "  " : "") + gloss));
       } else {
         part.classList.add("inert");
@@ -3157,7 +3358,7 @@
       var label = hun && eum ? hun + " " + eum : (eum || hun);
       if (label) text.appendChild(el("span", "r-eumhun", label));
       appendBadges(text, c);
-      var gloss = nonEmptyString(c.gloss);
+      var gloss = charRowGloss(c, hun, nonEmptyString(c.gloss));
       if (gloss) text.appendChild(el("span", "r-gloss", (label ? "  " : "") + gloss));
       row.appendChild(text);
 
@@ -3183,7 +3384,7 @@
     var text = el("span", "compound");
     text.appendChild(el("span", "cpd-hangul", hangul || hanja));
     if (hanja && hangul) text.appendChild(el("span", "cpd-hanja", " (" + hanja + ")"));
-    var gloss = nonEmptyString(c.gloss);
+    var gloss = rowGloss(c, nonEmptyString(c.gloss));
     if (gloss) text.appendChild(el("span", "cpd-gloss", ": " + gloss));
     if (c.rare === true) {
       row.classList.add("rare");
@@ -4129,6 +4330,9 @@
       native: asArray(view.native),
       nativeLead: view.nativeLead === true,
       srcText: viewSourceText(view.matches, view.srcText),
+      // A drill-down was looked up with the row's target; a list view (used-in,
+      // part-of) with nothing, and is never re-requested.
+      query: nonEmptyString(view.srcText),
       scrollTop: 0, selection: null
     });
     renderCurrentView();
@@ -4350,6 +4554,7 @@
       native: nativeView.native,
       nativeLead: true,
       srcText: viewSourceText(list, srcText),
+      query: typed,
       scrollTop: 0, selection: null
     } : {
       key: (ambiguous && typed) ? "typed:" + typed : viewKey(list),
@@ -4361,6 +4566,8 @@
       // The selection itself: the root view is the one place a highlighted
       // variant glyph is guaranteed to belong.
       srcText: viewSourceText(list, srcText),
+      // The text this view was looked up with, for a re-request.
+      query: typed,
       scrollTop: 0, selection: null
     }];
     var count = renderCurrentView();
@@ -4478,7 +4685,16 @@
     // The readings toggles ride the same rule: off means absent, and only a
     // flagged request may touch sino.json.
     if (sinoRequestOn()) message.sino = true;
-    return sendToWorker(message);
+    return sendToWorker(koRequest(message));
+  }
+
+  // The language rides every dictionary request the same way: under 한국어
+  // the message carries ko:true, under English the field is absent, so the
+  // request is byte-identical to today's and only a flagged one may touch
+  // ko.json. Row fetches join here so their rows carry Korean senses too.
+  function koRequest(message) {
+    if (koRequestOn()) message.ko = true;
+    return message;
   }
 
   // The char's COMPLETE compound index, joined by the service worker. Fetched
@@ -4489,7 +4705,7 @@
       return Promise.resolve(compoundsCache[char]);
     }
     if (compoundsPending && compoundsPending[char]) return compoundsPending[char];
-    var promise = sendToWorker({ type: "compounds", char: char }).then(function (response) {
+    var promise = sendToWorker(koRequest({ type: "compounds", char: char })).then(function (response) {
       if (compoundsPending) delete compoundsPending[char];
       if (!response || response.ok !== true || !Array.isArray(response.compounds)) return null;
       var list = response.compounds.filter(function (c) {
@@ -4510,7 +4726,7 @@
       return Promise.resolve(usedInCache[word]);
     }
     if (usedInPending && usedInPending[word]) return usedInPending[word];
-    var promise = sendToWorker({ type: "usedIn", word: word }).then(function (response) {
+    var promise = sendToWorker(koRequest({ type: "usedIn", word: word })).then(function (response) {
       if (usedInPending) delete usedInPending[word];
       if (!response || response.ok !== true || !Array.isArray(response.words)) return null;
       var list = response.words.filter(function (w) {
@@ -4531,7 +4747,7 @@
       return Promise.resolve(foundInCache[char]);
     }
     if (foundInPending && foundInPending[char]) return foundInPending[char];
-    var promise = sendToWorker({ type: "foundIn", char: char }).then(function (response) {
+    var promise = sendToWorker(koRequest({ type: "foundIn", char: char })).then(function (response) {
       if (foundInPending) delete foundInPending[char];
       if (!response || response.ok !== true || !Array.isArray(response.chars)) return null;
       var list = response.chars.filter(function (c) {
@@ -4771,6 +4987,8 @@
         // `options.sino` picks the readings languages for this session's
         // requests and cards: true for both, {ja, zh} individually.
         embedSino = normalizeSinoOption(options && options.sino);
+        // `options.ko` flags this session's requests with the language.
+        embedKo = !!(options && options.ko);
         embedScope = (embedNative && options && options.scope === "all")
           ? "all" : "hanja";
         embedLast = null;   // a failed search must not leave the hint armed
@@ -4829,6 +5047,7 @@
       clear: function () {
         embedNative = false;
         embedSino = { ja: false, zh: false };
+        embedKo = false;
         embedScope = "hanja";
         embedLast = null;
         hide();

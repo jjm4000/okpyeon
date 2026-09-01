@@ -32,9 +32,40 @@ current review clears.
   page now cancels that click's default action, so runs stop dropping
   okpyeon-anki files into Downloads. The checks assert the same things
   they always did.
-- **Korean-language descriptions: project file.** korean-mode-kickoff.md
-  is the full record of the spikes and decisions for the feature listed
-  under Later below. Documentation only; no code yet.
+- **Korean language mode.** Built 2026-09-01 in three waves against the
+  SPEC's "Korean language mode" addendum. One Language setting (English
+  / 한국어, defaulting once from the browser language) switches the
+  whole chrome AND the definitions. Chrome: every user-facing string
+  renders through one lookup against _locales/en and _locales/ko message
+  tables (159 keys; 짜임, 소리, 단어, 구성 한자, 같은 소리, 중학 /
+  고등 / 고급 / 희귀, 일 / 중), served by the worker and carried
+  built-in for English so the first render never waits; the manifest
+  name and description follow the browser through __MSG_ keys, which is
+  what unlocks the Korean store listing. Definitions: ko.json (5.9 MB,
+  loaded only under 한국어) holds Urimalsaem senses for 25,510 Sino
+  words (92.3%), 12,071 native rows, and 1,795 characters, matched in
+  two lanes (hanja string; hangul plus POS), filtered to ordinary senses
+  with place names surviving on otherwise-empty keys, 韓國 curated, and
+  a Unihan glyph-form hop rescuing 146 keys like 映畵. Word cards
+  replace English with numbered Korean senses and link 우리말샘 to the
+  exact sense; char cards show the Korean gloss, else the hun alone,
+  else English under a 한국어 없음 marker; rows show the first sense;
+  exports follow the language; a Korean first run names its default
+  folder 저장됨. English rendering is pinned byte-identical to pre-port
+  snapshots. Rejected on the way: separate chrome/definitions controls,
+  a boolean mode toggle, follow-the-browser with no row, an EN fallback
+  marker. Suites: node 202, index.html 668, embed.html 365. Still to do
+  before release: the Korean store listing text, screenshot scenes for
+  the Korean UI (7-settings needs a taller solo viewport; 5-sidebar is
+  stale from the phonetic pins), and a README paragraph.
+- **Headless self-check runner.** `python pipeline/run_selfchecks.py`
+  runs both test pages headless over the CDP client now shared with the
+  screenshot tool (pipeline/cdp.py) and reports per-check results. It
+  replaced the Browser pane as the way to run the suites, which also
+  ended the stray Save dialogs. Its first run exposed three breadcrumb
+  checks that had never passed here (the panel clamps at 280px, the
+  checks assumed 210); they now descend six levels so the trail really
+  overflows.
 
 ## 1.2: shipped
 
@@ -289,9 +320,9 @@ correctness" bullet of 1.1, the same way 1.1.1 folded into 1.2.
 
 ## Later / unscheduled
 
-- **Korean language mode.** DESIGNED, SPEC written 2026-09-01 ("Korean
-  language mode" addendum), not built. Settled by mockups the same
-  day: one Language control (English / 한국어) that switches the whole
+- **Korean language mode: design record.** BUILT the same day (see the
+  since-1.2 block above); this entry keeps the decision trail. Settled
+  by mockups: one Language control (English / 한국어) that switches the whole
   chrome AND the definitions, defaulting to the browser language on
   first run; Korean definitions replace English on word cards; char
   cards use the Urimalsaem gloss, else the hun, else English; a

@@ -156,6 +156,17 @@
   "link_wiktionary": {
     "message": "Wiktionary ↗"
   },
+  "link_urimalsaem": {
+    "message": "우리말샘 ↗"
+  },
+  "tooltip_urimalsaem": {
+    "message": "$WORD$의 우리말샘 항목 (새 탭에서 열림)",
+    "placeholders": {
+      "word": {
+        "content": "$1"
+      }
+    }
+  },
   "link_opened": {
     "message": "열림 ↗"
   },

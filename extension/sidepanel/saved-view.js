@@ -217,8 +217,23 @@
     while (node && node.firstChild) node.removeChild(node.firstChild);
   }
 
+  // Korean language mode ADDENDUM: the language as the request flag, set
+  // exactly when it is 한국어 (the search shell's rule), so only then do the
+  // rows carry Korean entries.
+  function koOn() {
+    return !!I18N && I18N.language() === "ko";
+  }
+
   // Dictionary text only ever reaches the DOM as text, never as markup.
+  // Under 한국어 the first Korean sense when the row carries one, else the
+  // English gloss; rows never carry the fallback marker.
   function firstGloss(item) {
+    if (koOn() && item && item.ko && typeof item.ko === "object") {
+      var senses = Array.isArray(item.ko.d) ? item.ko.d : [];
+      for (var i = 0; i < senses.length; i++) {
+        if (typeof senses[i] === "string" && senses[i] !== "") return senses[i];
+      }
+    }
     var glosses = item && item.glosses;
     return (glosses && glosses.length) ? String(glosses[0]) : "";
   }
@@ -868,7 +883,11 @@
    * ------------------------------------------------------------------ */
 
   function refresh() {
-    return sendToWorker({ type: "savedGet" }).then(function (res) {
+    // Under English the field is absent, so the request is byte-identical to
+    // today's and only a flagged one may touch ko.json.
+    var message = { type: "savedGet" };
+    if (koOn()) message.ko = true;
+    return sendToWorker(message).then(function (res) {
       if (!res || res.ok !== true) {
         // "storage unavailable" and "no worker at all" are the same thing to a
         // user: the feature is absent. One quiet line, no error styling.
@@ -915,7 +934,8 @@
 
   // A language change: the transient inline forms are dropped rather than
   // re-labelled mid-flight, the bars are re-labelled, and the list is
-  // rebuilt from what was last read.
+  // rebuilt from what was last read, then re-read under the new language's
+  // flag (Korean language mode ADDENDUM: the rows' definitions follow it).
   if (I18N) {
     I18N.onChange(function () {
       if (!root) return;
@@ -925,6 +945,7 @@
       renderBar();
       renderList();
       renderActions();
+      if (available) refresh();
     });
   }
 

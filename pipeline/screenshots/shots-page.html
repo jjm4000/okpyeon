@@ -20,6 +20,9 @@
     w=N        popup width handed to the product's own resizePanel
     bottom=N   gap to leave under the popup when sizing it to its content
     set=K,K    settings keys to turn on (e.g. set=jaReadings,zhReadings)
+    lang=ko    the Korean UI: the ko message table is installed in the loader,
+               the language setting is 한국어, and flagged lookups carry Korean
+               definitions (ko.json is fetched only then)
 
   Signals completion by setting documentElement.dataset.shotReady.
 -->
@@ -202,18 +205,31 @@ import { normalizeSavedState, normalizeSettings, checkKeys, toggleItem, joinItem
 /* The sino join is the worker's, not a copy of it: background.js guards every
    chrome.* touch, so importing it here runs the real guardSino / attachSino
    against the real sino.json. */
-import { guardSino, attachSino } from "/extension/background.js";
+import { guardSino, attachSino, guardKo, attachKo, attachKoRows }
+  from "/extension/background.js";
 
 const params = new URLSearchParams(location.search);
 const scene = params.get("scene") || "1";
 const scrollY = Number(params.get("scroll") || 0);
+// ?lang=ko renders the Korean UI (Korean language mode ADDENDUM). Absent, the
+// page is English and never touches ko.json or the ko message table.
+const lang = params.get("lang") === "ko" ? "ko" : "en";
 
 const [hanja, words, variants, sinoRaw] = await Promise.all(
   ["hanja", "words", "variants", "sino"].map((n) =>
     fetch("/extension/data/" + n + ".json").then((r) => r.json())));
+// Worker-style: ko.json is loaded only for the Korean UI, whose requests
+// carry the flag; the message table rides in beside it.
+const [koRaw, koMessages] = lang === "ko"
+  ? await Promise.all([
+      fetch("/extension/data/ko.json").then((r) => r.json()),
+      fetch("/extension/_locales/ko/messages.json").then((r) => r.json()),
+    ])
+  : [null, null];
 
 let readingIndex = null;
 const sino = guardSino(sinoRaw);
+const ko = guardKo(koRaw);
 const data = {
   hanja, words, variants,
   getReadingIndex: () => (readingIndex ||= buildReadingIndex(hanja)),
@@ -225,19 +241,33 @@ let savedState = normalizeSavedState(null);
 // for a capture. Absent, the defaults stand and the page renders as before.
 const seeded = {};
 for (const key of (params.get("set") || "").split(",")) if (key) seeded[key] = true;
-const settings = normalizeSettings(seeded, savedState);
+// The language rides the same record; "en" is the default, so an English
+// scene's record is byte-identical to what it always was.
+const settings = normalizeSettings({ language: lang, ...seeded }, savedState);
 
 function handle(msg) {
   switch (msg && msg.type) {
     // Worker-style: only a sino-flagged request (content.js sets the flag when
-    // either seeded readings toggle is on) touches sino.json, so an unseeded
-    // scene's response is byte-identical to before the feature.
+    // either seeded readings toggle is on) touches sino.json, and only a
+    // ko-flagged one (the flag rides under 한국어) touches ko.json, so an
+    // unseeded scene's response is byte-identical to before the features.
     case "lookup": {
       const result = lookup(String(msg.text || ""), data);
-      return msg.sino === true ? attachSino(result, sino) : result;
+      const withSino = msg.sino === true ? attachSino(result, sino) : result;
+      return msg.ko === true ? attachKo(withSino, ko) : withSino;
     }
-    case "compounds": return { ok: true, compounds: buildFullCompounds(msg.char, data) };
-    case "usedIn": return { ok: true, words: buildUsedIn(msg.word, data) };
+    case "compounds": {
+      const rows = buildFullCompounds(msg.char, data);
+      return { ok: true, compounds: msg.ko === true ? attachKoRows(rows, ko, "word") : rows };
+    }
+    case "usedIn": {
+      const rows = buildUsedIn(msg.word, data);
+      return { ok: true, words: msg.ko === true ? attachKoRows(rows, ko, "word") : rows };
+    }
+    case "messagesGet":
+      return msg.lang === "ko" && koMessages
+        ? { ok: true, lang: "ko", messages: koMessages }
+        : { ok: false, error: "messages unavailable" };
     case "openTab": return { ok: true };
     case "savedGet":
       return { ok: true, folders: savedState.folders, items: joinItems(savedState.items, data) };
@@ -264,7 +294,9 @@ globalThis.__hanjaHoverTestRuntime = {
   },
 };
 
-// The message-table loader first, as the manifest's content_scripts list has it.
+// The message-table loader first, as the manifest's content_scripts list has
+// it. The Korean UI installs its table through init() before the renderer
+// loads, so the language setting activates it without a round trip.
 for (const src of ["/extension/i18n.js", "/extension/content/content.js"]) {
   await new Promise((res, rej) => {
     const s = document.createElement("script");
@@ -272,6 +304,9 @@ for (const src of ["/extension/i18n.js", "/extension/content/content.js"]) {
     s.onload = res; s.onerror = rej;
     document.head.appendChild(s);
   });
+  if (koMessages && src === "/extension/i18n.js") {
+    globalThis.__okpyeonI18n.init(koMessages, "ko");
+  }
 }
 
 const api = globalThis.__hanjaHover;
@@ -279,9 +314,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // The popup reads its toggles from a settings cache that chrome.storage seeds
 // in the shipped build; a bare page hands the record to the test hook instead.
-// Only a seeded scene touches the hook, so without ?set= the cache stays null,
-// exactly as before.
-if (params.get("set")) api.setSettings(settings);
+// Only a seeded scene (or the Korean UI, whose language is a setting) touches
+// the hook, so without ?set= or ?lang= the cache stays null, exactly as before.
+if (params.get("set") || lang === "ko") api.setSettings(settings);
 
 function select(id) {
   const node = document.getElementById(id);

@@ -186,6 +186,8 @@
   var bootScope = null;
   var bootNative = false;
   var bootSino = { ja: false, zh: false };
+  // Korean language mode ADDENDUM: the language as the shell's one flag.
+  var bootKo = false;
 
   function findView(key) {
     for (var i = 0; i < SIDEBAR_VIEWS.length; i++) {
@@ -384,6 +386,7 @@
         scopeBox: document.getElementById("okp-scope"),
         nativeEnabled: bootNative,
         sinoEnabled: bootSino,
+        koEnabled: bootKo,
         initialScope: bootScope,
         onState: function () { scheduleSeal(); },
         // Focus rules: the input is focused ONLY on an empty boot — the
@@ -603,6 +606,7 @@
       bootScope = resolved[0].scope;
       bootNative = resolved[1].native;
       bootSino = resolved[1].sino;
+      bootKo = resolved[1].language === "ko";
       // The language settles before the first view renders: a Korean boot
       // waits one round trip for its table instead of flashing English.
       return applyLanguage(resolved[1].language).then(function () {
@@ -770,6 +774,11 @@
           ja: record.jaReadings === true,
           zh: record.zhReadings === true
         });
+      }
+      // The language flag flips with the record, so the shell's re-run
+      // lookup carries ko exactly when the new language is 한국어.
+      if (typeof controller.setKoEnabled === "function") {
+        controller.setKoEnabled(record.language === "ko");
       }
     }
     return applyLanguage(record.language);

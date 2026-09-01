@@ -438,8 +438,19 @@ function mergeGlosses(senses) {
   return out;
 }
 
+/**
+ * Korean language mode ADDENDUM: the ko.json entry for one key of one table,
+ * riding WHOLE onto the row (the attachKo rule). The tables are empty unless
+ * the caller loaded ko.json, which the worker does only under 한국어.
+ */
+function koEntryFor(table, key) {
+  if (typeof key !== "string" || !hasOwn(table, key)) return null;
+  const entry = table[key];
+  return entry !== null && typeof entry === "object" ? entry : null;
+}
+
 /** words.json entry -> display row, or null when the spelling is unknown. */
-function joinWord(item, wordTable) {
+function joinWord(item, wordTable, koWords) {
   if (!hasOwn(wordTable, item.key)) return null;
   const raw = wordTable[item.key];
   const senses = (Array.isArray(raw) ? raw : [raw]).filter(
@@ -453,11 +464,13 @@ function joinWord(item, wordTable) {
   };
   // rare only when EVERY sense is rare, matching lookup.js's join semantics.
   if (senses.every((sense) => sense.rare === true)) row.rare = true;
+  const ko = koEntryFor(koWords ?? {}, item.key);
+  if (ko !== null) row.ko = ko;
   return row;
 }
 
 /** hanja.json entry -> display row, or null when the glyph is unknown. */
-function joinChar(item, charTable, variantMap, sinoTable) {
+function joinChar(item, charTable, variantMap, sinoTable, koChars) {
   let key = item.key;
   let entry = hasOwn(charTable, key) ? charTable[key] : null;
   if (entry === null && hasOwn(variantMap, item.key)) {
@@ -479,6 +492,9 @@ function joinChar(item, charTable, variantMap, sinoTable) {
   // resolved. The table is empty unless the caller loaded sino.json.
   const sino = hasOwn(sinoTable, key) ? sinoTable[key] : null;
   if (sino !== null && typeof sino === "object") row.sino = sino;
+  // The Korean entry keys by the same resolved canonical glyph.
+  const ko = koEntryFor(koChars ?? {}, key);
+  if (ko !== null) row.ko = ko;
   return row;
 }
 
@@ -492,8 +508,13 @@ function joinChar(item, charTable, variantMap, sinoTable) {
  * loaded sino.json, char rows carry their whole sino entry; without it the
  * rows simply have none, and every sino field renders empty.
  *
+ * `data.ko` is optional too (Korean language mode ADDENDUM): when the caller
+ * loaded ko.json, word and char rows the tables know carry their whole
+ * Korean entry, and the definitions field emits it; without it the field
+ * emits the English definitions.
+ *
  * @param {object[]} items saved items
- * @param {{hanja:object, words:object, variants:object, sino?:object}} data
+ * @param {{hanja:object, words:object, variants:object, sino?:object, ko?:object}} data
  * @returns {object[]} display rows, one per item, in the given order
  */
 export function joinItems(items, data) {
@@ -501,13 +522,15 @@ export function joinItems(items, data) {
   const wordTable = data?.words?.words ?? {};
   const variantMap = data?.variants?.map ?? {};
   const sinoTable = data?.sino?.chars ?? {};
+  const koWords = data?.ko?.words ?? {};
+  const koChars = data?.ko?.chars ?? {};
   const out = [];
   for (const item of Array.isArray(items) ? items : []) {
     if (item === null || typeof item !== "object") continue;
     const row =
       item.kind === "char"
-        ? joinChar(item, charTable, variantMap, sinoTable)
-        : joinWord(item, wordTable);
+        ? joinChar(item, charTable, variantMap, sinoTable, koChars)
+        : joinWord(item, wordTable, koWords);
     out.push(row === null ? { ...item, missing: true } : row);
   }
   return out;
@@ -539,6 +562,21 @@ function numberedDefs(glosses) {
     .join("; ");
 }
 
+/** Korean language mode ADDENDUM: the Korean senses joined with " / ". */
+const KO_SENSE_SEPARATOR = " / ";
+
+/**
+ * The definitions field: what the card shows. The Korean senses when the row
+ * carries a usable Korean entry (only rows joined under 한국어 can), the
+ * English definitions otherwise.
+ */
+function definitionsText(row) {
+  const senses = row.ko !== null && typeof row.ko === "object" && Array.isArray(row.ko.d)
+    ? row.ko.d.filter((sense) => typeof sense === "string" && sense !== "")
+    : [];
+  return senses.length > 0 ? senses.join(KO_SENSE_SEPARATOR) : numberedDefs(row.glosses);
+}
+
 /** One Anki field token rendered from a joined row. */
 function fieldValue(row, token) {
   switch (token) {
@@ -560,7 +598,7 @@ function fieldValue(row, token) {
         .filter((r) => typeof r === "string" && r !== "")
         .join(ENTRY_SEPARATOR);
     case "defs":
-      return numberedDefs(row.glosses);
+      return definitionsText(row);
     case "lvl":
       return typeof row.lvl === "string" ? row.lvl : "";
     case "ja":

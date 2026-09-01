@@ -69,6 +69,8 @@
     "button_more": "more",
     "button_less": "less",
     "link_wiktionary": "Wiktionary ↗",
+    "link_urimalsaem": "Urimalsaem ↗",
+    "tooltip_urimalsaem": "Urimalsaem entry for $WORD$ (opens in a new tab)",
     "link_opened": "Opened ↗",
     "star_save": "Save $WORD$",
     "star_remove": "Remove $WORD$",

@@ -2478,11 +2478,29 @@ korean-mode-kickoff.md; this section is the binding contract.
   renders it in the gloss slot, numbered when two; compound and list
   rows show the FIRST Korean sense; anything without `ko` renders its
   English text under the 한국어 없음 marker (rows: the marker is
-  omitted, the English gloss simply stands). Char cards apply the
-  char rule above.
+  omitted). Char cards apply the char rule above, and CHAR ROWS
+  mirror it (build-time correction, 2026-09-01): a Made of part row,
+  reading-list row, or Part-of row showing a char beside its hun
+  renders the English gloss only when the row has no hun and no
+  Korean sense, since the hun already glosses it (請's 言 row read
+  "말씀 언 word" before the correction). Word rows without a Korean
+  sense keep their English gloss. Implementation notes recorded from
+  the build: the marker renders on its own line at the top of the
+  gloss box, in the 9px small-caps register; the language switch
+  re-requests plain lookup views (word, char, reading) and the
+  sidebar re-runs its query, while used-in, part-of, and native-lead
+  views keep their rows until the next navigation; the inline
+  compound rows are hanja.json's own objects shared across lookups,
+  so attach COPIES them rather than writing `ko` into the table; the
+  Urimalsaem host joins the worker's open-tab allow list beside
+  Wiktionary; the saved view's rows carry `ko` through handleSavedGet
+  under the same flag.
 - Export follows the language: the Anki and CSV definition fields
   emit whatever the card shows (Korean senses joined with " / ",
-  English when falling back). CSV header identifiers stay English
+  English when falling back). A hun-only char, whose card shows no
+  definition list under 한국어, still exports its English definitions
+  in that field (the eumhun is its own field, and an empty back is
+  worse than an English one). CSV header identifiers stay English
   (they are field names, not copy).
 
 ### Copy tables (binding; the message files are generated from these)

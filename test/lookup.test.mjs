@@ -3410,6 +3410,432 @@ await testAsync("sino export: the fetch gate opens only on a charBack reading fi
   assert.equal(exportWantsSino({ anki: { charBack: "ja" } }), false);
 });
 
+// ---------------------------------------------------------------------------
+// Korean language mode ADDENDUM: guardKo, the attach, the flag gates, export.
+// ---------------------------------------------------------------------------
+
+console.log("\nKorean definitions (ko.json)");
+
+/**
+ * Schema-exact ko.json fixture (SPEC "Emitted file"): `d` the kept senses
+ * (one or two), `s` the Urimalsaem target_code of the first. 學生 carries two
+ * senses and the SPEC's own anchor code; 生 and 民 are deliberately absent
+ * from `chars`, 主義 from `words`, and the 사랑 noun from `natives`, so every
+ * "no entry, no field" branch is exercised beside the attached ones.
+ */
+const ko = {
+  version: 1,
+  words: {
+    學生: { d: ["학예를 배우는 사람.", "학교에 다니면서 공부하는 사람."], s: 27143 },
+    國民: { d: ["한 나라의 통치권 아래에 있는 사람."], s: 11111 },
+    資本: { d: ["장사나 사업 따위의 기본이 되는 돈."], s: 22222 },
+    學生會: { d: ["학생들의 자치 단체."], s: 33333 },
+    國家: { d: ["일정한 영토와 주권을 가진 집단."], s: 44444 },
+  },
+  natives: {
+    "하늘|noun": { d: ["지평선 위로 보이는 무한한 공간."], s: 55555 },
+    "우리|pron": { d: ["말하는 이가 자기와 듣는 이를 함께 이르는 말."], s: 66666 },
+  },
+  chars: {
+    學: { d: ["어떤 원리에 따라 조직된 지식의 체계.", "‘학문’의 뜻을 더하는 접미사."], s: 67890 },
+    國: { d: ["일정한 영토와 주권을 가진 집단."], s: 77777 },
+  },
+};
+
+await testAsync("ko: guardKo shapes junk and SPREADS every field through", async () => {
+  const { guardKo } = await import("../extension/background.js");
+  const empty = { version: 1, words: {}, natives: {}, chars: {} };
+  assert.deepEqual(guardKo(null), empty);
+  assert.deepEqual(guardKo("nonsense"), empty);
+  assert.deepEqual(guardKo({ words: null, natives: 7, chars: "x" }), empty);
+  // Each table is defended on its own: junk in one leaves the others intact.
+  const partial = guardKo({ words: ko.words, natives: [], chars: null });
+  assert.equal(partial.words, ko.words);
+  assert.deepEqual(partial.natives, {}, "an array is not a table");
+  assert.deepEqual(partial.chars, {});
+  // Pass-through: the guarded record IS the schema record, entries untouched
+  // (same objects, not lookalike rebuilds).
+  const guarded = guardKo(ko);
+  assert.deepEqual(guarded, ko);
+  assert.equal(guarded.words, ko.words);
+  assert.equal(guarded.words.學生, ko.words.學生);
+  assert.equal(guarded.natives, ko.natives);
+  assert.equal(guarded.chars.學, ko.chars.學);
+  // The guardNative lesson: a field this guard was never taught about still
+  // survives, because the raw record is spread, not rebuilt field by field.
+  assert.equal(guardKo({ version: 1, words: {}, natives: {}, chars: {}, future: 7 }).future, 7);
+});
+
+await testAsync("ko: entries ride whole onto every match kind, lookup driven through the guarded shape", async () => {
+  const { guardKo, attachKo, guardDecomp, attachDecomp } = await import("../extension/background.js");
+  // The EXACT shape the worker holds: a parsed file put through guardKo.
+  const guarded = guardKo(JSON.parse(JSON.stringify(ko)));
+
+  // Word and char matches, by canonical key; a key the table lacks gets NO
+  // field, not an empty one.
+  const res = attachKo(lookup("學生", data), guarded);
+  assert.equal(res.ok, true);
+  const word = res.matches.find((m) => m.kind === "word");
+  assert.deepEqual(word.ko, ko.words.學生);
+  const hak = res.matches.find((m) => m.kind === "char" && m.canonical === "學");
+  assert.deepEqual(hak.ko, ko.chars.學);
+  const saeng = res.matches.find((m) => m.kind === "char" && m.canonical === "生");
+  assert.equal("ko" in saeng, false);
+  // The inline compound rows on a char match: 學's 學生 row, and 生's.
+  assert.deepEqual(hak.compounds[0].ko, ko.words.學生);
+  assert.deepEqual(saeng.compounds[0].ko, ko.words.學生, "生's 학생 row too");
+  // Those rows are hanja.json's own objects: the loaded table stays clean,
+  // and a later unflagged lookup of the same char carries nothing.
+  assert.equal("ko" in hanja.chars.學.compounds[0], false, "the data table was written to");
+  assert.ok(lookup("學", data).matches[0].compounds.every((row) => !("ko" in row)));
+
+  // A variant surface attaches on the canonical, like every other join.
+  const viaVariant = attachKo(lookup("学生", data), guarded);
+  assert.deepEqual(viaVariant.matches[0].ko, ko.words.學生);
+
+  // Component-word parts: 資本 attached, 主義 not.
+  const parts = attachKo(lookup("資本主義", data), guarded).matches[0].parts;
+  const jabon = parts.find((p) => p.type === "word" && p.hanja === "資本");
+  assert.deepEqual(jabon.ko, ko.words.資本);
+  const juui = parts.find((p) => p.type === "word" && p.hanja === "主義");
+  assert.equal("ko" in juui, false);
+
+  // Reading-list candidates, by char.
+  const reading = attachKo(lookup("국", data), guarded).matches[0];
+  assert.equal(reading.kind, "reading");
+  assert.deepEqual(reading.candidates.find((c) => c.char === "國").ko, ko.chars.國);
+  assert.equal("ko" in reading.candidates.find((c) => c.char === "局"), false);
+
+  // Joined decomposition parts, by the row's TARGET.
+  const decomped = attachDecomp(lookup("生", data), {
+    hanja,
+    decomp: guardDecomp({ v: 1, parts: { 生: [["學"], ["民"], ["丿", null, "slash"]] } }),
+  });
+  attachKo(decomped, guarded);
+  const [partHak, partMin, inert] = decomped.matches[0].parts;
+  assert.equal(partHak.t, "學");
+  assert.deepEqual(partHak.ko, ko.chars.學);
+  assert.equal("ko" in partMin, false, "a target the table lacks");
+  assert.equal("ko" in inert, false, "an inert row names no target");
+
+  // Native matches, by "hangul|pos"; the 사랑 noun has no entry.
+  const natives = attachKo(lookup("하늘 사랑 우리", nativeData, { native: true }), guarded);
+  const sky = natives.nativeMatches.find((m) => m.word === "하늘");
+  assert.deepEqual(sky.ko, ko.natives["하늘|noun"]);
+  assert.equal("ko" in natives.nativeMatches.find((m) => m.word === "사랑"), false);
+  assert.deepEqual(natives.nativeMatches.find((m) => m.word === "우리").ko, ko.natives["우리|pron"]);
+
+  // Junk tolerance: error results and non-results pass through untouched,
+  // and an empty guarded table attaches nothing anywhere.
+  const errRes = { ok: false, error: "nope" };
+  assert.equal(attachKo(errRes, guarded), errRes);
+  assert.equal(attachKo(null, guarded), null);
+  const bare = attachKo(lookup("學生", data), guardKo(null));
+  assert.ok(bare.matches.every((m) => !("ko" in m)));
+  assert.ok(bare.matches.every((m) => (m.compounds ?? []).every((row) => !("ko" in row))));
+  // Unflagged worker responses are byte-identical: no plain lookup carries
+  // the field, on any match or row.
+  const plain = lookup("學生", data);
+  assert.ok(plain.matches.every((m) => !("ko" in m)));
+  assert.ok(!JSON.stringify(plain).includes('"ko"'));
+});
+
+await testAsync("ko: attachKoRows covers the compound, used-in and part-of row lists", async () => {
+  const { guardKo, attachKoRows } = await import("../extension/background.js");
+  const guarded = guardKo(ko);
+  // The full compound index of 國: 國民 and 國家 attached.
+  const compounds = attachKoRows(buildFullCompounds("國", data), guarded, "word");
+  assert.deepEqual(compounds.find((r) => r.hanja === "國民").ko, ko.words.國民);
+  assert.deepEqual(compounds.find((r) => r.hanja === "國家").ko, ko.words.國家);
+  // The used-in list of 學生: 學生會 attached; a spelling the table lacks
+  // (資本主義 and 資本主, through the cw-less fallback scan) gets no field.
+  const usedIn = attachKoRows(buildUsedIn("學生", data), guarded, "word");
+  assert.deepEqual(usedIn.find((r) => r.hanja === "學生會").ko, ko.words.學生會);
+  const scanned = attachKoRows(buildUsedIn("資本", data), guarded, "word");
+  assert.ok(scanned.length > 0 && scanned.every((r) => !("ko" in r)));
+  // Part-of rows key by char.
+  const foundIn = attachKoRows([{ char: "學", hun: "배울", eum: "학", gloss: "x" }, { char: "生" }],
+    guarded, "char");
+  assert.deepEqual(foundIn[0].ko, ko.chars.學);
+  assert.equal("ko" in foundIn[1], false);
+  // Junk: a non-array passes through, junk rows are skipped, an unguarded
+  // raw table is guarded on the way in.
+  assert.equal(attachKoRows(null, guarded, "word"), null);
+  assert.deepEqual(attachKoRows([null, 7, { hanja: "學生" }], ko, "word")[2].ko, ko.words.學生);
+  assert.ok(attachKoRows([{ hanja: "學生" }], null, "word").every((r) => !("ko" in r)));
+});
+
+test("ko: no lookup semantics, a ko table on the bundle is never read", () => {
+  const trapped = {
+    ...data,
+    get ko() {
+      throw new Error("the ko table was read inside lookup");
+    },
+  };
+  for (const q of ["學生", "國民", "학생", "국", "gukmin", "学"]) {
+    assert.equal(
+      JSON.stringify(lookup(q, trapped, { interpret: true })),
+      JSON.stringify(lookup(q, data, { interpret: true })),
+      `query ${q}`
+    );
+  }
+});
+
+/**
+ * The worker's packaged-file reads, stubbed: the three data files answer
+ * from the fixtures, ko.json from the ko fixture, everything else 404s
+ * (decomp.json degrades to an empty table). `log` collects every url so a
+ * check can prove which files a request touched.
+ */
+const fetchData = (log) => async (url) => {
+  log.push(url);
+  const name = /\/data\/(\w+)\.json$/.exec(url)?.[1];
+  const file = { hanja, words, variants, ko }[name] ?? null;
+  return { ok: file !== null, status: file ? 200 : 404, json: async () => file };
+};
+const koFetches = (log) => log.filter((u) => /\/data\/ko\.json$/.test(u)).length;
+
+await testAsync("ko: the worker fetches ko.json on the first flagged request only, never unflagged", async () => {
+  const { handleLookup, handleCompounds, handleUsedIn, handleFoundIn, MESSAGE_HANDLERS } =
+    await import("../extension/background.js");
+  const realFetch = globalThis.fetch;
+  const fetched = [];
+  globalThis.fetch = fetchData(fetched);
+  globalThis.chrome = { runtime: { getURL: (path) => `chrome-extension://okp/${path}` } };
+  try {
+    // Unflagged: the data files load, ko.json does not, and nothing carries
+    // the field.
+    let res = await handleLookup("學生", false, false, false, false);
+    assert.equal(res.ok, true);
+    assert.equal(koFetches(fetched), 0);
+    assert.ok(!JSON.stringify(res).includes('"ko"'));
+    res = await handleLookup("學生", false, false, false);
+    assert.equal(koFetches(fetched), 0, "an absent flag is off");
+    // Flagged: one fetch, then the cache serves every later flagged request.
+    res = await handleLookup("學生", false, false, false, true);
+    assert.equal(koFetches(fetched), 1);
+    assert.deepEqual(res.matches.find((m) => m.kind === "word").ko, ko.words.學生);
+    assert.deepEqual(res.matches.find((m) => m.canonical === "學").ko, ko.chars.學);
+    res = await handleLookup("國民", false, true, false, true);
+    assert.equal(koFetches(fetched), 1, "cached");
+    assert.deepEqual(res.matches[0].ko, ko.words.國民);
+    // The row messages carry the same flag, and attach onto their rows.
+    const cpd = await handleCompounds("國", true);
+    assert.deepEqual(cpd.compounds.find((r) => r.hanja === "國民").ko, ko.words.國民);
+    assert.ok(!JSON.stringify(await handleCompounds("國")).includes('"ko"'));
+    const used = await handleUsedIn("學生", true);
+    assert.deepEqual(used.words.find((r) => r.hanja === "學生會").ko, ko.words.學生會);
+    assert.ok(!JSON.stringify(await handleUsedIn("學生")).includes('"ko"'));
+    assert.deepEqual(await handleFoundIn("學", true), { ok: true, chars: [] }, "no decomp table here");
+    // The router reads m.ko strictly.
+    res = await MESSAGE_HANDLERS.lookup({ type: "lookup", text: "學生", ko: true });
+    assert.deepEqual(res.matches[0].ko, ko.words.學生);
+    res = await MESSAGE_HANDLERS.lookup({ type: "lookup", text: "學生", ko: "yes" });
+    assert.ok(!JSON.stringify(res).includes('"ko"'));
+    assert.equal(koFetches(fetched), 1);
+  } finally {
+    globalThis.fetch = realFetch;
+    delete globalThis.chrome;
+  }
+});
+
+await testAsync("ko: isAllowedTabUrl admits Wiktionary articles and Urimalsaem senses, nothing else", async () => {
+  const { isAllowedTabUrl, URIMALSAEM_URL_PREFIX, WIKI_URL_PREFIX } =
+    await import("../extension/background.js");
+  assert.equal(URIMALSAEM_URL_PREFIX, "https://opendict.korean.go.kr/dictionary/view?sense_no=");
+  assert.equal(isAllowedTabUrl(`${WIKI_URL_PREFIX}%ED%95%99%EC%83%9D#Korean`), true);
+  assert.equal(isAllowedTabUrl(`${URIMALSAEM_URL_PREFIX}27143`), true);
+  assert.equal(isAllowedTabUrl("https://opendict.korean.go.kr/"), false);
+  assert.equal(isAllowedTabUrl("https://evil.example/?u=https://opendict.korean.go.kr/dictionary/view?sense_no=1"), false);
+  assert.equal(isAllowedTabUrl(null), false);
+});
+
+test("ko export: joinItems hangs the whole entry on word and char rows when data carries it", () => {
+  const items = [
+    { id: "i0", kind: "word", key: "學生", folderId: "f0", addedAt: 1 },
+    { id: "i1", kind: "char", key: "學", folderId: "f0", addedAt: 2 },
+    { id: "i2", kind: "char", key: "生", folderId: "f0", addedAt: 3 },
+    { id: "i3", kind: "word", key: "事故", folderId: "f0", addedAt: 4 },
+    { id: "i4", kind: "char", key: "学", folderId: "f0", addedAt: 5 },
+  ];
+  const rows = joinItems(items, { ...data, ko });
+  assert.equal(rows[0].ko, ko.words.學生, "the entry rides whole, not a rebuild");
+  assert.equal(rows[1].ko, ko.chars.學);
+  assert.equal("ko" in rows[2], false, "a char the table lacks gets no field");
+  assert.equal("ko" in rows[3], false, "a word the table lacks gets no field");
+  assert.equal(rows[4].ko, ko.chars.學, "a variant key joins on the canonical");
+  // The ungated path: without ko on the data, no row carries any.
+  assert.ok(joinItems(items, data).every((row) => !("ko" in row)));
+  assert.ok(joinItems(items, { ...data, ko: null }).every((row) => !("ko" in row)));
+});
+
+test("ko export: the definitions field is the Korean senses joined with ' / ', English when falling back", () => {
+  const folders = [{ id: "f0", name: "Saved" }];
+  const items = [
+    { id: "i0", kind: "word", key: "學生", folderId: "f0", addedAt: Date.UTC(2026, 8, 1) },
+    { id: "i1", kind: "char", key: "學", folderId: "f0", addedAt: Date.UTC(2026, 8, 1) },
+    { id: "i2", kind: "char", key: "生", folderId: "f0", addedAt: Date.UTC(2026, 8, 1) },
+  ];
+  const withKo = joinItems(items, { ...data, ko });
+  const anki = tsvLines(buildAnkiTsv(withKo, null, folders));
+  assert.equal(anki[3], "學生\t학생 · 학예를 배우는 사람. / 학교에 다니면서 공부하는 사람.\tSaved");
+  assert.equal(anki[4], "學\t배울 학 · 어떤 원리에 따라 조직된 지식의 체계. / ‘학문’의 뜻을 더하는 접미사.\tSaved");
+  assert.equal(anki[5], "生\t날 생 · 1. to be born; to live; 2. raw; fresh\tSaved", "no entry: English");
+  const csv = buildCsv(withKo, folders).replace(/\n$/, "").split("\n");
+  assert.equal(csv[0], CSV_COLUMNS.join(","), "header identifiers unchanged");
+  assert.equal(csv[1], "word,學生,학생,,,학예를 배우는 사람. / 학교에 다니면서 공부하는 사람.,,,,Saved,2026-09-01");
+  assert.equal(csv[3], "char,生,,날 생,생,1. to be born; to live; 2. raw; fresh,,,,Saved,2026-09-01");
+  // Without ko on the rows: byte-identical to before the feature.
+  const without = joinItems(items, data);
+  assert.equal(tsvLines(buildAnkiTsv(without, null, folders))[3], "學生\t학생 · 1. student; pupil\tSaved");
+  assert.ok(!buildCsv(without, folders).includes("학예"));
+  // A junk entry (no usable senses) falls back to English too.
+  const junk = joinItems(items, { ...data, ko: { words: { 學生: { d: [], s: 1 } } } });
+  assert.equal(tsvLines(buildAnkiTsv(junk, null, folders))[3], "學生\t학생 · 1. student; pupil\tSaved");
+});
+
+await testAsync("ko export: the fetch gate opens only under 한국어 with a definitions field in play", async () => {
+  const { exportWantsKo } = await import("../extension/background.js");
+  const defaults = normalizeSettings(null);
+  assert.equal(exportWantsKo(defaults, "csv"), false, "English never fetches");
+  assert.equal(exportWantsKo(defaults, "anki"), false);
+  const korean = normalizeSettings({ language: "ko" });
+  assert.equal(exportWantsKo(korean, "csv"), true, "the CSV always writes definitions");
+  assert.equal(exportWantsKo(korean, "anki"), true, "the default backs carry defs");
+  const noDefs = normalizeSettings({
+    language: "ko",
+    anki: { wordBack: ["hangul"], charBack: ["eumhun", "ja"] },
+  });
+  assert.equal(exportWantsKo(noDefs, "anki"), false);
+  assert.equal(exportWantsKo(noDefs, "csv"), true);
+  // A defs FRONT opens the gate too.
+  assert.equal(exportWantsKo({ language: "ko", anki: { wordFront: "defs", wordBack: [], charBack: [] } }, "anki"), true);
+  assert.equal(exportWantsKo({ language: "ko", anki: { charFront: "defs" } }, "anki"), true);
+  // Junk settings read as "no fetch", never as an accidental one.
+  assert.equal(exportWantsKo(null, "csv"), false);
+  assert.equal(exportWantsKo({ language: "ko", anki: "junk" }, "anki"), false);
+  assert.equal(exportWantsKo({ language: "xx" }, "csv"), false);
+});
+
+await testAsync("ko export: handleSavedExport loads ko.json through the gate and the fields follow the language", async () => {
+  // A FRESH worker instance (the query string makes Node load the module
+  // again), so its ko cache is empty and the gate's fetch is observable.
+  const { handleSavedExport } = await import("../extension/background.js?ko-export-gate");
+  const realFetch = globalThis.fetch;
+  const fetched = [];
+  globalThis.fetch = fetchData(fetched);
+  const store = {
+    okpSaved: {
+      v: 1,
+      folders: [{ id: "f0", name: "Saved" }],
+      items: [
+        { id: "i0", kind: "word", key: "學生", folderId: "f0", addedAt: Date.UTC(2026, 8, 1) },
+        { id: "i1", kind: "char", key: "生", folderId: "f0", addedAt: Date.UTC(2026, 8, 1) },
+      ],
+      nextFolder: 1,
+      nextItem: 2,
+    },
+  };
+  const local = {
+    get: async (key) => ({ [key]: store[key] }),
+    set: async (obj) => { Object.assign(store, obj); },
+  };
+  globalThis.chrome = {
+    runtime: { getURL: (path) => `chrome-extension://okp/${path}` },
+    storage: { local },
+  };
+  const bodyOf = (res) => {
+    assert.equal(res.ok, true, res.error);
+    return res.tsv.replace(/\n$/, "").split("\n");
+  };
+  try {
+    // English: the ungated path, ko.json never fetched, English definitions.
+    store.okpSettings = normalizeSettings({ language: "en" });
+    let lines = bodyOf(await handleSavedExport({ all: true }, "csv"));
+    assert.equal(koFetches(fetched), 0);
+    assert.equal(lines[1], "word,學生,학생,,,1. student; pupil,,,,Saved,2026-09-01");
+    // 한국어 without a definitions field: still no fetch.
+    store.okpSettings = normalizeSettings({
+      language: "ko",
+      anki: { wordBack: ["hangul"], charBack: ["eumhun"] },
+    });
+    lines = bodyOf(await handleSavedExport({ all: true }, "anki"));
+    assert.equal(koFetches(fetched), 0);
+    assert.equal(lines[3], "學生\t학생\tSaved");
+    // 한국어 CSV: the gate opens, one fetch, Korean where the entry exists.
+    lines = bodyOf(await handleSavedExport({ all: true }, "csv"));
+    assert.equal(koFetches(fetched), 1);
+    assert.equal(lines[0], CSV_COLUMNS.join(","));
+    assert.equal(lines[1], "word,學生,학생,,,학예를 배우는 사람. / 학교에 다니면서 공부하는 사람.,,,,Saved,2026-09-01");
+    assert.equal(lines[2], "char,生,,날 생,생,1. to be born; to live; 2. raw; fresh,,,,Saved,2026-09-01");
+    // 한국어 Anki with defs: the cached table, Korean on the word's back.
+    store.okpSettings = normalizeSettings({ language: "ko" });
+    lines = bodyOf(await handleSavedExport({ all: true }, "anki"));
+    assert.equal(koFetches(fetched), 1, "cached");
+    assert.equal(lines[3], "學生\t학생 · 학예를 배우는 사람. / 학교에 다니면서 공부하는 사람.\tSaved");
+    assert.equal(lines[4], "生\t날 생 · 1. to be born; to live; 2. raw; fresh\tSaved");
+    // Back to English: English again, whatever the cache holds.
+    store.okpSettings = normalizeSettings({ language: "en" });
+    lines = bodyOf(await handleSavedExport({ all: true }, "anki"));
+    assert.equal(lines[3], "學生\t학생 · 1. student; pupil\tSaved");
+  } finally {
+    globalThis.fetch = realFetch;
+    delete globalThis.chrome;
+  }
+});
+
+await testAsync("ko: handleSavedGet attaches the Korean entries onto its rows only when flagged", async () => {
+  // A fresh worker instance, so the ko fetch itself is observable.
+  const { handleSavedGet, MESSAGE_HANDLERS } =
+    await import("../extension/background.js?ko-saved-get");
+  const realFetch = globalThis.fetch;
+  const fetched = [];
+  globalThis.fetch = fetchData(fetched);
+  const store = {
+    okpSaved: {
+      v: 1,
+      folders: [{ id: "f0", name: "Saved" }],
+      items: [
+        { id: "i0", kind: "word", key: "學生", folderId: "f0", addedAt: 1 },
+        { id: "i1", kind: "char", key: "學", folderId: "f0", addedAt: 2 },
+        { id: "i2", kind: "char", key: "生", folderId: "f0", addedAt: 3 },
+      ],
+      nextFolder: 1,
+      nextItem: 3,
+    },
+    okpSettings: normalizeSettings({ language: "ko" }),
+  };
+  globalThis.chrome = {
+    runtime: { getURL: (path) => `chrome-extension://okp/${path}` },
+    storage: {
+      local: {
+        get: async (key) => ({ [key]: store[key] }),
+        set: async (obj) => { Object.assign(store, obj); },
+      },
+    },
+  };
+  try {
+    // Unflagged: the stored language has no say; no fetch, no field.
+    let res = await handleSavedGet();
+    assert.equal(res.ok, true);
+    assert.equal(koFetches(fetched), 0);
+    assert.ok(res.items.every((row) => !("ko" in row)));
+    res = await MESSAGE_HANDLERS.savedGet({ type: "savedGet" });
+    assert.equal(koFetches(fetched), 0);
+    // Flagged: one fetch, the entries ride whole, a key the table lacks gets none.
+    res = await MESSAGE_HANDLERS.savedGet({ type: "savedGet", ko: true });
+    assert.equal(koFetches(fetched), 1);
+    assert.deepEqual(res.items[0].ko, ko.words.學生);
+    assert.deepEqual(res.items[1].ko, ko.chars.學);
+    assert.equal("ko" in res.items[2], false);
+    res = await handleSavedGet(true);
+    assert.equal(koFetches(fetched), 1, "cached");
+  } finally {
+    globalThis.fetch = realFetch;
+    delete globalThis.chrome;
+  }
+});
+
 // --- optional smoke test against Agent A's real corpus -------------------
 // Read-only, and skipped (not failed) if the files are absent.
 

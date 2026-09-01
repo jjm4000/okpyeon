@@ -687,6 +687,88 @@
     return resp;
   }
 
+  // --- Korean definitions (SPEC ADDENDUM 2026-09-01) ---------------------
+  // ko.json in miniature: {d: senses, s: target_code} per key, three tables.
+  // Consulted ONLY when a request carries ko:true; the read counter lets
+  // checks prove English-mode traffic never touches it, and __swapKoTable
+  // stands in for the file being absent. 學生 carries two senses under the
+  // SPEC's own anchor code; 大學, 學校 and 大學生 one each (compound and
+  // used-in rows); 資本 one (a component-word row); 國民 has NONE (the
+  // ko-less word card). Chars: 學 and 國 carry a gloss, 革 one for the Made
+  // of row; 生 and 民 have only their hun, 法 neither hun nor gloss.
+  // Natives: 하늘 has an entry, 무리 none.
+  var KO = {
+    words: {
+      "學生": { d: ["학예를 배우는 사람.", "학교에 다니면서 공부하는 사람."], s: 27143 },
+      "大學": { d: ["고등 교육을 베푸는 교육 기관."], s: 20001 },
+      "學校": { d: ["일정한 목적 아래 교사가 학생을 가르치는 기관."], s: 20002 },
+      "大學生": { d: ["대학에 다니는 학생."], s: 20003 },
+      "資本": { d: ["장사나 사업 따위의 기본이 되는 돈."], s: 20004 }
+    },
+    natives: {
+      "하늘|noun": { d: ["지평선 위로 보이는 무한한 공간."], s: 30001 }
+    },
+    chars: {
+      "學": { d: ["어떤 원리에 따라 조직된 지식의 체계.", "‘학문’의 뜻을 더하는 접미사."], s: 67890 },
+      "國": { d: ["일정한 영토와 주권을 가진 집단."], s: 40001 },
+      "革": { d: ["짐승의 가죽."], s: 40002 }
+    }
+  };
+  var koReads = 0;
+
+  function koFor(table, key) {
+    return (typeof key === "string" && Object.prototype.hasOwnProperty.call(table, key))
+      ? table[key] : null;
+  }
+
+  // The worker's attachKoRows: rows keyed by hanja spelling ("word") or by
+  // char / decomposition target ("char"). A row the table lacks gets no field.
+  function attachKoRows(rows, kind) {
+    (rows || []).forEach(function (row) {
+      if (!row || typeof row !== "object") return;
+      var entry = kind === "char"
+        ? koFor(KO.chars, typeof row.char === "string" ? row.char : row.t)
+        : koFor(KO.words, row.hanja);
+      if (entry) row.ko = entry;
+    });
+    return rows;
+  }
+
+  // The worker's attachKo: every match and every gloss-bearing row it
+  // carries. The inline compound rows are the fixture table's own objects
+  // and are copied, as the worker copies hanja.json's.
+  function attachKoMatches(resp) {
+    koReads++;
+    if (!resp || resp.ok !== true) return resp;
+    (resp.matches || []).forEach(function (m) {
+      if (!m || typeof m !== "object") return;
+      if (m.kind === "word") {
+        var w = koFor(KO.words, m.canonical);
+        if (w) m.ko = w;
+        attachKoRows(m.parts, "word");
+      } else if (m.kind === "char") {
+        var c = koFor(KO.chars, m.canonical);
+        if (c) m.ko = c;
+        m.compounds = (m.compounds || []).map(function (row) {
+          var e = row && typeof row === "object" ? koFor(KO.words, row.hanja) : null;
+          if (!e) return row;
+          var copy = {};
+          Object.keys(row).forEach(function (k) { copy[k] = row[k]; });
+          copy.ko = e;
+          return copy;
+        });
+        attachKoRows(m.parts, "char");
+      } else if (m.kind === "reading") {
+        attachKoRows(m.candidates, "char");
+      }
+    });
+    (resp.nativeMatches || []).forEach(function (m) {
+      var n = m && m.kind === "native" ? koFor(KO.natives, m.word + "|" + m.pos) : null;
+      if (n) m.ko = n;
+    });
+    return resp;
+  }
+
   var HAN = /\p{Script=Han}/u;
   var HANGUL = /[가-힣]/;
   var MAX_WORD = 6;
@@ -1087,6 +1169,7 @@
   ];
 
   var saved, settings, savedCheckCalls, savedLastCheckKeys, savedFail;
+  var savedLastGetKo = null;   // whether the last savedGet carried ko:true
 
   function resetSaved() {
     saved = {
@@ -1143,7 +1226,11 @@
   // The read-time join. An item whose entry has left the dictionary becomes a
   // {missing:true} row rather than vanishing — the saved view says so and the
   // exporter skips and counts it.
-  function joinSaved(items, withSino) {
+  function joinSaved(items, withSino, withKo) {
+    // The export's Korean join reads the table once per export, and ONLY
+    // when the caller opened the gate (savedExport under 한국어 with a
+    // definitions field in play).
+    if (withKo) koReads++;
     return items.map(function (item) {
       var row = itemCopy(item);
       if (item.kind === "char") {
@@ -1156,6 +1243,7 @@
         // The export's sino join: the entry rides whole, and ONLY when the
         // caller opened the gate (savedExport with a ja/zh charBack field).
         if (withSino && SINO[item.key]) row.sino = SINO[item.key];
+        if (withKo && KO.chars[item.key]) row.ko = KO.chars[item.key];
         return row;
       }
       var senses = WORDS[item.key];
@@ -1169,6 +1257,7 @@
       });
       row.glosses = glosses;
       if (senses.every(function (s) { return s.rare === true; })) row.rare = true;
+      if (withKo && KO.words[item.key]) row.ko = KO.words[item.key];
       return row;
     });
   }
@@ -1177,6 +1266,14 @@
     return (glosses || []).filter(Boolean).map(function (g, i) {
       return (i + 1) + ". " + g;
     }).join("; ");
+  }
+
+  // The definitions field is what the card shows: the Korean senses joined
+  // with " / " when the row carries an entry, the English definitions
+  // otherwise (saved.js's definitionsText).
+  function definitionsText(row) {
+    var senses = row.ko && row.ko.d ? row.ko.d.filter(Boolean) : [];
+    return senses.length ? senses.join(" / ") : numberedDefs(row.glosses);
   }
 
   function savedField(row, token) {
@@ -1188,7 +1285,7 @@
       }).filter(Boolean).join(", ");
     }
     if (token === "readings") return (row.readings || []).filter(Boolean).join(", ");
-    if (token === "defs") return numberedDefs(row.glosses);
+    if (token === "defs") return definitionsText(row);
     if (token === "lvl") return row.lvl || "";
     // Sino readings text: the pairs' readings in baked order, the katakana
     // middle dot for on'yomi and a spaced middle dot for pinyin, no markers,
@@ -1280,7 +1377,11 @@
     }
 
     if (msg.type === "savedGet") {
-      return { ok: true, folders: foldersCopy(), items: joinSaved(saved.items) };
+      // The same client-set flag as lookups: a flagged request's rows carry
+      // their Korean entry (handleSavedGet's join).
+      savedLastGetKo = msg.ko === true;
+      return { ok: true, folders: foldersCopy(),
+               items: joinSaved(saved.items, false, msg.ko === true) };
     }
 
     if (msg.type === "savedToggle") {
@@ -1398,9 +1499,15 @@
       // rows only when a charBack field asks for a reading language.
       var wantsSino = settings.anki.charBack.indexOf("ja") >= 0 ||
                       settings.anki.charBack.indexOf("zh") >= 0;
-      var rows = joinSaved(exportSelection(msg), wantsSino);
-      var skipped = rows.filter(function (r) { return r.missing === true; }).length;
       var isCsv = msg.format === "csv";
+      // The worker's Korean fetch gate, mirrored (exportWantsKo): the table
+      // joins only under 한국어 with a definitions field in play, which is
+      // every CSV and any Anki file whose fronts or backs carry defs.
+      var wantsKo = settings.language === "ko" && (isCsv ||
+        [settings.anki.wordFront, settings.anki.charFront]
+          .concat(settings.anki.wordBack, settings.anki.charBack).indexOf("defs") >= 0);
+      var rows = joinSaved(exportSelection(msg), wantsSino, wantsKo);
+      var skipped = rows.filter(function (r) { return r.missing === true; }).length;
       return {
         ok: true,
         tsv: isCsv ? buildSavedCsv(rows) : buildSavedAnki(rows),
@@ -1428,6 +1535,7 @@
     lastCheckKeys: function () {
       return savedLastCheckKeys ? savedLastCheckKeys.slice() : null;
     },
+    lastGetKo: function () { return savedLastGetKo; },
     fail: function (which, on) { savedFail[which] = on !== false; }
   };
 
@@ -1486,6 +1594,12 @@
     // Sibling Sino readings ADDENDUM: the same pair for sino:true.
     __sinoCalls: 0,
     __lastSino: null,
+    // Korean language mode ADDENDUM: the same pair for ko:true on lookups,
+    // and the row fetches' own pair (compounds, usedIn, foundIn).
+    __koCalls: 0,
+    __lastKo: null,
+    __koRowCalls: 0,
+    __lastRowKo: null,
     __compoundCalls: 0,  // {type:"compounds"} only
     __lastChar: null,
     __failCompounds: false,  // flip on to exercise the retry path
@@ -1538,24 +1652,48 @@
           if (msg.sino === true) {
             resp = Promise.resolve(resp).then(attachSinoMatches);
           }
+          // And for the ko table, last of all, like the worker's attach.
+          this.__lastKo = msg.ko === true;
+          if (msg.ko === true) {
+            this.__koCalls++;
+            resp = Promise.resolve(resp).then(attachKoMatches);
+          }
         } else if (msg && msg.type === "compounds") {
           this.__compoundCalls++;
           this.__lastChar = msg.char;
+          this.__lastRowKo = msg.ko === true;
           resp = this.__failCompounds
             ? { ok: false, error: "simulated failure" }
             : { ok: true, compounds: fullCompounds(msg.char) };
+          if (msg.ko === true) {
+            this.__koRowCalls++;
+            koReads++;
+            if (resp.ok) attachKoRows(resp.compounds, "word");
+          }
         } else if (msg && msg.type === "usedIn") {
           this.__usedInCalls++;
           this.__lastWord = msg.word;
+          this.__lastRowKo = msg.ko === true;
           resp = this.__failUsedIn
             ? { ok: false, error: "simulated failure" }
             : { ok: true, words: buildUsedIn(msg.word) };
+          if (msg.ko === true) {
+            this.__koRowCalls++;
+            koReads++;
+            if (resp.ok) attachKoRows(resp.words, "word");
+          }
         } else if (msg && msg.type === "foundIn") {
           this.__foundInCalls++;
           this.__lastFoundInChar = msg.char;
+          this.__lastRowKo = msg.ko === true;
           resp = this.__failFoundIn
             ? { ok: false, error: "simulated failure" }
             : { ok: true, chars: buildFoundIn(msg.char) };
+          if (msg.ko === true) {
+            this.__koRowCalls++;
+            koReads++;
+            if (resp.ok) attachKoRows(resp.chars, "char");
+          }
         } else if (msg && msg.type === "openTab") {
           this.__openTabCalls++;
           this.__lastOpenTabUrl = msg.url;
@@ -1596,6 +1734,13 @@
     __swapSinoTable: function (table) {
       var prev = SINO;
       SINO = table || {};
+      return prev;
+    },
+    // The ko twins.
+    __koReads: function () { return koReads; },
+    __swapKoTable: function (table) {
+      var prev = KO;
+      KO = table || { words: {}, natives: {}, chars: {} };
       return prev;
     },
     __fullCompounds: fullCompounds,
@@ -4780,6 +4925,13 @@
       sidebar.showView("saved");
       await savedView.refresh();
       await wait(TAIL);
+      check("KO: the saved view fetched flagged; a row with a Korean entry shows its first sense, a ko-less one its English, no marker",
+        store.lastGetKo() === true &&
+        rowFor("學生").querySelector(".saved-gloss").textContent === "학예를 배우는 사람." &&
+        rowFor("國民").querySelector(".saved-gloss").textContent === "the people; citizens of a nation" &&
+        rowFor("國").querySelector(".saved-gloss").textContent === "일정한 영토와 주권을 가진 집단." &&
+        !byId("okp-saved-list").querySelector(".ko-marker"),
+        "flag=" + store.lastGetKo() + " " + rowFor("學生").textContent + " | " + rowFor("國民").textContent);
       check("the saved view's chrome is Korean",
         byId("okp-saved-new").textContent === "새 폴더" &&
         byId("okp-saved-filter").options[0].textContent === "전체 (4)" &&
@@ -4853,6 +5005,54 @@
         api.query(".cpd-more").textContent === "5개 더 보기 (13)" &&
         api.query(".cpd-all").textContent === "전체 보기 (17)",
         api.query(".usedin-row").textContent + " | " + api.query(".cpd-more").textContent);
+
+      // Korean definitions on the sidebar surface (SPEC "Korean definitions
+      // data", runtime): the shell ferries the language as one flag, and the
+      // embed renders exactly as the popup does.
+      var koReadsShell = fake.__koReads();
+      var koShellUrl = "https://opendict.korean.go.kr/dictionary/view?sense_no=27143";
+      function koGlosses() {
+        return api.queryAll(".word-body .gloss-text").map(function (n) { return n.textContent; });
+      }
+      check("KO: a shell without the flag sends no ko; the ko-less cards carry the marker and Wiktionary",
+        fake.__lastKo === false &&
+        api.query(".word-body .glosses .ko-marker").textContent === "한국어 없음" &&
+        api.query(".word-body .wiki").textContent === "Wiktionary ↗",
+        "last=" + fake.__lastKo + " " + api.query(".word-body .glosses").textContent);
+      shell.setKoEnabled(true);
+      await wait(TAIL);
+      var koShellLink = api.query(".word-body .wiki");
+      check("KO: setKoEnabled re-runs the query flagged; the card shows the Korean senses and the Urimalsaem link",
+        fake.__lastKo === true && fake.__koReads() === koReadsShell + 1 &&
+        koGlosses().join("|") === "학예를 배우는 사람.|학교에 다니면서 공부하는 사람." &&
+        !api.query(".word-body .ko-marker") &&
+        !!koShellLink && koShellLink.classList.contains("urimalsaem") &&
+        koShellLink.textContent === "우리말샘 ↗" && koShellLink.href === koShellUrl &&
+        api.queryAll(".word-body .wiki").length === 1,
+        "last=" + fake.__lastKo + " reads=" + (fake.__koReads() - koReadsShell) + " " +
+          koGlosses().join("|"));
+      check("KO: the nested char cards follow the char rule on this surface too",
+        api.queryAll(".component-list > .card.component .gloss-text").length === 2 &&
+        !api.queryAll(".component-list > .card.component")[1].querySelector(".glosses") &&
+        api.queryAll(".component-list > .card.component .wiki").every(function (a) {
+          return a.textContent === "Wiktionary ↗";
+        }),
+        api.queryAll(".component-list > .card.component .gloss-text").length + " nested glosses");
+      tabsSpy.reset();
+      koShellLink.click();
+      check("KO: the Urimalsaem link opens a BACKGROUND tab through chrome.tabs, like Wiktionary",
+        tabsSpy.calls.length === 1 && tabsSpy.calls[0].active === false &&
+        tabsSpy.calls[0].url === koShellUrl,
+        JSON.stringify(tabsSpy.calls));
+      violations = violations.concat(sweep(api.query(".view"), "학생 Korean definitions"));
+      shell.setKoEnabled(false);
+      await wait(TAIL);
+      check("KO: setKoEnabled(false) re-runs it unflagged again",
+        fake.__lastKo === false && api.query(".word-body .glosses .ko-marker").textContent === "한국어 없음",
+        "last=" + fake.__lastKo);
+      shell.setKoEnabled(true);
+      await wait(TAIL);
+
       check("KO sweep: no English copy anywhere in the page under 한국어",
         violations.length === 0, violations.length + " hits: " + violations.slice(0, 6).join(" | "));
 
@@ -4869,6 +5069,12 @@
         api.query(".usedin-row").textContent === "Used in 6 larger words" &&
         brand.title === "Look up 玉篇",
         "lang=" + i18n.language() + " row=" + api.query(".usedin-row").textContent);
+      check("the storage change to English drops the flag from the shell's re-run: English definitions, Wiktionary",
+        fake.__lastKo === false &&
+        api.queryAll(".word-body .gloss-text").map(function (n) { return n.textContent; })
+          .join("|") === "Student; pupil" &&
+        !api.query(".ko-marker") && api.query(".word-body .wiki").textContent === "Wiktionary ↗",
+        "last=" + fake.__lastKo + " " + api.query(".word-body").textContent);
       shell = reinit();
       await wait(TAIL);
       check("and the English state line is back",
