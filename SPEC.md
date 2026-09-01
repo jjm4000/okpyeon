@@ -2245,6 +2245,282 @@ an unmarked section never implies the character has no phonetic.
   only; tooltips on both cues; unpinned fixture char renders
   byte-identical to the pre-feature snapshot.
 
+## Korean language mode (ADDENDUM 2026-09-01, design settled by mockups)
+
+One language control switches the whole extension into Korean: every
+label, marker, chip, tooltip, and settings row, AND the definitions,
+which come from Urimalsaem instead of English Wiktionary. Aimed at
+the Korean home market (learners of hanja in Korea, for whom English
+glosses are the barrier and partly just clutter). The spikes,
+corpus verification, and matching rules behind this addendum are in
+korean-mode-kickoff.md; this section is the binding contract.
+
+### Decisions (all user-settled 2026-09-01)
+
+- ONE control, not two (mockup S1). "Language" in its own group at the
+  top of settings, values English / 한국어, drives chrome and
+  definitions together. Rejected: S2 (separate chrome and definitions
+  languages: real cases exist, but one control is the simpler product
+  and the combinations can return later as a second value), S3 (a
+  boolean 한국어 모드 needs a bilingual label and cannot grow), S4
+  (follow the browser with no row: fails the common Korean user whose
+  Chrome runs in English).
+- DEFAULT on first run: 한국어 when the browser UI language
+  (chrome.i18n.getUILanguage, falling back to navigator.language) is
+  Korean (`ko` or `ko-*`), else English. "The store the user
+  downloaded from" is not observable by an extension, and does not
+  need to be: the store picked the Korean listing because the browser
+  is Korean, so the browser rule gives the same answer. Once stored,
+  the setting never re-derives.
+- Word cards: Korean definitions REPLACE the English gloss (mockup
+  sheet 1). Numbered senses, cap two, corpus order.
+- Char cards: the Urimalsaem single-hanja gloss where one exists
+  (~2,100 chars); otherwise the hun in the head IS the Korean gloss
+  and the English list is simply absent; English shows only for a
+  char with neither hun nor Korean gloss.
+- Fallback is never a blank: an entry with no Korean definition shows
+  its English one under a small marker reading 한국어 없음 (mockup
+  6b, reworded from the mocked EN: in the JP/CN register EN read as a
+  third pronunciation; 없음 over 없어 because UI labels take the noun
+  form). The marker only exists inside the Korean UI.
+- Full chrome port, with scaffolding for more languages: NO component
+  holds a literal user-facing string. Everything renders through one
+  lookup against a per-language message table, so the language
+  control swaps JP/CN to 일/중, the level chips, 짜임, 소리, the
+  fallback marker, and the settings copy from the same switch, and
+  adding a language later is one message file plus one value in the
+  control, with no component touched. Definitions are DATA, not
+  strings: a further definitions language would be its own sidecar
+  file on the same keys (one canonical entry, one field per language),
+  never a second lookup system.
+
+### Language mechanism
+
+- Message tables live at `extension/_locales/en/messages.json` and
+  `extension/_locales/ko/messages.json` in Chrome's own format
+  (`{"key": {"message": "...", "placeholders": {...}}}`), with
+  `"default_locale": "en"` in the manifest. Chrome's own i18n only
+  follows the browser language, so the in-app switch uses OUR loader:
+  a small module that fetches the active locale's file once, exposes
+  `t(key, subs)`, and is the only path any surface uses. Manifest
+  strings (name, description) go through Chrome's `__MSG_name__`
+  mechanism and therefore follow the BROWSER language, not the
+  setting; this is the one unavoidable mismatch and it is also what
+  unlocks the Korean store listing (the dashboard offers a listing
+  language only for locales the package declares).
+- Counts and templates: messages carry placeholders (`$COUNT$`), never
+  string concatenation in code. Korean has no plural forms; English
+  keeps its two (" character" / " characters") inside the message
+  file, selected by the loader from the count, so callers pass a
+  number and a key.
+- The content script, the sidebar views, the save bubble, the search
+  shell messages, the settings schema, and the omnibox suggestion text
+  all read `t()`. The chosen language reaches the content script the
+  way settings already do (storage read at boot plus storage.onChanged
+  ferry).
+- Harness rule: rendering every fixture card and view under `ko` must
+  produce NO English word-literal from the message inventory (a sweep
+  over the fixture DOM against the en table's values, allowing the
+  fixed tokens: Wiktionary, Anki, GitHub, Okpyeon, CC BY-SA, and
+  romanized reading text). Rendering under `en` is byte-identical to
+  today. The Korean data file is never fetched under `en`.
+
+### Korean definitions data
+
+- Source: Urimalsaem via github.com/spellcheck-ko/korean-dict-nikl
+  (`opendict/`, 25 XML chunks, 1.73 GiB, CC BY-SA 2.0 KR; the official
+  download needs Korean-carrier phone verification and the mirror is a
+  legitimate redistribution; attribution names NIKL / 우리말샘).
+  Fetched ONCE into pipeline/cache/urimalsaem/ stored gzipped (~195
+  MB); a PREPROCESS step (pipeline/urimalsaem.py, not per build)
+  parses the chunks with iterparse, strips `example_info` and
+  `multimedia_info` subtrees (outside the license grant), and emits
+  one intermediate JSON in the cache keyed the way the build wants.
+  build.py consumes only the intermediate; reparse only when the
+  mirror updates.
+- Two lanes, binding: hanja-origin senses (language_type 한자, the
+  hanja string NFC, `/(병기)` alternatives SPLIT into separate
+  origins) route to words.json keys; 고유어 senses route to
+  native.json headwords by (hangul, POS) through a pinned POS mapping
+  table (명사, 동사, 형용사, 부사, 대명사, 관형사, 수사, 감탄사,
+  의존 명사 to native.json's POS vocabulary; unmapped POS never
+  match). Headword markup `-` and `^` stripped before matching.
+  Chars: single-syllable headwords whose only origin is one hanja
+  char, routed to the canonical char.
+- Sense selection (user-approved in plain terms): keep only senses of
+  type 일반어 (drops 방언, 옛말, 북한어); drop senses whose cat_info
+  is a proper-noun class (pinned list, at minimum 지명, 인명, 책명,
+  매체) and senses whose definition marks a specific work or slang
+  (pinned patterns, at minimum "이 지은", "작사", "작곡", "의 희곡",
+  "의 소설", "은어로", "속되게 이르는", "낮잡아 이르는"); drop
+  cross-reference stubs ("의 방언", "의 옛말", "의 준말" bodies, and
+  the ⇒규범 표기 trailer is cut from any kept sense); strip inline
+  tags (`<FL>`, `<DR>`, and kin). Then the first TWO survivors in
+  sense_no order. Anchors: 학생 shows "학예를 배우는 사람." then
+  "학교에 다니면서 공부하는 사람."; 학교 shows exactly ONE sense
+  (the prison slang and the 鶴橋 / 學橋 villages are gone); 가족
+  keeps 家族's first sense only (the play by that title dropped; 假足
+  lands on its own key); 생일 shows "세상에 태어난 날…" alone (the village
+  and the pop song dropped); 學 glosses "어떤 원리에 따라 조직된
+  지식의 체계." then "‘학문’의 뜻을 더하는 접미사."; 江 glosses
+  "넓고 길게 흐르는 큰 물줄기."; 우리 the pronoun lands on the
+  native entry and 牛李 keeps its own; 거란 (契丹) has NO Korean
+  definition (a verified corpus miss) and is the fallback anchor.
+- Emitted file `extension/data/ko.json`:
+  ```json
+  { "version": 1,
+    "words":   { "學生": ["학예를 배우는 사람.", "학교에 다니면서 공부하는 사람."] },
+    "natives": { "우리|pron": ["말하는 이가 …"] },
+    "chars":   { "學": ["어떤 원리에 따라 조직된 지식의 체계.", "‘학문’의 뜻을 더하는 접미사."] } }
+  ```
+  Keys are the canonical keys of the entries they decorate; the build
+  aborts on any key absent from the file it decorates (build-anchored
+  agreement, the rare-flag lesson). Deterministic emit; expected order
+  1 MB raw, well under 0.5 MB gzipped. Coverage report at build:
+  words matched of 27,627 (spike extrapolation ~25,500), natives
+  matched of 15,527, chars glossed (~2,100).
+- Runtime: ko.json joins the worker's lazy per-file cache, fetched on
+  the first request flagged `ko: true` (client-set when the language
+  is 한국어; the worker stays stateless). `attachKo` hangs `ko`
+  (the definitions array) on the SAME match objects, on nested
+  component cards, on compound rows, on used-in rows, on native cards,
+  and on reading-list rows, in the attachDecomp / attachSino idiom.
+  `guardKo` spreads every field through, with the drive-through-the-
+  guard node test. Renderer rule: a card whose match carries `ko`
+  renders it in the gloss slot, numbered when two; compound and list
+  rows show the FIRST Korean sense; anything without `ko` renders its
+  English text under the 한국어 없음 marker (rows: the marker is
+  omitted, the English gloss simply stands). Char cards apply the
+  char rule above.
+- Export follows the language: the Anki and CSV definition fields
+  emit whatever the card shows (Korean senses joined with " / ",
+  English when falling back). CSV header identifiers stay English
+  (they are field names, not copy).
+
+### Copy tables (binding; the message files are generated from these)
+
+Card chrome:
+
+| key | English (today) | 한국어 |
+|---|---|---|
+| level.m / h / a / r | Middle school / High school / Advanced / Rare | 중학 / 고등 / 고급 / 희귀 |
+| marker.ja / marker.zh | JP / CN | 일 / 중 |
+| marker.rare (sup) | rare | 희귀 |
+| marker.native | native | 고유어 |
+| marker.phonetic | PHONETIC | 소리 |
+| marker.noKorean | (none) | 한국어 없음 |
+| section.compounds | Compounds | 단어 |
+| section.componentHanja | Component hanja | 구성 한자 |
+| section.componentWords | Component words | 구성 단어 |
+| section.sameSound | Same sound | 같은 소리 |
+| row.madeOf | Made of | 짜임 |
+| row.partOf | Part of $COUNT$ character(s) | 한자 $COUNT$자에 쓰임 |
+| row.usedIn | Used in $COUNT$ larger word(s) | 더 긴 단어 $COUNT$개에 쓰임 |
+| button.showMore | Show 5 more ($COUNT$) | 5개 더 보기 ($COUNT$) |
+| button.showAll | Show all ($COUNT$) | 전체 보기 ($COUNT$) |
+| hedge.label / hedge.note | Rare hanja homograph / Likely native Korean. This hanja spelling is obscure. | 희귀 한자 동음어 / 고유어일 가능성이 높습니다. 이 한자 표기는 드뭅니다. |
+| hint.nativeInAll | $COUNT$ native word(s) in All words | 전체 단어에 고유어 $COUNT$개 |
+| interp.keyboard | (keyboard) | (키보드) |
+| tooltip.phonetic | $GLYPH$ gives the character its sound | $GLYPH$이(가) 이 글자의 소리를 나타냅니다 |
+| tooltip.wiktionary | Wiktionary entry for $WORD$ | $WORD$의 Wiktionary 항목 |
+| bubble.savedTo / create / cancel / remove | Saved to / Create / Cancel / Remove | 저장 위치 / 만들기 / 취소 / 제거 |
+
+Sidebar and search:
+
+| key | English | 한국어 |
+|---|---|---|
+| tab.search / saved / settings | Search / Saved / Settings | 검색 / 저장 / 설정 |
+| title.search / saved / settings | Search hanja and words / Saved words and characters / Saving and export settings | 한자와 단어 검색 / 저장한 단어와 글자 / 저장 및 내보내기 설정 |
+| search.empty | Search hanja, a Korean word, or a syllable. | 한자, 한국어 단어, 또는 한 글자를 검색하세요. |
+| search.none | No entry for “$QUERY$”. | ‘$QUERY$’ 항목이 없습니다. |
+| search.error | Lookup failed. Try again. | 검색에 실패했습니다. 다시 시도하세요. |
+| scope.all / scope.hanja | All words / Hanja only | 전체 단어 / 한자만 |
+| scope.all.title / scope.hanja.title | Includes native Korean words / Sino-Korean entries, as before | 고유어 포함 / 한자어만 |
+| about | Okpyeon $VERSION$. Data from English Wiktionary and Urimalsaem, CC BY-SA. GitHub ↗ | Okpyeon $VERSION$. 자료: 영어 위키낱말사전, 우리말샘 (CC BY-SA). GitHub ↗ |
+
+Saved view:
+
+| key | English | 한국어 |
+|---|---|---|
+| saved.filter | Filter by folder | 폴더별 보기 |
+| saved.newFolder / rename / delete / selectAll | New folder / Rename / Delete / Select all | 새 폴더 / 이름 바꾸기 / 삭제 / 전체 선택 |
+| saved.folderName / newFolderName | Folder name / New folder name | 폴더 이름 / 새 폴더 이름 |
+| saved.create / save / cancel / close | Create / Save / Cancel / Close | 만들기 / 저장 / 취소 / 닫기 |
+| saved.failed | That did not work. | 문제가 생겼습니다. |
+| saved.all | All ($COUNT$) | 전체 ($COUNT$) |
+| saved.unavailable | Saved words are not available in this browser session. | 이 브라우저 세션에서는 저장한 단어를 사용할 수 없습니다. |
+| saved.emptyFolder | This folder is empty. | 이 폴더는 비어 있습니다. |
+| saved.emptyAll | Nothing saved yet. Tap the ☆ on a card to save it. | 아직 저장한 항목이 없습니다. 카드의 ☆을 눌러 저장하세요. |
+| saved.moveTo | Move to… | 폴더로 이동… |
+| saved.moved | Moved $COUNT$ to $FOLDER$ | $COUNT$개를 ‘$FOLDER$’ 폴더로 이동 |
+| saved.deleteN | Delete $COUNT$ | $COUNT$개 삭제 |
+| saved.export | Export | 내보내기 |
+| saved.exportN | Export $COUNT$ | $COUNT$개 내보내기 |
+| saved.anki / anki.desc | Anki / Anki tab-separated import file | Anki / Anki 탭 구분 가져오기 파일 |
+| saved.csv / csv.desc | CSV / Spreadsheet with every field | CSV / 모든 항목이 들어간 스프레드시트 |
+| saved.exportUnavailable | Export is not available. | 내보내기를 사용할 수 없습니다. |
+
+Settings:
+
+| key | English | 한국어 |
+|---|---|---|
+| group.language | Language | 언어 |
+| language.label / sub | Language / Menus, cards, and definitions | 언어 / 화면과 뜻풀이의 언어 |
+| group.search | Search | 검색 |
+| nativeWords.label / sub | Native Korean word search / (today's sentence) | 고유어 검색 / 사전에 고유어를 추가합니다. 검색에 ‘전체 단어’ 범위가 생깁니다. |
+| group.charCards | Character cards | 글자 카드 |
+| jaReadings.label / sub | Japanese reading / Shows the character's on'yomi reading, in katakana. | 일본어 읽기 / 글자의 음독을 가타카나로 보여 줍니다. |
+| zhReadings.label / sub | Chinese reading / Shows the character's Mandarin reading, in pinyin. | 중국어 읽기 / 글자의 표준 중국어 읽기를 병음으로 보여 줍니다. |
+| group.saving | Saving | 저장 |
+| defaultFolder.label | By default, newly saved items go to | 새로 저장하는 항목의 기본 폴더 |
+| anki.wordFront / wordBack | Word cards: front / back | 단어 카드: 앞면 / 뒷면 |
+| anki.charFront / charBack | Character cards: front / back | 글자 카드: 앞면 / 뒷면 |
+| anki.field.hanja / hangul / defs / char / eumhun / readings / lvl / ja / zh | Hanja / Hangul / Definitions / Character / Eum-hun / Readings / Level / Japanese reading / Chinese reading | 한자 / 한글 / 뜻풀이 / 글자 / 음훈 / 읽기 / 등급 / 일본어 읽기 / 중국어 읽기 |
+
+Manifest (follows the browser, via `__MSG_`): name "옥편: 한자 팝업 사전";
+description "한자 학습 도구. 한자·한자(간체)·일본어 한자를 드래그하면
+한국어 음훈과 뜻을, 한글 단어를 드래그하면 한자를 보여 줍니다."
+(132-char store limit applies; final wording at upload). Fixed tokens
+that never translate: Wiktionary, Anki, CSV, GitHub, Okpyeon, JP/CN
+readings text, romanized text. Any string found in the code that is
+missing from these tables gets added to BOTH message files during
+the build, and to this section.
+
+### Korean store listing (same release)
+
+The `_locales/ko` file plus `default_locale` unlock 한국어 in the
+dashboard's listing-language dropdown; the Korean detailed
+description is store-listing.md's text translated after Jesse's edit
+of the English (his 1.2 rewrite is the reference voice), pasted per
+locale. Korean screenshots optional. Korean-browser visitors see the
+Korean listing; everyone else the English one.
+
+### Tests
+
+- Build: the sense-selection anchors above; key agreement (abort on
+  a foreign key); determinism; the coverage report; DATA-LICENSE.md
+  gains the 우리말샘 / NIKL (CC BY-SA 2.0 KR) section with the
+  example-sentence exclusion stated.
+- Node: guardKo pass-through driven end to end; attach onto every row
+  kind; fallback when `ko` is absent; POS mapping anchors; first-run
+  language default from a stubbed UI language.
+- Harness (fixture blocks byte-identical between pages; a mini ko
+  table in the fixtures): the `ko` no-English sweep; the `en`
+  byte-identity check; no ko.json fetch under `en`; the fallback
+  marker on exactly the ko-less fixture entry; the language row
+  present and switching live via storage.onChanged; export fields
+  follow the language.
+
+### Spike record
+
+2026-09-01: two spikes (ko-wiktionary rejected on tail coverage and
+homograph contamination; Urimalsaem verified on 150k sampled senses:
+92.2% in-range Sino coverage, flat 87-97% across frequency buckets,
+~2,100 single-hanja glosses, 6,146 or 6,735 English-only chars by
+two criteria to be reconciled at build). The mockup rounds settled
+S1, replace-on-word-cards, the char rule, 한국어 없음, and the term
+table. Full detail: korean-mode-kickoff.md.
+
 ## Verification expectations
 
 - A: after build, spot-check in the output: 國 has eumhun 나라/국 and compounds;

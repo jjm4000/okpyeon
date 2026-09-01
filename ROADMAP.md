@@ -289,11 +289,20 @@ correctness" bullet of 1.1, the same way 1.1.1 folded into 1.2.
 
 ## Later / unscheduled
 
-- **Korean-language descriptions** (a settings option), aimed at the
-  Korean home market: learners of hanja in Korea, for whom English
-  glosses are the barrier and partly just clutter. Fully de-risked by
-  two spikes on 2026-09-01, not yet designed; korean-mode-kickoff.md is
-  the record to read before starting. Decided: the corpus is
+- **Korean language mode.** DESIGNED, SPEC written 2026-09-01 ("Korean
+  language mode" addendum), not built. Settled by mockups the same
+  day: one Language control (English / 한국어) that switches the whole
+  chrome AND the definitions, defaulting to the browser language on
+  first run; Korean definitions replace English on word cards; char
+  cards use the Urimalsaem gloss, else the hun, else English; a
+  한국어 없음 marker over any English fallback; every string routed
+  through one message-table lookup so a further language is one file.
+  Rejected: separate chrome/definitions controls, a boolean mode
+  toggle, follow-the-browser with no row, and an EN fallback marker
+  (reads as a third pronunciation beside JP/CN). Earlier framing, kept
+  for the record: aimed at the Korean home market, learners of hanja
+  in Korea, for whom English glosses are the barrier and partly just
+  clutter. korean-mode-kickoff.md is the spike record. The corpus is
   Urimalsaem (우리말샘, NIKL, CC BY-SA 2.0 KR), fetched from the
   spellcheck-ko/korean-dict-nikl mirror on GitHub because the official
   download demands Korean-carrier phone verification; its per-sense
