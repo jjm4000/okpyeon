@@ -269,10 +269,45 @@ one schema entry plus its feature code:
     conjugation). Typed search reaches everything. Deconjugation is
     its own future item, possibly seedable from the kaikki `forms`
     arrays.
-- Japanese and Chinese pronunciations on character cards, as an option
-  (Unihan kMandarin / kJapaneseOn / kJapaneseKun: data is nearly free, but
-  whether cross-language readings belong in a Korean-first tool is uncertain;
-  would ride the options page whenever it exists)
+- Sino readings across the sibling languages (design settled with Jesse
+  2026-08-31; queued behind the native-words merge; mockups first):
+  one quiet line on char cards showing the SAME Sino root's sound in
+  Japanese and Mandarin beside the card's eum, so a learner who knows
+  any of the three can ground the other two. Decided:
+  - On'yomi ONLY, never kun: on'yomi is the Sino reading, the sibling
+    of the eum; kun is a native gloss, the analog of the hun the card
+    already shows in Korean. Kun-only jōyō chars (串 丼 咲, 78 of
+    them) correctly get no line: there is no Sino sound to show.
+  - Capped at two readings per language, primary first. 90%+ of
+    covered chars have exactly one; the polyphonic minority (樂, 行,
+    車) genuinely carry multiple Sino morphemes, mirrored in the
+    card's own multi-eum row (악·락), so showing both is the truth
+    (single-reading kMandarin hides the 음악 reading yuè on 16% of
+    school chars).
+  - Two tiers, one mechanism. The mechanism: align common Japanese
+    words' kana (ja kaikki extract, cached) against candidate on'yomi
+    with the regular transforms (sokuon, rendaku), weighted by a ja
+    frequency list, the same method the Korean compound ranking uses.
+    Tier 1: jōyō chars (2,121 of ours; 92% of m, 86% of h; kyūjitai
+    column maps straight onto our canonical forms) keep the canonical
+    jōyō reading set, ORDERED by corpus weight, table order as the
+    tiebreak. Tier 2: beyond jōyō, corpus-attested readings above a
+    pinned threshold (distinct-word count within a frequency band)
+    extend coverage to chars a Japanese-knower actually meets (醤 in
+    醤油), replacing the jōyō cliff with an evidence standard.
+    Mandarin symmetrically: kHanyuPinlu frequencies order, kXHC1983
+    supplies the set, kMandarin the fallback.
+  - Data: jōyō table via the Wikipedia list (CC BY-SA, same pattern
+    and license family as the MOE tier scrape), Unihan already cached
+    and attributed. Emitted payload small (ja on'yomi alone measured
+    36 KB); lazy-loaded behind a default-off settings row per the
+    native.json pattern.
+  - Spike gates before build: alignment anchors (学校 音楽 銀行,
+    jukujikun like 今日 skipped), the validation property that the
+    corpus's top reading is a jōyō reading for ~95% of jōyō chars
+    (exceptions reported), and the measured tier-2 coverage.
+  - Open: threshold value, whether tier-2 readings render identically
+    (lean yes), display design (mockups), settings row wording.
 - List views auto-growing taller than card views
 - Korean-language store listing
 
