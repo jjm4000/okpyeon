@@ -5288,7 +5288,7 @@
     var ntvRareRow = api.query(".card.native .samesound-row");
     check("the rare spelling is a muted Same sound row with the marker",
       !!ntvRareRow && ntvRareRow.classList.contains("rare") &&
-      /^사랑 \(舍廊\): /.test(ntvRareRow.textContent) &&
+      /^사랑 \(舍廊\)rare: /.test(ntvRareRow.textContent) &&
       !!ntvRareRow.querySelector(".cpd-rare") &&
       getComputedStyle(ntvRareRow.querySelector(".cpd-hangul")).color !==
         api.panelStyle("color"),

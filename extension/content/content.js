@@ -3384,12 +3384,15 @@
     var text = el("span", "compound");
     text.appendChild(el("span", "cpd-hangul", hangul || hanja));
     if (hanja && hangul) text.appendChild(el("span", "cpd-hanja", " (" + hanja + ")"));
-    var gloss = rowGloss(c, nonEmptyString(c.gloss));
-    if (gloss) text.appendChild(el("span", "cpd-gloss", ": " + gloss));
+    // The rare marker sits BEFORE the gloss: the row is clamped to one line,
+    // and a long gloss (every Korean definition) pushed a trailing marker
+    // out of view, leaving the muted row with nothing to explain it.
     if (c.rare === true) {
       row.classList.add("rare");
       text.appendChild(el("sup", "cpd-rare", t("marker.rare")));
     }
+    var gloss = rowGloss(c, nonEmptyString(c.gloss));
+    if (gloss) text.appendChild(el("span", "cpd-gloss", ": " + gloss));
     row.appendChild(clampWrap(text, 1));
 
     if (hanja) {

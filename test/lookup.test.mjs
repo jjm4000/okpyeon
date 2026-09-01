@@ -4980,6 +4980,9 @@ test("messages.json: Chrome-valid names, declared placeholders, and ko covers en
     "link_wiktionary", "tooltip_sino_both", "tooltip_sino_ja", "tooltip_sino_zh",
     "wordmark", "link_github", "input_placeholder", "saved_anki", "saved_csv",
     "language_en", "language_ko",
+    // Deliberately bilingual: a user stuck in the wrong language must still
+    // find the way out.
+    "group_language",
   ]);
   for (const [name, table] of [["en", EN_FILE], ["ko", KO_FILE]]) {
     const lower = new Set();

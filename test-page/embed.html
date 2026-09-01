@@ -3910,7 +3910,7 @@
     check("the shipped schema is the SPEC's nine entries, in its five groups",
       settingsOk === true &&
       settingsView.schema.map(function (e) { return e.group + "/" + e.key + ":" + e.type; })
-        .join(" ") === "Language/language:select Search/nativeWords:toggle " +
+        .join(" ") === "Language / 언어/language:select Search/nativeWords:toggle " +
         "Character cards/jaReadings:toggle Character cards/zhReadings:toggle " +
         "Saving/defaultFolderId:folder-select " +
         "Anki export/anki.wordFront:select Anki export/anki.wordBack:checkset " +
@@ -3939,8 +3939,8 @@
         settingsView.schema[3].label));
     check("the renderer emits one heading per group, in schema order",
       settingsGroups().length === 5 &&
-      settingsGroups()[0].getAttribute("data-group") === "Language" &&
-      settingsGroups()[0].querySelector("h2.settings-heading").textContent === "Language" &&
+      settingsGroups()[0].getAttribute("data-group") === "Language / 언어" &&
+      settingsGroups()[0].querySelector("h2.settings-heading").textContent === "Language / 언어" &&
       settingsGroups()[1].getAttribute("data-group") === "Search" &&
       settingsGroups()[1].querySelector("h2.settings-heading").textContent === "Search" &&
       settingsGroups()[2].getAttribute("data-group") === "Character cards" &&
@@ -4775,11 +4775,11 @@
     var langEntry = settingsView.schema[0];
     check("the Language row is the first entry, in its own group at the top, a two-value select",
       !!langEntry && langEntry.key === "language" && langEntry.type === "select" &&
-      langEntry.group === "Language" && langEntry.label === "Language" &&
+      langEntry.group === "Language / 언어" && langEntry.label === "Language" &&
       langEntry.description === "Menus, cards, and definitions" &&
       langEntry.options.map(function (o) { return o.value + "=" + o.label; }).join("|") ===
         "en=English|ko=한국어" &&
-      settingsGroups()[0].getAttribute("data-group") === "Language" &&
+      settingsGroups()[0].getAttribute("data-group") === "Language / 언어" &&
       byId("okp-set-language").tagName === "SELECT" &&
       byId("okp-set-language").value === "en",
       JSON.stringify(langEntry && [langEntry.key, langEntry.group, langEntry.label]));
@@ -4892,8 +4892,8 @@
         nav.querySelector(".tab--saved").textContent === "저장" &&
         nav.querySelector(".tab--settings").textContent === "설정" &&
         nav.querySelector(".tab--settings").title === "저장 및 내보내기 설정" &&
-        settingsGroups()[0].getAttribute("data-group") === "언어" &&
-        settingsGroups()[0].querySelector(".settings-heading").textContent === "언어" &&
+        settingsGroups()[0].getAttribute("data-group") === "Language / 언어" &&
+        settingsGroups()[0].querySelector(".settings-heading").textContent === "Language / 언어" &&
         byId("okp-set-language").value === "ko" &&
         brand.title === "玉篇 찾기" &&
         input.getAttribute("aria-label") === "한자, 한자어, 또는 한 글자를 검색",

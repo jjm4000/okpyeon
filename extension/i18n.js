@@ -165,7 +165,7 @@
     "saved_exportSelection_title": "Export the selection",
     "saved_selected": "$COUNT$ selected",
     "saved_allShown": "all $COUNT$ shown",
-    "group_language": "Language",
+    "group_language": "Language / 언어",
     "language_label": "Language",
     "language_sub": "Menus, cards, and definitions",
     "group_search": "Search",
