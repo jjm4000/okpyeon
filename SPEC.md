@@ -1161,6 +1161,15 @@ eumhun/hangul instead).
   control-builder switch — nothing else may special-case a setting.
 - Rendered controls write through `settingsSet` immediately (no save
   button); `onShow` re-reads settings and folders.
+- About block (ADDENDUM 2026-08-31, user-directed): the settings view
+  ends with ONE static footer, the only non-schema block the page
+  allows: "Okpyeon 옥편 · 玉篇", the manifest version when
+  chrome.runtime is reachable (the harness and staging replicas have
+  no chrome.*, so they render the nameplate with no number, which the
+  harness pins), a one-line data note ("An offline hanja dictionary.
+  Data from English Wiktionary (CC BY-SA)."), and a GitHub link
+  opening in a new tab. It renders after the groups and inside the
+  seal-room measurement.
 - Shipping entries — group "Saving": "By default, save new items to"
   (wording user-directed: the bubble can override per save) (folder-select,
   key defaultFolderId); group "Anki export": "Word cards: front" (select

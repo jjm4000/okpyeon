@@ -787,6 +787,42 @@ body {
   color: var(--page-faint);
 }
 
+/* The about block: the one static footer the schema-driven page allows.
+   A body child like the groups, so seal-room measurement includes it. */
+.settings-about {
+  margin: 18px 2px 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--page-rule);
+}
+
+.about-name {
+  margin: 0;
+  font-size: 12px;
+  color: var(--page-fg);
+}
+
+.about-name b { font-weight: 600; }
+
+.about-version {
+  margin-left: 8px;
+  color: var(--page-faint);
+  font-size: 11px;
+}
+
+.about-note {
+  margin: 3px 0 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--page-muted);
+}
+
+.about-link {
+  color: var(--page-muted);
+  text-decoration: none;
+}
+
+.about-link:hover { color: var(--page-accent); text-decoration: underline; }
+
 /* ---- empty / no-result / error hints --------------------------------- */
 
 /* Always ONE short line — empty, no-results and error alike. */

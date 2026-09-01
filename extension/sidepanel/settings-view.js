@@ -374,7 +374,57 @@
       group.appendChild(row);
       rendered++;
     }
+    body.appendChild(buildAbout());
     return rendered;
+  }
+
+  // The manifest version, reachable only inside the real extension page. The
+  // harness and the staging replica have no chrome.*, and the about block
+  // must render there too, just without a number.
+  function extensionVersion() {
+    try {
+      if (typeof chrome !== "undefined" && chrome.runtime &&
+          typeof chrome.runtime.getManifest === "function") {
+        var v = chrome.runtime.getManifest().version;
+        if (typeof v === "string" && v !== "") return v;
+      }
+    } catch (e) { /* fall through: no version line */ }
+    return "";
+  }
+
+  // The one static block the schema-driven page allows: name, version, a
+  // one-line note. Rendered after the groups so it rides the same seal-room
+  // measurement as everything else.
+  function buildAbout() {
+    var about = document.createElement("footer");
+    about.className = "settings-about";
+    var name = document.createElement("p");
+    name.className = "about-name";
+    var wordmark = document.createElement("b");
+    wordmark.textContent = "Okpyeon";
+    name.appendChild(wordmark);
+    name.appendChild(document.createTextNode(" 옥편 · 玉篇"));
+    var version = extensionVersion();
+    if (version) {
+      var vspan = document.createElement("span");
+      vspan.className = "about-version";
+      vspan.textContent = "v" + version;
+      name.appendChild(vspan);
+    }
+    about.appendChild(name);
+    var note = document.createElement("p");
+    note.className = "about-note";
+    note.appendChild(document.createTextNode(
+      "An offline hanja dictionary. Data from English Wiktionary (CC BY-SA). "));
+    var repo = document.createElement("a");
+    repo.className = "about-link";
+    repo.href = "https://github.com/jjm4000/okpyeon";
+    repo.target = "_blank";
+    repo.rel = "noreferrer";
+    repo.textContent = "GitHub ↗";
+    note.appendChild(repo);
+    about.appendChild(note);
+    return about;
   }
 
   // One read of each, then one render: folder-select needs the folders, and
