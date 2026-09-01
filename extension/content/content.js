@@ -1700,8 +1700,8 @@
 
   // The card's one source link: where the definition on screen came from.
   // Urimalsaem under 한국어 when the match carries a Korean entry with a
-  // sense code, Wiktionary otherwise. Char cards never call this: they keep
-  // Wiktionary in both languages.
+  // sense code, Wiktionary otherwise. Char cards follow the same rule
+  // (user-corrected): a hun-only or English-fallback char keeps Wiktionary.
   function appendSourceLinkFor(head, m, wikiTitle, word) {
     if (koRenderOn()) {
       var entry = koEntryOf(m);
@@ -3022,8 +3022,9 @@
     appendBadges(readingLine || meta, m);
     head.appendChild(meta);
     appendCardActions(head, m);
-    // The entry IS the canonical character, so that is the page we link to.
-    appendWikiLink(head, big);
+    // The entry IS the canonical character, so that is the Wiktionary page;
+    // under 한국어 a char with a Korean gloss links its Urimalsaem sense.
+    appendSourceLinkFor(head, m, big, big);
     card.appendChild(head);
     return meta;
   }

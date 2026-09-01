@@ -5192,9 +5192,9 @@
       check("KO: the nested char cards follow the char rule on this surface too",
         api.queryAll(".component-list > .card.component .gloss-text").length === 2 &&
         !api.queryAll(".component-list > .card.component")[1].querySelector(".glosses") &&
-        api.queryAll(".component-list > .card.component .wiki").every(function (a) {
-          return a.textContent === "Wiktionary ↗";
-        }),
+        api.queryAll(".component-list > .card.component .wiki").map(function (a) {
+          return a.textContent;
+        }).join("|") === "우리말샘 ↗|Wiktionary ↗",
         api.queryAll(".component-list > .card.component .gloss-text").length + " nested glosses");
       tabsSpy.reset();
       koShellLink.click();

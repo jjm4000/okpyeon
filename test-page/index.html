@@ -5935,15 +5935,15 @@
         koLink.getAttribute("aria-label") === "학생의 우리말샘 항목 (새 탭에서 열림)",
         koLink.outerHTML);
       var koNested = api.queryAll(".component-list > .card.component");
-      check("KO: the nested 學 card renders its Korean gloss, numbered, and keeps Wiktionary",
+      check("KO: the nested 學 card renders its Korean gloss, numbered, and links its Urimalsaem sense",
         koNested.length === 2 &&
         textsOf(".gloss-text", koNested[0]).join("|") ===
           "어떤 원리에 따라 조직된 지식의 체계.|‘학문’의 뜻을 더하는 접미사." &&
         koNested[0].querySelectorAll(".gloss-num").length === 2 &&
         !koNested[0].querySelector(".ko-marker") &&
-        koNested[0].querySelector(".wiki").textContent === "Wiktionary ↗" &&
-        /en\.wiktionary\.org/.test(koNested[0].querySelector(".wiki").href),
-        koNested[0] && koNested[0].textContent);
+        koNested[0].querySelector(".wiki").textContent === "우리말샘 ↗" &&
+        /opendict\.korean\.go\.kr\/dictionary\/view\?sense_no=\d+$/.test(koNested[0].querySelector(".wiki").href),
+        koNested[0] && koNested[0].querySelector(".wiki").href);
       check("KO: the nested 生 card (hun, no Korean gloss) shows no English list and no marker, Wiktionary kept",
         !koNested[1].querySelector(".glosses") && !koNested[1].querySelector(".ko-marker") &&
         koNested[1].querySelector(".hun").textContent === "날 " &&
