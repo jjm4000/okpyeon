@@ -3446,6 +3446,20 @@
       byId("okp-saved-list").querySelector(".saved-empty").textContent
         .indexOf("☆") > 0,
       byId("okp-saved-list").textContent);
+    // Empty folders ADDENDUM: the hint comes first, and the default folder's
+    // band still renders under it with its own empty line. Its checkbox is
+    // inert only because f0 has nothing to select and can never be deleted.
+    var zeroBand = byId("okp-saved-list").querySelector(".saved-folder");
+    check("and the default folder's band renders under the hint, its empty line and an inert checkbox",
+      byId("okp-saved-list").firstElementChild.classList.contains("saved-empty") &&
+      byId("okp-saved-list").querySelectorAll(".saved-folder").length === 1 &&
+      !!zeroBand && zeroBand.getAttribute("data-folder") === "f0" &&
+      zeroBand.querySelector(".saved-folder-count").textContent === "0" &&
+      !!zeroBand.nextElementSibling &&
+      zeroBand.nextElementSibling.classList.contains("saved-empty--folder") &&
+      zeroBand.nextElementSibling.textContent === "This folder is empty." &&
+      zeroBand.querySelector(".saved-folder-check").disabled === true,
+      byId("okp-saved-list").textContent);
 
     await send({ type: "savedToggle", kind: "word", key: "國民" });
     await send({ type: "savedToggle", kind: "char", key: "國" });
@@ -3576,8 +3590,9 @@
     setSelectAll(false);
 
     setFilter(examId);
-    check("a single-folder filter renders a flat list, with no header over it",
-      savedView.filter() === examId && folderHeads().length === 0 &&
+    check("a single-folder filter renders that folder's band alone, over its rows",
+      savedView.filter() === examId && folderHeads().length === 1 &&
+      folderHeads()[0].getAttribute("data-folder") === examId &&
       savedRows().length === 1 &&
       savedRows()[0].getAttribute("data-key") === "學生",
       "headers=" + folderHeads().length + " rows=" + savedRows().length);
@@ -3872,6 +3887,146 @@
       !savedList.querySelector(".saved-unavailable") && savedBar.hidden === false &&
       byId("okp-saved-actions").hidden === false && savedRows().length === 4,
       "rows=" + savedRows().length);
+
+    /* ------------------------------------------------------------------
+     * Empty folders ADDENDUM (user-reported): a folder shows whether or not
+     * it has items, and an empty one can be checked and deleted from the
+     * list. State-restoring: every folder and item this block adds is gone
+     * by its end, so the row click below still finds 國民.
+     * ------------------------------------------------------------------ */
+    function bandFor(id) {
+      return savedList.querySelector('.saved-folder[data-folder="' + id + '"]');
+    }
+    function emptyLineAfter(id) {
+      var band = bandFor(id);
+      var next = band && band.nextElementSibling;
+      return next && next.classList.contains("saved-empty--folder") ? next : null;
+    }
+    function countText() {
+      return byId("okp-saved-actions").querySelector(".saved-count").textContent;
+    }
+    function confirmText() {
+      var node = actsInline.querySelector(".saved-confirm-text");
+      return node ? node.textContent : "";
+    }
+    var emptyA = (await send({ type: "folderCreate", name: "Empty A" })).folder.id;
+    var emptyB = (await send({ type: "folderCreate", name: "Empty B" })).folder.id;
+    await savedView.refresh();
+    // The count slot holds the "Moved 1 to …" note from the move above for
+    // 2.5s; the count assertions below need the slot back.
+    await wait(2700);
+    check("an empty folder renders as a band under All, in folder order, its empty line under it",
+      folderHeads().length === 4 && savedRows().length === 4 &&
+      folderHeads()[2].getAttribute("data-folder") === emptyA &&
+      folderHeads()[3].getAttribute("data-folder") === emptyB &&
+      bandFor(emptyA).querySelector(".saved-folder-name").textContent === "Empty A" &&
+      bandFor(emptyA).querySelector(".saved-folder-count").textContent === "0" &&
+      !!emptyLineAfter(emptyA) &&
+      emptyLineAfter(emptyA).textContent === "This folder is empty." &&
+      !!emptyLineAfter(emptyB) && !emptyLineAfter("f0") && !emptyLineAfter(readingsId) &&
+      !savedList.querySelector(".saved-empty:not(.saved-empty--folder)"),
+      "headers=" + folderHeads().length + " " + savedList.textContent);
+    check("an empty band's checkbox is live, and so is a populated f0's",
+      bandFor(emptyA).querySelector(".saved-folder-check").disabled === false &&
+      bandFor("f0").querySelector(".saved-folder-check").disabled === false);
+    setFilter(emptyA);
+    check("under its own filter an empty folder shows its band and its empty line, no hint",
+      folderHeads().length === 1 &&
+      folderHeads()[0].getAttribute("data-folder") === emptyA &&
+      savedRows().length === 0 && !!emptyLineAfter(emptyA) &&
+      savedList.querySelectorAll(".saved-empty").length === 1,
+      savedList.textContent);
+    setFilter("");
+
+    setChecked(bandFor("f0").querySelector(".saved-folder-check"), true);
+    check("f0's checkbox selects its items and never the folder itself",
+      savedView.selection().length === 3 && savedView.selectedFolders().length === 0 &&
+      countText() === "3 selected",
+      "folders=" + savedView.selectedFolders().join(",") + " count=" + countText());
+    removeBtn.click();
+    check("so Delete with f0 checked names its items only, never the default folder",
+      confirmText() === "Delete 3 items?", confirmText());
+    actsInline.querySelector(".saved-confirm-no").click();
+    setChecked(bandFor("f0").querySelector(".saved-folder-check"), false);
+
+    setChecked(bandFor(emptyA).querySelector(".saved-folder-check"), true);
+    check("checking an empty folder selects the folder: no items, and no widening to the filter",
+      savedView.selectedFolders().join(",") === emptyA &&
+      savedView.selection().length === 0 && savedView.effectiveIds().length === 0 &&
+      countText() === "1 folder selected" &&
+      removeBtn.disabled === false && moveSel.disabled === true &&
+      exportBtn.disabled === true,
+      "count=" + countText() + " effective=" + savedView.effectiveIds().length);
+    removeBtn.click();
+    check("Delete arms a confirmation that names the folder and deletes nothing yet",
+      actsInline.hidden === false && confirmText() === "Delete Empty A?" &&
+      store.state().folders.length === 4,
+      actsInline.textContent);
+    actsInline.querySelector(".saved-confirm-no").click();
+    check("cancel keeps the folder and the selection",
+      actsInline.hidden === true && store.state().folders.length === 4 &&
+      savedView.selectedFolders().join(",") === emptyA);
+    removeBtn.click();
+    actsInline.querySelector(".saved-confirm-yes").click();
+    await wait(TAIL);
+    check("confirming deletes the empty folder through folderDelete and clears the selection",
+      store.state().folders.length === 3 && !bandFor(emptyA) &&
+      folderHeads().length === 3 && savedView.selectedFolders().length === 0 &&
+      store.state().items.length === 4,
+      JSON.stringify(store.state().folders));
+
+    // Mixed: a populated folder checked as a whole, an empty folder, and a
+    // loose item in f0. Items go first, then the folders.
+    var mixedId = (await send({ type: "folderCreate", name: "Mixed" })).folder.id;
+    var mixedSave = await send({ type: "savedToggle", kind: "char", key: "天" });
+    await send({ type: "savedMove", ids: [mixedSave.item.id], folderId: mixedId });
+    var looseSave = await send({ type: "savedToggle", kind: "char", key: "韓" });
+    await savedView.refresh();
+    setChecked(bandFor(mixedId).querySelector(".saved-folder-check"), true);
+    check("a populated folder's checkbox selects the folder and its items",
+      savedView.selectedFolders().join(",") === mixedId &&
+      savedView.selection().join(",") === mixedSave.item.id &&
+      countText() === "1 selected, 1 folder selected",
+      "count=" + countText());
+    setChecked(rowFor("天").querySelector(".saved-check"), false);
+    check("unchecking an item under a checked folder takes the folder out of the delete set",
+      savedView.selectedFolders().length === 0 && savedView.selection().length === 0 &&
+      bandFor(mixedId).querySelector(".saved-folder-check").checked === false,
+      "folders=" + savedView.selectedFolders().join(","));
+    setChecked(bandFor(mixedId).querySelector(".saved-folder-check"), true);
+    // A save landing in a checked folder from a page: the folder stays
+    // checked, the newcomer is not, and the confirmation says where it goes.
+    var landedSave = await send({ type: "savedToggle", kind: "char", key: "地" });
+    await send({ type: "savedMove", ids: [landedSave.item.id], folderId: mixedId });
+    await savedView.refresh();
+    removeBtn.click();
+    check("a checked folder holding an unpicked item confirms with the moves-to-f0 count",
+      savedView.selectedFolders().join(",") === mixedId &&
+      savedView.selection().join(",") === mixedSave.item.id &&
+      confirmText() === "Delete 1 item? Delete Mixed? 1 item moves to Saved.",
+      confirmText());
+    actsInline.querySelector(".saved-confirm-no").click();
+    await send({ type: "savedRemove", ids: [landedSave.item.id] });
+    await savedView.refresh();
+    setChecked(bandFor(emptyB).querySelector(".saved-folder-check"), true);
+    setChecked(rowFor("韓").querySelector(".saved-check"), true);
+    check("a mixed selection counts its items and its folders",
+      savedView.selection().length === 2 &&
+      savedView.selectedFolders().join(",") === emptyB + "," + mixedId &&
+      countText() === "2 selected, 2 folders selected",
+      "count=" + countText() + " folders=" + savedView.selectedFolders().join(","));
+    removeBtn.click();
+    check("its confirmation names the items, then each folder in order",
+      confirmText() === "Delete 2 items? Delete Empty B? Delete Mixed?", confirmText());
+    actsInline.querySelector(".saved-confirm-yes").click();
+    await wait(TAIL);
+    check("confirming deletes both, items first and folders last, and leaves the rest alone",
+      store.state().folders.length === 2 && store.state().items.length === 4 &&
+      !rowFor("天") && !rowFor("韓") && !!rowFor("國民") && !!rowFor("學生") &&
+      folderHeads().length === 2 && !bandFor(mixedId) && !bandFor(emptyB) &&
+      savedView.selection().length === 0 && savedView.selectedFolders().length === 0 &&
+      actsInline.hidden === true,
+      JSON.stringify(store.state().folders) + " items=" + store.state().items.length);
 
     rowFor("國民").click();
     await wait(SETTLE + TAIL);
@@ -4965,9 +5120,12 @@
       byId("okp-saved-actions").querySelector(".saved-export-cancel").click();
       store.reset();
       await savedView.refresh();
-      check("the empty state is Korean and keeps the ☆",
+      check("the empty state is Korean and keeps the ☆, and so is the empty folder's line",
         byId("okp-saved-list").querySelector(".saved-empty").textContent ===
-          "아직 저장한 항목이 없습니다. 카드의 ☆을 눌러 저장하세요.",
+          "아직 저장한 항목이 없습니다. 카드의 ☆을 눌러 저장하세요." &&
+        !!byId("okp-saved-list").querySelector(".saved-empty--folder") &&
+        byId("okp-saved-list").querySelector(".saved-empty--folder").textContent ===
+          "이 폴더는 비어 있습니다.",
         byId("okp-saved-list").textContent);
       violations = violations.concat(sweep(app, "saved empty"));
 

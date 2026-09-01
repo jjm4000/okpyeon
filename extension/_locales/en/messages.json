@@ -674,6 +674,22 @@
       }
     }
   },
+  "saved_selectedFolders_one": {
+    "message": "$COUNT$ folder selected",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "saved_selectedFolders_other": {
+    "message": "$COUNT$ folders selected",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
   "saved_allShown": {
     "message": "all $COUNT$ shown",
     "placeholders": {

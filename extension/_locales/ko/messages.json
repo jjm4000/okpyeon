@@ -606,6 +606,14 @@
       }
     }
   },
+  "saved_selectedFolders": {
+    "message": "폴더 $COUNT$개 선택됨",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
   "saved_allShown": {
     "message": "표시된 $COUNT$개 전체",
     "placeholders": {

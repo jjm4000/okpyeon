@@ -21,6 +21,7 @@
  *
  *   refresh()                 re-read savedGet and re-render; -> Promise
  *   selection()               the checked item ids, as an array
+ *   selectedFolders()         the folder ids checked for deletion, as an array
  *   folders()                 the folders from the last read
  *   items()                   the joined rows from the last read
  *   filter()                  the folder id the list is filtered to, or ""
@@ -102,6 +103,12 @@
    * longer exist are pruned on each read, so a removed item cannot linger in
    * the selection and resurrect an action.
    *
+   * Folder selection is its own map (folder id -> true), held the same way.
+   * A folder's checkbox picks the folder AND its items; an empty folder has
+   * no items to stand in for it, so the folder itself is what is selected,
+   * and that is what lets an empty folder be deleted from the list. f0 is
+   * never in this map: its checkbox picks items only.
+   *
    * Collapse state is page-session-local by design (SPEC): default expanded,
    * held while the panel is open, gone on a fresh open. Hence a plain object,
    * never storage.
@@ -115,6 +122,7 @@
   var folders = [];
   var items = [];
   var selected = Object.create(null);
+  var selectedFolders = Object.create(null);
   var collapsed = Object.create(null);
   var filterId = "";         // "" = All
 
@@ -187,11 +195,31 @@
       .map(function (item) { return item.id; });
   }
 
+  // In folder order, and never f0: the default folder cannot be deleted.
+  function selectedFolderIds() {
+    return folders
+      .filter(function (folder) {
+        return folder.id !== "f0" && selectedFolders[folder.id] === true;
+      })
+      .map(function (folder) { return folder.id; });
+  }
+
+  // The folders the list shows: every folder under All, the one folder
+  // under a filter. Contents never gate this (user-directed): an empty
+  // folder is still a folder, and hiding it is what made folders seem to
+  // vanish when the last item left.
+  function shownFolders() {
+    if (!filterId) return folders.slice();
+    return folders.filter(function (folder) { return folder.id === filterId; });
+  }
+
   // Nothing checked means "the current filter", so every action has an obvious
-  // target without the user having to select first.
+  // target without the user having to select first. A checked folder counts
+  // as something checked: with only an empty folder picked, an action must
+  // not quietly widen to everything shown.
   function effectiveIds() {
     var picked = selectedIds();
-    if (picked.length) return picked;
+    if (picked.length || selectedFolderIds().length) return picked;
     return filteredItems().map(function (item) { return item.id; });
   }
 
@@ -303,6 +331,10 @@
         if (selectAll.checked) selected[rows[i].id] = true;
         else delete selected[rows[i].id];
       }
+      // Select-all is about items; folders are picked one by one. Clearing
+      // it clears the folders too, so the clearing gesture leaves nothing
+      // armed behind it.
+      if (!selectAll.checked) selectedFolders = Object.create(null);
       renderList();
       renderActions();
     });
@@ -506,8 +538,14 @@
     check.checked = selected[item.id] === true;
     check.setAttribute("aria-label", t("saved.select", { ITEM: item.key }));
     check.addEventListener("change", function () {
-      if (check.checked) selected[item.id] = true;
-      else delete selected[item.id];
+      if (check.checked) {
+        selected[item.id] = true;
+      } else {
+        delete selected[item.id];
+        // A folder is picked as a whole; taking one of its items out of the
+        // selection takes the folder out of the delete set with it.
+        delete selectedFolders[item.folderId];
+      }
       syncSelectionUi();
     });
     // The label is a forgiving hit target (user-directed): a near-miss around
@@ -547,20 +585,25 @@
     if (isCollapsed) header.classList.add("saved-folder--collapsed");
 
     var rows = itemsInFolder(folder.id);
-    var picked = rows.filter(function (item) { return selected[item.id] === true; });
 
     var check = document.createElement("input");
     check.type = "checkbox";
     check.className = "saved-folder-check";
-    check.checked = rows.length > 0 && picked.length === rows.length;
-    check.indeterminate = picked.length > 0 && picked.length < rows.length;
-    check.disabled = rows.length === 0;
+    setFolderCheckState(folder, check);
+    // Every band is selectable, empty or not: that is how an empty folder
+    // gets deleted. The one exception is an empty f0, which can neither be
+    // deleted nor has anything to select, so its box has nothing to do.
+    check.disabled = folder.id === "f0" && rows.length === 0;
     check.setAttribute("aria-label", t("saved.selectFolder", { FOLDER: folder.name }));
     check.addEventListener("change", function () {
       for (var i = 0; i < rows.length; i++) {
         if (check.checked) selected[rows[i].id] = true;
         else delete selected[rows[i].id];
       }
+      // The folder itself joins the selection, except f0, whose box only
+      // ever stands for its items: the default folder is never deleted.
+      if (check.checked && folder.id !== "f0") selectedFolders[folder.id] = true;
+      else delete selectedFolders[folder.id];
       renderList();
       renderActions();
       renderBar();
@@ -593,6 +636,18 @@
     return header;
   }
 
+  // The header's checkbox reads checked for a folder picked as a whole, or
+  // for one whose every item is picked; part of its items picked reads
+  // indeterminate. Shared by the build and the cheap re-sync.
+  function setFolderCheckState(folder, check) {
+    var rows = itemsInFolder(folder.id);
+    var picked = rows.filter(function (item) { return selected[item.id] === true; });
+    var whole = selectedFolders[folder.id] === true ||
+      (rows.length > 0 && picked.length === rows.length);
+    check.checked = whole;
+    check.indeterminate = !whole && picked.length > 0;
+  }
+
   function renderList() {
     renderListBody();
     updateSealRoom();
@@ -602,37 +657,33 @@
     var list = els.list;
     clear(list);
 
-    // Grouped (All) lists indent their item rows under the folder bands;
-    // the class keeps that a stylesheet concern (flat lists keep full width).
-    list.classList.toggle("saved-list--grouped", !filterId);
-
+    // Item rows indent under the folder bands; the class keeps that a
+    // stylesheet concern.
+    list.classList.add("saved-list--grouped");
 
     if (!available) {
       list.appendChild(el("p", "saved-unavailable", t("saved.unavailable")));
       return;
     }
 
-    var rows = filteredItems();
-    if (!rows.length) {
-      list.appendChild(el("p", "saved-empty",
-        t(items.length ? "saved.emptyFolder" : "saved.emptyAll")));
-      return;
+    // The hint for a user who has saved nothing yet: once, above the bands,
+    // which render regardless (a folder shows whether or not it has items,
+    // user-directed), so the folders a user made are still there after the
+    // last item leaves them.
+    if (!items.length) {
+      list.appendChild(el("p", "saved-empty", t("saved.emptyAll")));
     }
 
-    // A single-folder filter is already one group, so it renders flat: a lone
-    // header over a list of everything below it says nothing.
-    if (filterId) {
-      for (var i = 0; i < rows.length; i++) list.appendChild(buildItemRow(rows[i]));
-      return;
-    }
-
-    for (var f = 0; f < folders.length; f++) {
-      var folder = folders[f];
+    var shown = shownFolders();
+    for (var f = 0; f < shown.length; f++) {
+      var folder = shown[f];
       var inFolder = itemsInFolder(folder.id);
-      // An empty folder still shows: it is where the next save can go, and its
-      // header is how the user finds out the folder exists.
       list.appendChild(buildFolderHeader(folder));
       if (collapsed[folder.id] === true) continue;
+      if (!inFolder.length) {
+        list.appendChild(el("p", "saved-empty saved-empty--folder", t("saved.emptyFolder")));
+        continue;
+      }
       for (var j = 0; j < inFolder.length; j++) {
         list.appendChild(buildItemRow(inFolder[j]));
       }
@@ -733,17 +784,49 @@
   }
 
   // Two steps, in place: the first click arms, cancel disarms, confirm removes.
+  // The confirmation is one sentence per part: the item count, then each
+  // checked folder in the toolbar's own words, with the count of items that
+  // will move to the default folder when the folder holds any that are not
+  // themselves being deleted.
   function openRemoveConfirm() {
     var ids = effectiveIds();
-    if (!ids.length) return;
+    var folderIds = selectedFolderIds();
+    if (!ids.length && !folderIds.length) return;
+    var going = Object.create(null);
+    for (var g = 0; g < ids.length; g++) going[ids[g]] = true;
+    var parts = [];
+    if (ids.length) parts.push(t("saved.deleteN", { COUNT: ids.length }));
+    for (var f = 0; f < folderIds.length; f++) {
+      var left = itemsInFolder(folderIds[f]).filter(function (item) {
+        return going[item.id] !== true;
+      }).length;
+      parts.push(left
+        ? t("saved.deleteFolderN", {
+            FOLDER: folderName(folderIds[f]), COUNT: left, TARGET: folderName("f0")
+          })
+        : t("saved.deleteFolder", { FOLDER: folderName(folderIds[f]) }));
+    }
     var box = el("div", "saved-confirm saved-confirm--remove");
-    box.appendChild(el("span", "saved-confirm-text",
-      t("saved.deleteN", { COUNT: ids.length })));
+    box.appendChild(el("span", "saved-confirm-text", parts.join(" ")));
     var yes = button("saved-confirm-yes", t("saved.delete"));
     var no = button("saved-confirm-no", t("saved.cancel"));
     yes.addEventListener("click", function () {
-      sendToWorker({ type: "savedRemove", ids: ids }).then(function () {
+      // Items first, folders last: a folder deleted first would move its
+      // items to f0 before the item deletion could reach them.
+      var work = ids.length
+        ? sendToWorker({ type: "savedRemove", ids: ids })
+        : Promise.resolve(null);
+      folderIds.forEach(function (folderId) {
+        work = work.then(function () {
+          return sendToWorker({ type: "folderDelete", id: folderId });
+        });
+      });
+      work.then(function () {
         for (var i = 0; i < ids.length; i++) delete selected[ids[i]];
+        for (var k = 0; k < folderIds.length; k++) {
+          delete selectedFolders[folderIds[k]];
+          if (filterId === folderIds[k]) filterId = "";
+        }
         closeActionsInline();
         refresh();
       });
@@ -826,15 +909,25 @@
     move.value = "";
 
     var picked = selectedIds();
-    var target = picked.length ? picked.length : filteredItems().length;
+    var pickedFolders = selectedFolderIds();
+    var target = (picked.length || pickedFolders.length)
+      ? picked.length
+      : filteredItems().length;
+    var counts = [];
+    if (picked.length) counts.push(t("saved.selected", { COUNT: picked.length }));
+    if (pickedFolders.length) {
+      counts.push(t("saved.selectedFolders", { COUNT: pickedFolders.length }));
+    }
     els.count.textContent = flashUntil > Date.now()
       ? els.count.textContent
-      : picked.length
-        ? t("saved.selected", { COUNT: picked.length })
+      : counts.length
+        ? counts.join(", ")
         : (target ? t("saved.allShown", { COUNT: target }) : "");
+    // Move and Export act on items; Delete also takes folders, so a checked
+    // empty folder is enough to arm it.
     var inert = target === 0 || !available;
     move.disabled = inert;
-    els.removeBtn.disabled = inert;
+    els.removeBtn.disabled = !available || (target === 0 && !pickedFolders.length);
     els.exportBtn.disabled = inert;
     els.actions.hidden = !available;
     updateSealRoom();
@@ -843,17 +936,11 @@
   // The cheap half of a refresh: checkbox states and the action labels, with
   // no list rebuild, so clicking one checkbox does not rebuild every row.
   function syncSelectionUi() {
-    if (!filterId) {
-      var headers = els.list.querySelectorAll(".saved-folder");
-      for (var i = 0; i < headers.length; i++) {
-        var id = headers[i].getAttribute("data-folder");
-        var rows = itemsInFolder(id);
-        var picked = rows.filter(function (item) { return selected[item.id] === true; });
-        var check = headers[i].querySelector(".saved-folder-check");
-        if (!check) continue;
-        check.checked = rows.length > 0 && picked.length === rows.length;
-        check.indeterminate = picked.length > 0 && picked.length < rows.length;
-      }
+    var headers = els.list.querySelectorAll(".saved-folder");
+    for (var i = 0; i < headers.length; i++) {
+      var folder = folderById(headers[i].getAttribute("data-folder"));
+      var check = headers[i].querySelector(".saved-folder-check");
+      if (folder && check) setFolderCheckState(folder, check);
     }
     renderBar();
     renderActions();
@@ -910,6 +997,9 @@
       for (var i = 0; i < items.length; i++) live[items[i].id] = true;
       Object.keys(selected).forEach(function (id) {
         if (!live[id]) delete selected[id];
+      });
+      Object.keys(selectedFolders).forEach(function (id) {
+        if (!folderById(id)) delete selectedFolders[id];
       });
       renderBar();
       renderList();
@@ -995,6 +1085,7 @@
   globalThis.__okpyeonSavedView = {
     refresh: refresh,
     selection: selectedIds,
+    selectedFolders: selectedFolderIds,
     folders: function () { return folders.slice(); },
     items: function () { return items.slice(); },
     filter: function () { return filterId; },

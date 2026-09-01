@@ -164,6 +164,8 @@
     "saved_deleteSelection_title": "Delete the selection",
     "saved_exportSelection_title": "Export the selection",
     "saved_selected": "$COUNT$ selected",
+    "saved_selectedFolders_one": "$COUNT$ folder selected",
+    "saved_selectedFolders_other": "$COUNT$ folders selected",
     "saved_allShown": "all $COUNT$ shown",
     "group_language": "Language / 언어",
     "language_label": "Language",
