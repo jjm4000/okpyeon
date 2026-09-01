@@ -15,6 +15,8 @@ Outputs (UTF-8, no BOM, compact / no indentation)
     extension/data/words.json
     extension/data/variants.json
     extension/data/decomp.json
+    extension/data/native.json
+    extension/data/sino.json
 
 Usage
     python pipeline/build.py            # download if missing, parse, emit, verify
@@ -40,12 +42,14 @@ import time
 import unicodedata
 import zipfile
 
-# Character decomposition rules (pipeline/decomp.py). Local module, stdlib
-# only; sys.path[0] is this directory whenever build.py runs as a script,
-# which is the only supported way to run it. (pipeline/rr.py is no longer
-# imported: the romanized-search v2 addendum retired the rr emits, and the
-# RR anchors now live in the node suite, which uses rr.py as its reference.)
+# Character decomposition rules (pipeline/decomp.py) and sibling Sino
+# readings (pipeline/sino.py). Local modules, stdlib only; sys.path[0] is
+# this directory whenever build.py runs as a script, which is the only
+# supported way to run it. (pipeline/rr.py is no longer imported: the
+# romanized-search v2 addendum retired the rr emits, and the RR anchors now
+# live in the node suite, which uses rr.py as its reference.)
 import decomp
+import sino
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -84,6 +88,17 @@ EDU_TIER_URL = (
 # maintained by Andrew West, who waives copyright in the file's own header.
 # Source of decomp.json. See extension/data/DATA-LICENSE.md.
 IDS_URL = "https://www.babelstone.co.uk/CJK/IDS.TXT"
+# English Wikipedia "List of joyo kanji", raw wikitext: the canonical joyo
+# on'yomi set for sino.json tier 1, new AND kyujitai forms. CC BY-SA like
+# the MOE tier scrape, attributed in extension/data/DATA-LICENSE.md.
+# Percent-encoded title (List_of_jōyō_kanji) so no URL building is needed.
+JA_JOYO_URL = ("https://en.wikipedia.org/w/index.php?title="
+               "List_of_j%C5%8Dy%C5%8D_kanji&action=raw")
+# Japanese word-frequency list, hermitdave/FrequencyWords like the Korean
+# one above. Spike-measured WEAK (badly tokenized), so sino.json uses it as
+# ordering weight ONLY, never as an attestation gate. Nothing ships from it.
+JA_EXTFREQ_URL = ("https://raw.githubusercontent.com/hermitdave/"
+                  "FrequencyWords/master/content/2018/ja/ja_full.txt")
 
 KAIKKI_FILE = os.path.join(CACHE, "kaikki-Korean.jsonl")
 UNIHAN_FILE = os.path.join(CACHE, "Unihan.zip")
@@ -92,6 +107,8 @@ JAPANESE_FILE = os.path.join(CACHE, "ja-extract.jsonl.gz")
 EXTFREQ_FILE = os.path.join(CACHE, "ko_full_opensubtitles.txt")
 EDU_TIER_FILE = os.path.join(CACHE, "ko-wiki-edu-tier.wikitext")
 IDS_FILE = os.path.join(CACHE, "babelstone-ids.txt")
+JA_JOYO_FILE = os.path.join(CACHE, "ja-wiki-joyo-kanji.wikitext")
+JA_EXTFREQ_FILE = os.path.join(CACHE, "ja_full_opensubtitles.txt")
 
 # ---------------------------------------------------------------- script ranges
 
@@ -989,8 +1006,14 @@ def freq_bucket(rank):
 
 
 def parse_japanese(path):
-    """Harvest variant -> canonical links from the ja.wiktionary extract."""
+    """Harvest variant -> canonical links from the ja.wiktionary extract.
+
+    The same pass also collects kanji-word kana readings for sino.json
+    (sino.collect_ja_word), so the 61 MB gz is only decompressed once.
+    Returns (variant candidates, ja word harvest).
+    """
     out = []
+    ja_words = {}
     lines = 0
     with gzip.open(path, "rb") as fh:
         for line in fh:
@@ -1001,6 +1024,7 @@ def parse_japanese(path):
                 o = json.loads(line)
             except ValueError:
                 continue
+            sino.collect_ja_word(o, ja_words)
             w = (o.get("word") or "").strip()
             if not one_han(w):
                 continue
@@ -1019,9 +1043,11 @@ def parse_japanese(path):
                     m = RE_JA_VAR.match(s)
                     if m and one_han(m.group(1)):
                         out.append((w, m.group(1), PRIO_JA_VAR))
-    log("  japanese: %s lines, %s candidate variant links"
-        % (format(lines, ","), format(len(out), ",")))
-    return out
+    log("  japanese: %s lines, %s candidate variant links, %s kanji words "
+        "with kana" % (format(lines, ","), format(len(out), ","),
+                       format(sum(1 for d in ja_words.values() if d["kana"]),
+                              ",")))
+    return out, ja_words
 
 
 def parse_unihan_readings(text):
@@ -1169,7 +1195,7 @@ NOT_RARE_OVERRIDES = {
 
 
 def verify(hanja_obj, words_obj, variants_obj, decomp_obj=None,
-           native_obj=None):
+           native_obj=None, sino_obj=None, sino_report=None):
     chars_out = hanja_obj["chars"]
     words_out = words_obj["words"]
     by_hangul = words_obj["byHangul"]
@@ -1618,6 +1644,94 @@ def verify(hanja_obj, words_obj, variants_obj, decomp_obj=None,
             "rr" not in native_obj,
             "keys: %s" % sorted(native_obj.keys()))
 
+    # --- sino.json (SPEC "Sibling Sino readings" addendum) -------------
+    if sino_obj is not None:
+        sc = sino_obj["chars"]
+        # Schema: per char, per language, 1-2 [reading, eum] pairs in
+        # display order; unaligned readings (eum "") trail aligned ones;
+        # empty languages and empty chars are omitted, never emitted.
+        bad_schema = []
+        for c, e in sc.items():
+            if not e or set(e) - {"ja", "zh"}:
+                bad_schema.append(c)
+                continue
+            for lang, rows in e.items():
+                if (not rows or len(rows) > 2
+                        or any(not (isinstance(r, list) and len(r) == 2
+                                    and r[0] and isinstance(r[0], str)
+                                    and isinstance(r[1], str))
+                               for r in rows)):
+                    bad_schema.append("%s.%s" % (c, lang))
+                    continue
+                tags = [bool(r[1]) for r in rows]
+                if tags != sorted(tags, reverse=True):
+                    bad_schema.append("%s.%s aligned-after-unaligned"
+                                      % (c, lang))
+        add("sino: schema (1-2 [reading, eum] pairs, aligned first)",
+            sino_obj.get("version") == 1 and not bad_schema,
+            "%s chars; %d offenders%s" % (
+                format(len(sc), ","), len(bad_schema),
+                "" if not bad_schema else " e.g. " + " ".join(
+                    str(x) for x in bad_schema[:5])))
+
+        # Anchors (SPEC, spike-verified pairings).
+        def s_get(c, lang):
+            return (sc.get(c) or {}).get(lang)
+
+        s_anchors = [
+            ("學", "ja", [["ガク", "학"]]),
+            ("學", "zh", [["xué", "학"]]),
+            ("樂", "ja", [["ガク", "악"], ["ラク", "락"]]),
+            ("樂", "zh", [["yuè", "악"], ["lè", "락"]]),
+            ("惡", "ja", [["アク", "악"], ["オ", "오"]]),
+            ("惡", "zh", [["è", "악"], ["wù", "오"]]),
+            ("讀", "ja", [["ドク", "독"], ["トウ", "두"]]),
+            ("讀", "zh", [["dú", "독"], ["dòu", "두"]]),
+            ("說", "ja", [["セツ", "설"], ["ゼイ", "세"]]),
+            ("說", "zh", [["shuō", "설"]]),
+            ("車", "ja", [["シャ", "차"]]),   # ja follows the data
+            ("車", "zh", [["chē", "차"], ["jū", "거"]]),
+            # 行 via curated override: the bridge alone cannot place 항,
+            # both its eums use コウ in Japanese
+            ("行", "zh", [["xíng", "행"], ["háng", "항"]]),
+        ]
+        bad = ["%s.%s = %s (want %s)"
+               % (c, lang, json.dumps(s_get(c, lang), ensure_ascii=False),
+                  json.dumps(want, ensure_ascii=False))
+               for c, lang, want in s_anchors if s_get(c, lang) != want]
+        add("sino anchors (學 樂 惡 讀 說 車 行-via-override)", not bad,
+            "%d/%d pass%s" % (len(s_anchors) - len(bad), len(s_anchors),
+                              "" if not bad else "; FAILED "
+                              + "; ".join(bad)))
+        # Kun-only joyo chars have no Sino sound to show.
+        add("sino: 串 has no ja entry (kun-only joyo char)",
+            "ja" not in (sc.get("串") or {}),
+            json.dumps(sc.get("串"), ensure_ascii=False))
+
+    if sino_report is not None:
+        # The two property tests and the tier-2 sanity band run on build
+        # data that the emitted files cannot reproduce, so --verify skips
+        # them (like the override did-it-fire half of the rare flag).
+        p1 = sino_report["p1"]
+        add("sino property: corpus top reading is a joyo reading >= 95%",
+            p1["pct"] >= 95.0,
+            "%d/%d (%.1f%%; spike 99.2%%); exceptions: %s"
+            % (p1["ok"], p1["seen"], p1["pct"],
+               " | ".join(p1["exceptions"]) or "(none)"))
+        p2 = sino_report["p2"]
+        add("sino property: bridge and scorer agree through shared eums",
+            p2["both"] > 0 and not p2["disagreements"],
+            "%d/%d agree (spike 5/5): %s%s"
+            % (p2["agree"], p2["both"], " | ".join(p2["agreements"]),
+               ("; DISAGREE " + " | ".join(p2["disagreements"]))
+               if p2["disagreements"] else ""))
+        add("sino: tier-2 count sane (spike measured 1,409)",
+            1200 <= sino_report["tier2"] <= 1600,
+            "%s chars gained a tier-2 reading (%s)"
+            % (format(sino_report["tier2"], ","),
+               " ".join("%s=%d" % (k, v) for k, v in
+                        sorted(sino_report["tier2_lvl"].items()))))
+
     failed = 0
     log("=============== SPOT CHECKS ================")
     for name, ok, detail in checks:
@@ -1640,13 +1754,18 @@ def verify_only():
         n = rd("native.json")
     except (OSError, ValueError):
         n = None
+    try:
+        s = rd("sino.json")
+    except (OSError, ValueError):
+        s = None
     log("chars %s | words %s | byHangul %s | variants %s | decomp %s | "
-        "native %s" % (
+        "native %s | sino %s" % (
             format(len(h["chars"]), ","), format(len(w["words"]), ","),
             format(len(w["byHangul"]), ","), format(len(v["map"]), ","),
             format(len(d["parts"]), ",") if d else "-",
-            format(len(n["words"]), ",") if n else "-"))
-    return verify(h, w, v, d, n)
+            format(len(n["words"]), ",") if n else "-",
+            format(len(s["chars"]), ",") if s else "-"))
+    return verify(h, w, v, d, n, s)
 
 
 # ---------------------------------------------------------------- main
@@ -1667,6 +1786,8 @@ def main(argv):
     download(EXTFREQ_URL, EXTFREQ_FILE, force)
     download_small(EDU_TIER_URL, EDU_TIER_FILE, force)
     download(IDS_URL, IDS_FILE, force)
+    download_small(JA_JOYO_URL, JA_JOYO_FILE, force)
+    download(JA_EXTFREQ_URL, JA_EXTFREQ_FILE, force)
 
     log("[2/5] streaming kaikki Korean JSONL (line by line)")
     parse_kaikki(KAIKKI_FILE)
@@ -1700,9 +1821,11 @@ def main(argv):
     # Unihan gap-fill: thousands of rare hanja pages on Wiktionary are
     # reading-only ("no-gloss" senses). Unihan kDefinition supplies a short
     # English definition for them, and kHangul a reading where we have none.
+    # The decoded readings text is kept: sino.json parses four more fields
+    # (kJapanese / kMandarin / kXHC1983 / kHanyuPinlu) out of it later.
     with zipfile.ZipFile(UNIHAN_FILE) as z:
-        uni_defs, uni_hangul = parse_unihan_readings(
-            z.read("Unihan_Readings.txt").decode("utf-8"))
+        unihan_readings_text = z.read("Unihan_Readings.txt").decode("utf-8")
+    uni_defs, uni_hangul = parse_unihan_readings(unihan_readings_text)
     # Provenance is TRACKED (not emitted): a character whose only English gloss
     # had to come from kDefinition has no usable Korean Wiktionary entry of its
     # own, which is the single strongest "this is a dictionary-tail character"
@@ -1770,7 +1893,7 @@ def main(argv):
         unihan_text = z.read("Unihan_Variants.txt").decode("utf-8")
     cands = parse_unihan_variants(unihan_text)
     cands.extend(parse_translingual(TRANSLINGUAL_FILE))
-    ja_cands = parse_japanese(JAPANESE_FILE)
+    ja_cands, ja_words = parse_japanese(JAPANESE_FILE)
     cands.extend(ja_cands)
     src_counts = {}
     for variant, (target, prio) in wiki_alt.items():
@@ -2190,6 +2313,35 @@ def main(argv):
     log("  decomp suppressed: %s substantiality (splits of single strokes "
         "only)" % format(decomp_stats["insubstantial"], ","))
 
+    # ---- sino.json (SPEC "Sibling Sino readings" addendum) ------------
+    # Built after chars_out and words_out are final: the card's readings
+    # order is the alignment master, and the compound bridge walks the
+    # emitted words.json keys.
+    with io.open(JA_JOYO_FILE, encoding="utf-8") as fh:
+        joyo_text = fh.read()
+    with io.open(JA_EXTFREQ_FILE, encoding="utf-8", errors="replace") as fh:
+        ja_freq_text = fh.read()
+    sino_obj, sino_report = sino.build(
+        chars_out, variant_map, words_out, joyo_text, unihan_readings_text,
+        unihan_text, ja_freq_text, ja_words)
+    sr = sino_report
+    log("  sino: joyo table %s rows (%s with on'yomi, %s kun-only, %s "
+        "kyujitai mapped)" % (format(sr["joyo_rows"], ","),
+                              format(sr["joyo_with_on"], ","),
+                              sr["joyo_kun_only"], sr["old2new"]))
+    log("  sino: %s kanji words, %s aligned, %s skipped (jukujikun etc.); "
+        "%s shared ja/ko words feed the bridge"
+        % (format(sr["ja_words"], ","), format(sr["ja_aligned"], ","),
+           format(sr["ja_skipped"], ","), format(sr["bridge_shared"], ",")))
+    log("  sino: ja %s chars (tier1 %s, tier2 %s: %s), zh %s chars; "
+        "ja covers %.0f%% of m, %.0f%% of h"
+        % (format(sr["ja_chars"], ","), format(sr["tier1"], ","),
+           format(sr["tier2"], ","),
+           " ".join("%s=%d" % (k, v)
+                    for k, v in sorted(sr["tier2_lvl"].items())),
+           format(sr["zh_chars"], ","), sr["ja_cov_m"], sr["ja_cov_h"]))
+    log("  sino: %d curated zh overrides fired" % sr["overrides"])
+
     # ---- emit ---------------------------------------------------------
     hanja_obj = {"version": 1, "chars": chars_out}
     # Length metadata (SPEC ADDENDUM): the segmentation caps in lookup.js were
@@ -2225,6 +2377,7 @@ def main(argv):
     s_v = write_json("variants.json", variants_obj)
     s_d = write_json("decomp.json", decomp_obj)
     s_n = write_json("native.json", native_obj)
+    s_s = write_json("sino.json", sino_obj)
 
     # ---- report -------------------------------------------------------
     log("\n================= COUNTS ===================")
@@ -2234,6 +2387,10 @@ def main(argv):
     log("variants   : %-9s (expect >= 1000)" % format(len(variant_map), ","))
     log("native     : %-9s (expect ~ 16000; maxLen %d)"
         % (format(len(native_words), ","), native_obj["maxLen"]))
+    log("sino       : %-9s (ja %s / zh %s; expect ~ 3500 ja, ~ 10000 zh)"
+        % (format(sino_report["chars"], ","),
+           format(sino_report["ja_chars"], ","),
+           format(sino_report["zh_chars"], ",")))
     log("  variant sources: " + ", ".join(
         "%s=%d" % (PRIO_NAMES[k], v) for k, v in sorted(src_counts.items())))
     zones = collections.Counter(e["lvl"] for e in chars_out.values())
@@ -2254,10 +2411,11 @@ def main(argv):
     log("variants.json : %s" % mb(s_v))
     log("decomp.json   : %s" % mb(s_d))
     log("native.json   : %s" % mb(s_n))
-    log("total         : %s" % mb(s_h + s_w + s_v + s_d + s_n))
+    log("sino.json     : %s" % mb(s_s))
+    log("total         : %s" % mb(s_h + s_w + s_v + s_d + s_n + s_s))
 
     failed = verify(hanja_obj, words_obj, variants_obj, decomp_obj,
-                    native_obj)
+                    native_obj, sino_obj, sino_report)
     log("============================================")
     log("done in %.1fs; %d failed check(s)" % (time.time() - t0, failed))
     raise SystemExit(1 if failed else 0)

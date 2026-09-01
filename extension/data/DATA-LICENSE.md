@@ -1,17 +1,21 @@
 # Dictionary data license and attribution
 
 The JSON files in this directory (`hanja.json`, `words.json`, `variants.json`,
-`decomp.json`, `native.json`) are a derived database compiled from
-the following sources by `pipeline/build.py`:
+`decomp.json`, `native.json`, `sino.json`) are a derived database compiled
+from the following sources by `pipeline/build.py`:
 
-- **English Wiktionary** (https://en.wiktionary.org), via the machine-readable
-  extracts published by **kaikki.org** (https://kaikki.org), themselves
-  produced by the wiktextract project. Wiktionary text is dual-licensed under
-  the **Creative Commons Attribution-ShareAlike License (CC BY-SA)** and the
-  GNU Free Documentation License.
+- **English Wiktionary** (https://en.wiktionary.org) and the
+  **Japanese-language Wiktionary** (https://ja.wiktionary.org), via the
+  machine-readable extracts published by **kaikki.org** (https://kaikki.org),
+  themselves produced by the wiktextract project. Wiktionary text is
+  dual-licensed under the **Creative Commons Attribution-ShareAlike License
+  (CC BY-SA)** and the GNU Free Documentation License. The Japanese extract
+  supplies variant links plus the word-reading evidence that attests and
+  aligns the Japanese readings in `sino.json`.
 - **The Unicode Unihan Database** (https://www.unicode.org/charts/unihan.html),
   used under the Unicode License (https://www.unicode.org/license.txt) for
-  variant mappings, supplementary definitions, and readings.
+  variant mappings, supplementary definitions, and readings (including the
+  Japanese and Mandarin readings behind `sino.json`).
 - **Korean Wikipedia**, article 「대한민국 중고등학교 기초한자 목록」
   (https://ko.wikipedia.org/wiki/대한민국_중고등학교_기초한자_목록), used under
   the **Creative Commons Attribution-ShareAlike 4.0 International License**
@@ -19,11 +23,18 @@ the following sources by `pipeline/build.py`:
   high-school tier (`eduT`) of the Ministry of Education basic-education hanja
   list. (The underlying 교육부 고시 list is itself excluded from copyright by
   저작권법 제7조.)
+- **English Wikipedia**, article "List of jōyō kanji"
+  (https://en.wikipedia.org/wiki/List_of_jōyō_kanji), used under
+  the **Creative Commons Attribution-ShareAlike 4.0 International License**
+  for the jōyō on'yomi sets and kyūjitai links in `sino.json`. (The
+  underlying 常用漢字表 is a Japanese government notice, itself outside
+  copyright.)
 - **hermitdave/FrequencyWords** (MIT License, © 2016 Hermit Dave), derived from
   the OPUS OpenSubtitles 2018 corpus — used only as a build-time frequency
-  signal: it decides the `rare` flag and the coarse `f` frequency bucket
-  (a 0-9 log-scaled rank band), and no word, count or rank from it is copied
-  into these files.
+  signal: the Korean list decides the `rare` flag and the coarse `f` frequency
+  bucket (a 0-9 log-scaled rank band), the Japanese list only weights the
+  ordering of readings in `sino.json`, and no word, count or rank from either
+  is copied into these files.
 
 - **BabelStone IDS** (https://www.babelstone.co.uk/CJK/IDS.TXT, file date
   2025-06-27), Ideographic Description Sequences maintained by **Andrew West**.

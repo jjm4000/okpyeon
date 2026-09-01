@@ -1960,11 +1960,15 @@ Korean. Two independent default-off toggles; off is byte-identical.
   the aligner resolved it, else `""`; unaligned readings trail
   aligned ones. A language key is omitted when it has no readings; a
   char is omitted when neither language does. Deterministic emit.
-- Coverage (spike-measured 2026-08-31): ja tier 1 covers 2,121 of our
-  chars (92% of m, 86% of h); kun-only jōyō chars (串 丼 咲, 77 of
+- Coverage (as built; the spike's 2,121 predated one fix): ja tier 1
+  covers 2,157 chars (94.0% of m, 86.4% of h) — the jōyō table's
+  kyūjitai column is EMPTY on some rows (說 值 稅 among eight), so
+  tier-1 coverage must also hop through Unihan kZVariant, which the
+  說 anchor exists to catch. Kun-only jōyō chars (串 丼 咲, 77 of
   them) correctly have NO ja entry, since there is no Sino sound to
   show. Tier 2 adds 1,409 non-jōyō chars (31 m, 92 h, 728 a, 558 r).
-  zh covers nearly everything via kMandarin (97.7%). Payload small.
+  zh covers 9,249 chars (97.7%) via kMandarin plus kXHC1983. Emitted:
+  0.4 MB, 9,249 chars.
 
 ### Build
 
