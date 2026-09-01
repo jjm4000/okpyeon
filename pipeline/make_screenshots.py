@@ -27,8 +27,10 @@ This script then:
   3. captures each scene in its own tab, with the viewport size set BEFORE
      navigation (content.js hides the popup on resize, so a late resize would
      empty the shot),
-  4. composites the side-panel shots beside a narrower page shot, with the 1px
-     separator Chrome draws between a page and its side panel,
+  4. mounts the side-panel shots alone, centered on a quiet neutral backdrop
+     (the panel is those shots' whole subject; a page beside it only shrank
+     it), keeping the page-beside-panel composite path for any future shot
+     that needs it,
   5. asserts, per shot, both what the DOM says (the popup is up, the variant
      note rendered, the settings view mounted) and what the pixels say (exact
      size, RGB, no alpha, the corner seal actually visible where it is the
@@ -79,16 +81,30 @@ PAGE_W, PANEL_W = 919, 360
 SEPARATOR = (218, 220, 224)
 SEPARATOR_DARK = (60, 64, 67)
 
+# A "solo" shot mounts the panel alone: captured 640 wide and canvas-height
+# minus the margins tall, centered on a flat neutral backdrop. The backdrop
+# (#e9ebef) must sit far enough under the panel's white that the panel reads
+# as a card; the border is rgba(0,0,0,0.12) flattened onto the backdrop, and
+# the halo is a 3px band of fainter grey standing in for a shadow.
+SOLO_PANEL_W = 640
+SOLO_MARGIN = 24
+SOLO_PANEL_H = SHOT_H - 2 * SOLO_MARGIN
+SOLO_BACKDROP = (233, 235, 239)
+SOLO_BORDER = (205, 207, 210)
+SOLO_HALO = (224, 226, 230)
+
 
 # --------------------------------------------------------------------------
 # The scenes.
 #
-# Every shot is either a whole-viewport page capture ("page") or a page capture
-# docked beside a side-panel capture ("composite"). `page` and `panel` are query
-# strings for the staging pages; a "set" key in either turns the named settings
-# toggles on for the scene (the committed seeding path; no defaults are ever
-# hand-edited for a capture). `checks` are JS expressions that must all
-# evaluate true after the page signals ready, before anything is captured.
+# Every shot is a whole-viewport page capture ("page"), a side-panel capture
+# mounted alone on the neutral backdrop ("solo"), or a page capture docked
+# beside a side-panel capture ("composite", currently unused). `page` and
+# `panel` are query strings for the staging pages; a "set" key in either turns
+# the named settings toggles on for the scene (the committed seeding path; no
+# defaults are ever hand-edited for a capture). `checks` are JS expressions
+# that must all evaluate true after the page signals ready, before anything is
+# captured.
 # --------------------------------------------------------------------------
 
 # Shorthands for the checks, which all run against the content script's own
@@ -181,10 +197,9 @@ SHOTS = [
     {
         "n": 5,
         "name": "5-sidebar-search.png",
-        "kind": "composite",
-        "panel_w": 560,
-        "page": {"scene": "0", "scroll": 0},
+        "kind": "solo",
         "panel": {"view": "search", "q": "\uad6d\ubbfc", "set": "nativeWords"},
+        # Solo mount: the panel is the subject, so no article shares the frame.
         # The search view renders through content.js, so its nodes live in the
         # embedded panel's shadow root and only its own query hook sees them.
         # 1.2: nativeWords seeded, so the scope pills sit above the results, in
@@ -205,36 +220,35 @@ SHOTS = [
     {
         "n": 6,
         "name": "6-saved-words.png",
-        "kind": "composite",
-        "panel_w": 560,
-        "page": {"scene": "0", "scroll": 430},
-        # Six rendered rows is the most the seal's room rule tolerates: with a
-        # seventh the view stops being .view--roomy and the seal correctly
-        # vanishes. Two folders are therefore collapsed, which is also the
-        # honest picture of a library with three folders in it.
-        "panel": {"view": "saved", "collapse": "Saved,\uc2dc\ud5d8"},
+        "kind": "solo",
+        # Solo mount: the panel is the subject, so no article shares the frame.
+        # Five rendered rows is the most the seal's room rule tolerates in the
+        # 752px solo viewport (254px of room; a sixth row leaves 202 where the
+        # rule wants 230), so the expanded folder is the five-row exam one and
+        # the other two are collapsed, which is also the honest picture of a
+        # library with three folders in it.
+        "panel": {"view": "saved", "collapse": "Saved,\uad50\uacfc\uc11c"},
         "checks": [
             panel_has("saved view mounted", ".view--saved"),
             ("seal has room", 'document.querySelector(".view--saved")'
                               '.classList.contains("view--roomy")'),
             panel_has("filter reads All (13)", ".saved-bar", "All (13)"),
             panel_has("delete action present", ".saved-actions", "Delete"),
-            panel_has("expanded folder rows", ".saved-row", "\u570b\u6c11"),
+            panel_has("expanded folder rows", ".saved-row", "\u7d93\u6fdf"),
         ],
         "pixels": "seal",
     },
     {
         "n": 7,
         "name": "7-settings.png",
-        "kind": "composite",
-        "panel_w": 560,
-        "page": {"scene": "0", "scroll": 200},
+        "kind": "solo",
         "panel": {"view": "settings"},
+        # Solo mount: the panel is the subject, so no article shares the frame.
         # 1.2 made this view taller (the Search and Character cards groups, the
         # about footer), and the product's own room rule now retires the seal:
-        # 44px remain under the content where the rule wants 230. The seal
-        # checks left with it; the footer bound proves the taller view still
-        # fits the frame uncropped.
+        # the room under the content falls far short of the 230 the rule wants.
+        # The seal checks left with it; the footer bound proves the taller view
+        # still fits the 752px solo viewport uncropped.
         "checks": [
             panel_has("settings view mounted", ".view--settings"),
             panel_has("anki export section", ".view--settings", "Anki export"),
@@ -243,7 +257,7 @@ SHOTS = [
                       "Character cards"),
             ("about footer fully in frame",
              'document.querySelector(".settings-about")'
-             ".getBoundingClientRect().bottom < 800"),
+             ".getBoundingClientRect().bottom < 752"),
         ],
     },
     {
@@ -271,9 +285,8 @@ SHOTS = [
     {
         "n": 9,
         "name": "9-decomposition.png",
-        "kind": "composite",
-        "panel_w": 560,
-        "page": {"scene": "0", "scroll": 120},
+        "kind": "solo",
+        # Solo mount: the panel is the subject, so no article shares the frame.
         # 樂 searched in the panel, its "Made of" row opened: four parts with
         # their readings (幺's arrives via the readings[0] fallback), and the
         # "Part of" row underneath — 樂 is inside 9 characters, 藥 among them.
@@ -307,7 +320,7 @@ SHOTS = [
              '(globalThis.__hanjaHover.query(".foundin-row b").textContent | 0) >= 1'),
             ("the whole section is in frame",
              'globalThis.__hanjaHover.query(".foundin-row")'
-             ".getBoundingClientRect().bottom < 800"),
+             ".getBoundingClientRect().bottom < 752"),
         ],
     },
 ]
@@ -569,8 +582,8 @@ def run_checks(tab, checks, shot_name):
             raise AssertionError(f"{shot_name}: check failed -- {label}")
 
 
-def capture(chrome, port, page, params, width, checks=(), dark=False):
-    tab = Tab(chrome, width, SHOT_H, dark)
+def capture(chrome, port, page, params, width, checks=(), dark=False, height=SHOT_H):
+    tab = Tab(chrome, width, height, dark)
     try:
         tab.navigate(stage_url(port, page, params))
         tab.wait_ready()
@@ -578,8 +591,8 @@ def capture(chrome, port, page, params, width, checks=(), dark=False):
         image = tab.screenshot()
     finally:
         tab.close()
-    if image.size != (width, SHOT_H):
-        raise AssertionError(f"{page}: captured {image.size}, wanted {(width, SHOT_H)}")
+    if image.size != (width, height):
+        raise AssertionError(f"{page}: captured {image.size}, wanted {(width, height)}")
     return image
 
 
@@ -593,6 +606,21 @@ def compose(page_image, panel_image, dark=False):
     return out
 
 
+def compose_solo(panel_image):
+    """Center the panel on the neutral backdrop, framed as a card: a 1px
+    border under a 3px halo, both pasted as solid rectangles so the whole
+    mount stays plain PIL."""
+    out = Image.new("RGB", (SHOT_W, SHOT_H), SOLO_BACKDROP)
+    x = (SHOT_W - panel_image.width) // 2
+    y = (SHOT_H - panel_image.height) // 2
+    for inset, color in ((4, SOLO_HALO), (1, SOLO_BORDER)):
+        ring = Image.new("RGB", (panel_image.width + 2 * inset,
+                                 panel_image.height + 2 * inset), color)
+        out.paste(ring, (x - inset, y - inset))
+    out.paste(panel_image, (x, y))
+    return out
+
+
 def assert_image(image, name):
     if image.size != (SHOT_W, SHOT_H):
         raise AssertionError(f"{name}: {image.size}, wanted {(SHOT_W, SHOT_H)}")
@@ -602,11 +630,14 @@ def assert_image(image, name):
         raise AssertionError(f"{name}: carries a transparency key")
 
 
-def assert_seal(image, name):
+def assert_seal(image, name, corner=(SHOT_W, SHOT_H)):
     """The jade 玉篇 seal sits in the panel's lower-right corner when the view
     leaves room for it. Its ink is the only non-grey thing down there, so a
-    green cast in that box is proof it rendered."""
-    box = image.crop((SHOT_W - 130, SHOT_H - 230, SHOT_W - 10, SHOT_H - 10))
+    green cast in that box is proof it rendered. `corner` is the panel's
+    lower-right corner on the canvas; the default is the composite dock,
+    where the panel ends at the canvas edge."""
+    right, bottom = corner
+    box = image.crop((right - 130, bottom - 230, right - 10, bottom - 10))
     pixels = box.tobytes()
     jade = 0
     for i in range(0, len(pixels), 3):
@@ -619,21 +650,29 @@ def assert_seal(image, name):
 
 def build(shot, chrome, port, work_dir):
     dark = shot.get("dark", False)
-    panel_w = shot.get("panel_w", PANEL_W)
-    page_width = SHOT_W if shot["kind"] == "page" else SHOT_W - panel_w - 1
-    page_checks = shot["checks"] if shot["kind"] == "page" else ()
-    page_image = capture(chrome, port, "shots-page.html", shot["page"],
-                         page_width, page_checks, dark)
-    if shot["kind"] == "page":
-        image = page_image
-    else:
+    seal_corner = (SHOT_W, SHOT_H)
+    if shot["kind"] == "solo":
         panel_image = capture(chrome, port, "shots-panel.html", shot["panel"],
-                              panel_w, shot["checks"], dark)
-        image = compose(page_image, panel_image, dark)
+                              SOLO_PANEL_W, shot["checks"], dark,
+                              height=SOLO_PANEL_H)
+        image = compose_solo(panel_image)
+        seal_corner = ((SHOT_W + SOLO_PANEL_W) // 2, SOLO_MARGIN + SOLO_PANEL_H)
+    else:
+        panel_w = shot.get("panel_w", PANEL_W)
+        page_width = SHOT_W if shot["kind"] == "page" else SHOT_W - panel_w - 1
+        page_checks = shot["checks"] if shot["kind"] == "page" else ()
+        page_image = capture(chrome, port, "shots-page.html", shot["page"],
+                             page_width, page_checks, dark)
+        if shot["kind"] == "page":
+            image = page_image
+        else:
+            panel_image = capture(chrome, port, "shots-panel.html", shot["panel"],
+                                  panel_w, shot["checks"], dark)
+            image = compose(page_image, panel_image, dark)
 
     assert_image(image, shot["name"])
     if shot.get("pixels") == "seal":
-        assert_seal(image, shot["name"])
+        assert_seal(image, shot["name"], seal_corner)
 
     out = work_dir / shot["name"]
     image.save(out, "PNG", optimize=True)
