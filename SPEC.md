@@ -1126,8 +1126,31 @@ eumhun/hangul instead).
   functional (batch actions on a collapsed folder work unchanged).
   Collapse state is page-session-local: default expanded, held while the
   panel stays open, reset on a fresh open. A single-folder filter renders
-  a flat list (no headers). A global select-all checkbox operates on the
-  current filter either way.
+  that folder's band over its rows (REVISED below; it was a flat list).
+  A global select-all checkbox operates on the current filter either way.
+- Empty folders and folder selection (ADDENDUM 2026-09-01, user-reported):
+  showing a folder is not gated on its contents. Every folder renders as
+  a band, under All and under its own filter, in folder order, whether or
+  not it holds items; an empty band shows the "This folder is empty."
+  line under it. With nothing saved at all the bands still render, with
+  the "Nothing saved yet" hint once above them. (Bands had rendered only
+  around items, so emptying the last folder made every folder disappear
+  and one save brought them all back; there was also no way to select
+  and delete an empty folder.) An empty band's checkbox works: a folder
+  checkbox selects the folder and every item in it; f0's selects its
+  items only, since the default folder is never deleted, and it is
+  disabled only while f0 has nothing to select. Unchecking an item takes
+  its folder out of the selection. With folders checked, the actions
+  bar's Delete takes them too: the confirmation is one sentence per part
+  (the item-count line, then each folder in the toolbar's own delete
+  copy, with its moves-to-f0 count when the folder holds items not
+  themselves being deleted), and confirming removes the items first and
+  then deletes the folders through folderDelete, so a mixed selection
+  deletes both. A checked folder counts as a selection: no action widens
+  to the whole filter while one is checked, and Move and Export stay
+  inert with no items picked. The count slot says "N folders selected",
+  after the item count when both apply. Clearing select-all clears the
+  folders too. Rename and the toolbar's per-folder Delete are unchanged.
 - Item rows = checkbox + primary text (word spelling / char glyph) +
   secondary (hangul or eumhun) + first gloss, `.missing` styling and a
   "no longer in the dictionary" note for missing rows.
@@ -1145,7 +1168,8 @@ eumhun/hangul instead).
 - `onShow` refreshes via `savedGet`; a guarded `chrome.storage.onChanged`
   listener (real runtime only) refreshes while visible, so saves made
   from pages appear live.
-- Empty state: one short line pointing at the star on cards.
+- Empty state: one short line pointing at the star on cards, above the
+  folder bands (see the empty-folders addendum above).
 
 ### Sidebar: settings view (extension/sidepanel/settings-view.js, view 3)
 
@@ -1202,7 +1226,11 @@ must never land invisibly behind the saved or settings view.
   folder's items — folder create/filter/
   rename/delete-moves-to-f0, select-all on filter, move, remove with the
   two-step inline confirm (first click arms, cancel disarms, confirm
-  removes), row click lands in search view with the card rendered,
+  removes), empty-folder bands under All and under their own filter with
+  the hint above the bands at zero items, the empty band's live checkbox,
+  select-and-delete of an empty folder with its confirmation, f0 never in
+  the folder delete set, a mixed selection deleting items then folders,
+  row click lands in search view with the card rendered,
   export format chooser with both file bodies asserted via the download
   anchor, live refresh on a simulated change); settings view
   (group headings, schema-rendered controls, immediate persist,
@@ -2402,8 +2430,17 @@ korean-mode-kickoff.md; this section is the binding contract.
   the definitions. Seeded with 韓國 -> its 대한민국 sense first (the
   corpus's first ordinary sense is the 대한 제국 abbreviation, and
   the 대한민국 sense is tagged 지명, so the rules alone put the
-  historical sense first). Then the first TWO survivors in sense_no
-  order. Anchors: 학생 shows "학예를
+  historical sense first). Two orderings applied before the cap
+  (real-Chrome corrections, 2026-09-01): SURNAME SENSES SORT LAST
+  (definition matching (^|\s)성(\(姓\))?의 하나, 523 corpus-wide;
+  never dropped, since for 姜 the surname IS the meaning, but 玉
+  leads with the stone, not "우리나라 성(姓)의 하나"), and ROOT
+  STUBS RESOLVE: a sense reading ‘X’의 어근 is replaced by headword
+  X's first surviving ordinary sense with X's target_code (7,398 of
+  7,518 resolved; the 120 whose target has no surviving sense drop
+  like any stub), so 緊密 reads 긴밀하다's definition and links to
+  it, and 緊 is no longer "‘긴하다’의 어근.". Then the first TWO
+  survivors in sense_no order. Anchors: 학생 shows "학예를
   배우는 사람." then "학교에 다니면서 공부하는 사람."; 학교 shows
   exactly ONE sense (the prison slang and the 鶴橋 / 學橋 villages
   are gone); 가족 keeps 家族's first sense only (the play by that
@@ -2453,12 +2490,14 @@ korean-mode-kickoff.md; this section is the binding contract.
   27143, renders the entry with pronunciation audio, the example
   sentence, related words, and a word map, none of which the license
   lets us ship, which is why the link matters). Cards falling back to
-  English keep "Wiktionary ↗". Char cards keep "Wiktionary ↗" in BOTH
-  languages: readings, hun, compounds, and variants all come from the
-  Wiktionary hanja page, the fuller entry, and the borrowed
-  single-char glosses are covered by the footer and DATA-LICENSE
-  attribution. One link per card, never two (the header is "☆ +
-  link" and the popup is narrow). English mode links nothing to
+  English keep "Wiktionary ↗". Char cards follow the SAME rule
+  (user-corrected 2026-09-01 after a real-Chrome look: the first cut
+  kept Wiktionary on every char card because the rest of the card is
+  Wiktionary-sourced, and the user read that as "all character cards
+  go to Wiktionary rather than 우리말샘"): a char card showing a
+  Korean gloss links 우리말샘 to that sense; a hun-only card and an
+  English-fallback card keep Wiktionary. One link per card, never
+  two (the header is "☆ + link" and the popup is narrow). English mode links nothing to
   우리말샘, so its byte-identity holds. The link is composed at render
   time from `s` and the fixed pattern, exactly as the Wiktionary link
   is composed from the headword; the extension still makes no

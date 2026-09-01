@@ -22,9 +22,10 @@ build       consumes only the intermediate and matches it onto the finished
             word that is not a pure hanja-origin word (고유어, 외래어,
             혼종어) -> native.json (hangul, POS) rows through POS_MAP;
             single-syllable headwords with a one-char hanja origin -> the
-            canonical char. Proper-noun and work/slang senses are dropped
-            only beside an ordinary sense on the same key; a key with no
-            other sense keeps them (中國, 美國).
+            canonical char. A 지명 sense is dropped only beside an ordinary
+            sense on the same key (中國, 美國 keep theirs; never on chars);
+            surname senses sort last; every other proper-noun class and
+            every work/slang sense is dropped.
 
 Usage
     python pipeline/urimalsaem.py fetch [--force]
@@ -98,6 +99,21 @@ RE_TAG = re.compile(r"</?[A-Za-z][A-Za-z0-9]*(?:\s[^>]*)?/?>")
 RE_TRAILER = re.compile(r"\s*⇒\s*규범 표기는.*$")
 RE_WS = re.compile(r"\s+")
 RE_WORD_MARK = re.compile(r"[-^\s]+")
+# Surname senses (integrator rule): never dropped (for 姜 or 金 the
+# surname IS a meaning) but sorted after every non-surname sense on the
+# same key before the first-two cap, so 玉 leads with the stone.
+# Corpus forms: "우리나라 성(姓)의 하나", "중국의 성(姓)의 하나", "우리나라
+# 성의 하나" (about 520 senses, all without a cat). The boundary before
+# 성 keeps 굴성의 하나 / 특성의 하나 / 편성의 하나 out.
+RE_SURNAME = re.compile(r"(?:^|\s)성(?:\(姓\))?의 하나")
+# Root stubs (integrator rule): the corpus files the meaning on the -하다
+# headword and leaves "‘긴밀하다’의 어근." on the bare form. Such a sense
+# is replaced by the first surviving ordinary sense of headword X, with
+# X's target_code so the link opens the -하다 entry; with no such sense
+# the stub drops. Targets are collected in a raw-text pre-pass because
+# 긴밀 precedes 긴밀하다 in corpus order.
+RE_ROOT = re.compile(r"^[‘'“\"]([^’'”\"]+)[’'”\"]의 어근(?:이다)?")
+RE_ROOT_ANY = re.compile(r"[‘'“\"]([^’'”\"]+)[’'”\"]의 어근")
 
 # Urimalsaem pos -> native.json POS vocabulary (SPEC: pinned; anything
 # else never matches). Table order is also the merge order when two
@@ -284,6 +300,18 @@ def hanja_keys(alts):
     return out
 
 
+def root_targets(chunks):
+    """Headwords named by ‘X’의 어근 stubs anywhere in the corpus."""
+    targets = set()
+    for path in chunks:
+        with gzip.open(path, "rt", encoding="utf-8") as fh:
+            for line in fh:
+                if "의 어근" in line:
+                    for m in RE_ROOT_ANY.finditer(line):
+                        targets.add(RE_WORD_MARK.sub("", m.group(1)))
+    return targets
+
+
 def preprocess(chunks=None):
     """Parse every chunk and write INTERMEDIATE. -> report dict."""
     chunks = chunks or cached_chunks()
@@ -291,6 +319,11 @@ def preprocess(chunks=None):
         raise SystemExit("urimalsaem: no chunks in %s; run "
                          "`python pipeline/urimalsaem.py fetch` first" % CACHE)
     t0 = time.time()
+    targets = root_targets(chunks)
+    log("  urimalsaem: %s root-stub target headwords (%.0fs)"
+        % (format(len(targets), ","), time.time() - t0))
+    first_sense = {}        # target headword -> (code, def)
+    pending = []            # (container list, row, X) of root stubs
     n_items = 0
     routable = 0
     drop = collections.Counter()
@@ -311,6 +344,10 @@ def preprocess(chunks=None):
     # work/slang sense is dropped outright.
     held = {"words": collections.OrderedDict(),
             "natives": collections.OrderedDict()}
+    # Surname senses, appended after the key's other senses at resolution.
+    late = {"words": collections.OrderedDict(),
+            "natives": collections.OrderedDict(),
+            "chars": collections.OrderedDict()}
     per_head = collections.Counter()     # (tier, lane, headword, key) -> kept
     # Definitions of the KO_OVERRIDES codes, collected before any filter.
     override_rows = {lane: {} for lane in KO_OVERRIDES}
@@ -406,38 +443,65 @@ def preprocess(chunks=None):
                     if char_keys:
                         drop["지명 on the chars lane"] += 1
                         char_keys = []
+                elif RE_SURNAME.search(d):
+                    tier = 2
+                    soft["surname (sorted last)"] += 1
+                    kept += 1
                 else:
                     kept += 1
-                w_tbl = words if tier == 0 else held["words"]
-                n_tbl = natives if tier == 0 else held["natives"]
-                c_tbl = chars
+                rm = RE_ROOT.match(d)
+                root = RE_WORD_MARK.sub("", rm.group(1)) if rm else None
+                if (tier == 0 and root is None and word in targets
+                        and word not in first_sense):
+                    first_sense[word] = (code, d)
+                w_tbl = (words, held["words"], late["words"])[tier]
+                n_tbl = (natives, held["natives"], late["natives"])[tier]
+                c_tbl = (chars, chars, late["chars"])[tier]
+                def put(tbl, k, row, hk):
+                    if per_head[hk] >= CAP:
+                        return False
+                    per_head[hk] += 1
+                    lst = tbl.setdefault(k, [])
+                    lst.append(row)
+                    if root is not None:
+                        pending.append((lst, row, root))
+                    return True
                 for k in hkeys:
-                    hk = (tier, "w", word, k)
-                    if per_head[hk] >= CAP:
+                    if not put(w_tbl, k, [code, d, word],
+                               (tier, "w", word, k)):
                         capped += 1
-                        continue
-                    per_head[hk] += 1
-                    w_tbl.setdefault(k, []).append([code, d, word])
                 if native_key:
-                    hk = (tier, "n", word, pos)
-                    if per_head[hk] >= CAP:
+                    if not put(n_tbl, native_key, [code, d],
+                               (tier, "n", word, pos)):
                         capped += 1
-                    else:
-                        per_head[hk] += 1
-                        n_tbl.setdefault(native_key, []).append([code, d])
                 for c in char_keys:
-                    hk = (tier, "c", word, c)
-                    if per_head[hk] >= CAP:
+                    if not put(c_tbl, c, [code, d], (tier, "c", word, c)):
                         capped += 1
-                        continue
-                    per_head[hk] += 1
-                    c_tbl.setdefault(c, []).append([code, d])
                 el.clear()
         log("  %s: %s items (%.1fs)" % (name, format(n_items - n0, ","),
                                         time.time() - t1))
 
     # Resolve the survival rule: a held key with no ordinary sense keeps
     # its held senses; held senses beside an ordinary sense are dropped.
+    # Root-stub resolution: replace in place (the stub keeps its slot, so
+    # 긴밀 leads with 긴밀하다's sense), or remove.
+    root_resolved = root_dropped = 0
+    for lst, row, root in pending:
+        fs = first_sense.get(root)
+        if fs:
+            row[0], row[1] = fs
+            root_resolved += 1
+        else:
+            lst.remove(row)
+            root_dropped += 1
+    for tbl in (words, natives, chars, held["words"], held["natives"],
+                late["words"], late["natives"], late["chars"]):
+        for k in [k for k, v in tbl.items() if not v]:
+            del tbl[k]
+    for lane, tbl in (("words", words), ("natives", natives),
+                      ("chars", chars)):
+        for k, rows in late[lane].items():
+            tbl.setdefault(k, []).extend(rows)
     rescued = {"chars": []}
     for lane, tbl in (("words", words), ("natives", natives)):
         keys = []
@@ -461,6 +525,9 @@ def preprocess(chunks=None):
         "natives": len(natives),
         "chars": len(chars),
         "rescued": {k: len(v) for k, v in rescued.items()},
+        "root_stubs": {"targets": len(targets), "matched": len(pending),
+                       "resolved": root_resolved,
+                       "dropped": root_dropped},
         "cats": dict(cats_seen.most_common()),
         "native_pos": dict(pos_native.most_common()),
         "work_or_slang": dict(pattern_hits.most_common()),
@@ -487,6 +554,10 @@ def preprocess(chunks=None):
         log("    dropped %-22s %s" % (k, format(v, ",")))
     for k, v in report["held"].items():
         log("    held    %-22s %s" % (k, format(v, ",")))
+    log("    root stubs: %s matched, %s resolved onto the target sense, "
+        "%s dropped" % (format(len(pending), ","),
+                        format(root_resolved, ","),
+                        format(root_dropped, ",")))
     log("    work or slang by pattern: " + " ".join(
         "%s=%d" % kv for kv in pattern_hits.most_common()))
     log("  urimalsaem: lanes words %s, natives %s, chars %s (keys kept only "
@@ -533,6 +604,12 @@ def ensure_intermediate():
 
 
 # ---------------------------------------------------------------- build
+
+def _surname_last(rows):
+    # Stable: a merge of several sources keeps surname senses behind every
+    # non-surname sense (the intermediate already orders each source).
+    return sorted(rows, key=lambda r: bool(RE_SURNAME.search(r[1])))
+
 
 def _defs(rows):
     out = []
@@ -655,7 +732,7 @@ def build(inter, words_out, native_words, chars_out, variant_map,
             use = [p for p in use if p[0] == 0]
         rows = [r for _, _, rs in sorted(use, key=lambda p: (p[0], p[1]))
                 for r in rs]
-        return rows, not ordinary, max(p[0] for p in use)
+        return _surname_last(rows), not ordinary, max(p[0] for p in use)
 
     # words lane: the exact key (rank 0), else the variants.json
     # canonicalization (rank 1), else a glyph-form substitution (rank 2).

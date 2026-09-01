@@ -1926,6 +1926,43 @@ def verify(hanja_obj, words_obj, variants_obj, decomp_obj=None,
             and not (gokseong and "곡성군" in gokseong[0]),
             "陸道 %s | 穀城 %s" % (json.dumps(yukdo, ensure_ascii=False),
                                  json.dumps(gokseong, ensure_ascii=False)))
+        # Surname senses sort last (integrator rule): 玉 leads with the
+        # stone, 金 with the metal, 姜 keeps its surname sense.
+        ok_d = kd(kc, "玉") or [""]
+        gim_d = kd(kc, "金") or [""]
+        gang_d = kd(kc, "姜") or []
+        sur = urimalsaem.RE_SURNAME.search
+        add("ko anchor: 玉 stone first (surname second at most); 金 not "
+            "surname first; 姜 keeps its surname",
+            any(x in ok_d[0] for x in ("경옥", "연옥", "광물"))
+            and not sur(ok_d[0])
+            and not sur(gim_d[0])
+            and ("姜" not in chars_out or any(sur(d) for d in gang_d)),
+            "玉 %s | 金 %s | 姜 %s" % (
+                json.dumps(ok_d, ensure_ascii=False)[:90],
+                json.dumps(gim_d, ensure_ascii=False)[:60],
+                json.dumps(gang_d, ensure_ascii=False)[:60]))
+        # Root stubs resolve onto the -하다 headword (integrator rule):
+        # 緊密 carries 긴밀하다's sense and code, 緊 carries 긴하다's,
+        # 緊張 is untouched.
+        gin = kw.get("緊密") or {}
+        gin_c = kd(kc, "緊") or []
+        add("ko anchor: 緊密 = 긴밀하다's sense and code; 緊 no stub; "
+            "緊張 unchanged",
+            (gin.get("d") or [""])[0] == "서로의 관계가 매우 가까워 빈틈이 없다."
+            and gin.get("s") == 109333
+            and not any("의 어근" in d for d in gin_c)
+            and (kd(kw, "緊張") or [""])[0] == "마음을 조이고 정신을 바짝 차림.",
+            "緊密 %s | 緊 %s | 緊張 %s" % (
+                json.dumps(gin, ensure_ascii=False),
+                json.dumps(gin_c, ensure_ascii=False),
+                json.dumps(kd(kw, "緊張"), ensure_ascii=False)[:60]))
+        # No ‘X’의 어근 stub survives in any lane.
+        leftover = [k for tbl in (kw, kn, kc) for k, e in tbl.items()
+                    if any("의 어근" in d for d in e["d"])]
+        add("ko: no root stub left in any lane", not leftover,
+            "%d leftover%s" % (len(leftover), "" if not leftover else
+                                " e.g. " + " ".join(leftover[:5])))
         # Curated override (KO_OVERRIDES): the republic sense leads.
         hanguk = kd(kw, "韓國") or [""]
         add("ko anchor: 韓國 first definition is the 대한민국 sense (override)",
@@ -2654,6 +2691,11 @@ def main(argv):
     log("  ko: chars %s glossed of %s (expect ~1,800), %s unmatched"
         % (format(kr["chars"], ","), format(kr["chars_total"], ","),
            kr["chars_unmatched"]))
+    rs = ko_inter["report"].get("root_stubs", {})
+    log("  ko: root stubs %s matched, %s resolved, %s dropped "
+        "(preprocess)" % (format(rs.get("matched", 0), ","),
+                          format(rs.get("resolved", 0), ","),
+                          format(rs.get("dropped", 0), ",")))
     log("  ko: entries kept only by 지명 senses: words %s, natives %s "
         "(never chars: %s)"
         % (format(kr["words_rescued"], ","),

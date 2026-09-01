@@ -433,6 +433,14 @@ chunks, 1.73 GiB, one `<item>` per sense. It runs in three steps:
   sense, and a key with nothing else keeps it, which is how 中國 and 美國
   get their definitions while 生日 loses its village. That rule never
   applies to single characters, whose cards fall back to the hun. The
+  Two more orderings: a surname sense ("우리나라 성(姓)의 하나", about
+  520 senses corpus-wide) is kept but sorts after every other sense on
+  its key, so 玉 leads with the stone and 姜 still shows the surname;
+  and a root stub ("‘긴밀하다’의 어근.", the corpus files the meaning on
+  the -하다 headword) is replaced in place by the first surviving sense
+  of that headword with its sense code, so 緊密 reads 긴밀하다's
+  definition and links its entry (about 7,500 stubs resolve, 120 with
+  no target sense drop). The
   result is one file, `cache/urimalsaem/intermediate.json.gz` (~39 MB),
   with three lanes: hanja-origin senses keyed by the NFC hanja string,
   senses of every word that is not a pure hanja-origin word (word types
