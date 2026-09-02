@@ -2673,6 +2673,87 @@ two criteria to be reconciled at build). The mockup rounds settled
 S1, replace-on-word-cards, the char rule, 한국어 없음, and the term
 table. Full detail: korean-mode-kickoff.md.
 
+## Rare and lessCommon (ADDENDUM 2026-09-01, user-directed)
+
+The rare flag did two jobs with one bit: it decided ORDERING (the native
+card leads for 사랑, the spelling sorts last, the toggle-off banner
+fires) and it made a VISIBLE CLAIM (RARE marker, grey rows, "this hanja
+spelling is obscure"). The claim was wrong for ordinary words that
+merely lose a popularity contest with a native homograph: 肝臟 (간장,
+the liver) rendered grey and RARE because 간장 usually means soy sauce.
+User rule: rare shows up only when a spelling is actually rare, not
+when it is less common than a native word. Two flags, never both on
+one sense-set, names user-settled:
+
+- `rare`: the spelling is unattested. The old predicate (no
+  hangul-keyed evidence creditable to this spelling: native-contested
+  hangul with alt_inbound < 2, or nothing from any signal) AND the
+  spelling is used inside FEWER THAN TWO other Urimalsaem headwords'
+  hanja origins (the corpus inbound count over the preprocess
+  intermediate's words lane, a dense spelling-level signal Wiktionary's
+  cross-references never were). Keeps the marker, the grey rows, and
+  the "obscure" hedge copy.
+- `lessCommon`: the old predicate fires but the spelling IS attested
+  (inbound >= 2): a real word whose hangul usually means something
+  else. No marker, no grey. Keeps the ordering job: it sorts after
+  unflagged spellings and before rare ones (byHangul order, chip
+  order, the lead rule), and the toggle-off banner still fires with
+  copy that claims only what is true. Carries a hover tooltip wherever
+  the spelling appears as a chip or a row, since nothing visible marks
+  it.
+- Measured 2026-09-01 over the 3,666 rare spellings: 1,420 become
+  lessCommon at K=2 (肝臟 15 inbound, 假裝 27, 理想 83, 連絡 58, 遊離
+  55, 舍廊 9), 2,246 stay rare (生覺 0, 牛李 0, 來駕 0, 佳芳 0, 牙旗
+  0, 丁抹 1; glyph variants of living spellings such as 聯絡 beside
+  連絡 stay rare on their own count). K=2 chosen over K=1 (1,953) and
+  K=3 (1,144) as the lowest bar that still needs two independent
+  words to vouch.
+- NOT_RARE_OVERRIDES suppress BOTH flags (they were reviewed as
+  everyday words that should render and lead confidently); the
+  must-fire discipline is unchanged (the old predicate must fire on
+  every override). The list is re-reviewed at build: any entry that
+  would now compute lessCommon rather than rare is reported, kept
+  only if the reviewer wants it to lead over the native word.
+- Anchors: 舍廊 (사랑) lessCommon, 肝臟 (간장) lessCommon, 假裝 (가장)
+  lessCommon, 理想 (이상) lessCommon; 牛李, 生覺, 丁抹 rare; 記者 and
+  the other overrides neither; no sense-set carries both; byHangul
+  order is unflagged, then lessCommon, then rare; inline compound rows
+  carry lessCommon under the same every-sense rule as rare.
+
+### Runtime
+
+- Lead rule (native words ADDENDUM, amended): best unflagged hanja,
+  else native, else best lessCommon hanja, else rare hanja.
+- Marker and grey: rare only (chips, compound rows, used-in rows, Same
+  sound rows, saved rows). lessCommon renders as an ordinary chip or
+  row.
+- Hedge banner (hangul-sourced lookup, native toggle off, every
+  spelling flagged): rare keeps "Rare hanja homograph" / "Likely
+  native Korean. This hanja spelling is obscure."; lessCommon renders
+  "Less common homograph" / "Usually the native word. This hanja
+  spelling is a homograph." (ko: "덜 흔한 동음어" / "보통은
+  고유어입니다. 이 한자 표기는 동음어입니다."). A group mixing the
+  two takes the lessCommon copy (the milder true claim).
+- Tooltip (user-requested): a lessCommon chip and a lessCommon row
+  carry title "A less common meaning of $HANGUL$" (ko "$HANGUL$의 덜
+  흔한 뜻"); rare chips and rows keep their marker and gain no
+  tooltip.
+- Everything else byte-identical: an unflagged entry renders exactly
+  as today, and English rendering of the snapshot fixtures is
+  unchanged.
+
+### Tests
+
+- Build: the anchors above, both-flags-never check, byHangul order,
+  compound-row rule, override report, determinism.
+- Node: lookup ordering with the three states; joins carry lessCommon
+  through guards.
+- Harness (fixture blocks byte-identical; fixture gains a lessCommon
+  spelling beside a rare one): lead rule with a lessCommon spelling
+  and a native word; chip order; no marker and no grey on the
+  lessCommon chip and rows; tooltip present on both; hedge copy in
+  both states; rare unchanged; snapshot byte-identity.
+
 ## Verification expectations
 
 - A: after build, spot-check in the output: 國 has eumhun 나라/국 and compounds;
