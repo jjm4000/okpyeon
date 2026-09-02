@@ -44,7 +44,7 @@
    *   key,            // dot-path into the settings object; also the control's id
    *   groupKey,       // message key of the heading it renders under; groups
    *                   //   appear in schema order
-   *   type,           // "select" | "checkset" | "folder-select" | "toggle"
+   *   type,           // "select" | "checkset" | "folder-select" | "toggle" | "segmented"
    *   labelKey,       // message key of the visible label
    *   descriptionKey, // optional: message key of the muted second line
    *   options,        // [{value, labelKey}] — omitted by folder-select, which
@@ -77,11 +77,13 @@
   var SETTINGS_SCHEMA = [
     // Language (SPEC): one control, first group, drives chrome and
     // definitions together. The two option labels are each language's own
-    // name and are the same in both tables.
+    // name and are the same in both tables. A segmented control (mockup B,
+    // user-picked 2026-09-01): both options visible, one tap. If a third
+    // language is ever added, switch this row's type to "select".
     {
       key: "language",
       groupKey: "group.language",
-      type: "select",
+      type: "segmented",
       labelKey: "language.label",
       descriptionKey: "language.sub",
       options: [
@@ -318,6 +320,42 @@
     return select;
   }
 
+  // A segmented control: every option visible as a button, exactly one
+  // pressed. Reads back through `.value` like a select, so the harness and
+  // the storage.onChanged re-render treat the two alike; a click writes the
+  // option and the re-render paints the pressed state.
+  function buildSegmented(entry) {
+    var box = document.createElement("div");
+    box.id = controlId(entry.key);
+    box.className = "settings-segmented";
+    box.setAttribute("role", "radiogroup");
+    var options = optionsFor(entry);
+    var current = String(currentValue(entry));
+    for (var i = 0; i < options.length; i++) {
+      var button = document.createElement("button");
+      button.type = "button";
+      button.className = "settings-segment";
+      button.setAttribute("role", "radio");
+      button.setAttribute("data-value", String(options[i].value));
+      button.setAttribute("aria-checked", String(options[i].value) === current ? "true" : "false");
+      button.textContent = String(options[i].label);
+      button.addEventListener("click", (function (value) {
+        return function () {
+          if (value === box.value) return;
+          write(entry, value);
+        };
+      })(String(options[i].value)));
+      box.appendChild(button);
+    }
+    Object.defineProperty(box, "value", {
+      get: function () {
+        var pressed = box.querySelector('.settings-segment[aria-checked="true"]');
+        return pressed ? pressed.getAttribute("data-value") : "";
+      }
+    });
+    return box;
+  }
+
   function buildCheckset(entry) {
     var box = document.createElement("div");
     box.id = controlId(entry.key);
@@ -375,6 +413,8 @@
       case "select":
       case "folder-select":
         return buildSelect(entry);
+      case "segmented":
+        return buildSegmented(entry);
       case "checkset":
         return buildCheckset(entry);
       case "toggle":

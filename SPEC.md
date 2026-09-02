@@ -2287,7 +2287,11 @@ korean-mode-kickoff.md; this section is the binding contract.
 
 - ONE control, not two (mockup S1). "Language" in its own group at the
   top of settings, values English / 한국어, drives chrome and
-  definitions together. Rejected: S2 (separate chrome and definitions
+  definitions together. Rendered as a SEGMENTED control (mockup B of
+  the control round, user-picked 2026-09-01: both options visible, one
+  tap; the select it replaced hid the other option behind a click).
+  Recorded note: if a third language is ever added, switch this row
+  back to a select rather than widening the segments. Rejected: S2 (separate chrome and definitions
   languages: real cases exist, but one control is the simpler product
   and the combinations can return later as a second value), S3 (a
   boolean 한국어 모드 needs a bilingual label and cannot grow), S4

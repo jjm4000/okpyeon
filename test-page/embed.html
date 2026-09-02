@@ -4141,7 +4141,7 @@
     check("the shipped schema is the SPEC's nine entries, in its five groups",
       settingsOk === true &&
       settingsView.schema.map(function (e) { return e.group + "/" + e.key + ":" + e.type; })
-        .join(" ") === "Language / 언어/language:select Search/nativeWords:toggle " +
+        .join(" ") === "Language / 언어/language:segmented Search/nativeWords:toggle " +
         "Character cards/jaReadings:toggle Character cards/zhReadings:toggle " +
         "Saving/defaultFolderId:folder-select " +
         "Anki export/anki.wordFront:select Anki export/anki.wordBack:checkset " +
@@ -5004,14 +5004,15 @@
     sidebar.showView("settings");
     await settingsView.render();
     var langEntry = settingsView.schema[0];
-    check("the Language row is the first entry, in its own group at the top, a two-value select",
-      !!langEntry && langEntry.key === "language" && langEntry.type === "select" &&
+    check("the Language row is the first entry, in its own group at the top, a two-value segmented control",
+      !!langEntry && langEntry.key === "language" && langEntry.type === "segmented" &&
       langEntry.group === "Language / 언어" && langEntry.label === "Language" &&
       langEntry.description === "Menus, cards, and definitions" &&
       langEntry.options.map(function (o) { return o.value + "=" + o.label; }).join("|") ===
         "en=English|ko=한국어" &&
       settingsGroups()[0].getAttribute("data-group") === "Language / 언어" &&
-      byId("okp-set-language").tagName === "SELECT" &&
+      byId("okp-set-language").tagName === "DIV" &&
+      byId("okp-set-language").querySelectorAll(".settings-segment").length === 2 &&
       byId("okp-set-language").value === "en",
       JSON.stringify(langEntry && [langEntry.key, langEntry.group, langEntry.label]));
     check("schema copy is message keys behind live text getters, never a literal",
@@ -5099,12 +5100,10 @@
         return line ? line.textContent : "";
       }
 
-      // The select writes the setting like any other control.
-      var langSel = byId("okp-set-language");
-      langSel.value = "ko";
-      fireChange(langSel);
+      // A tap on the other segment writes the setting like any other control.
+      byId("okp-set-language").querySelector('.settings-segment[data-value="ko"]').click();
       await wait(TAIL);
-      check("the Language select writes through the worker, and the view follows at once",
+      check("the Language segment writes through the worker, and the view follows at once",
         store.state().settings.language === "ko" && i18n.language() === "ko",
         "stored=" + store.state().settings.language + " active=" + i18n.language());
 
