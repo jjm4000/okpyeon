@@ -4,11 +4,13 @@ Working list of planned changes. Ordering within a release is not priority
 order. The next store upload ships whatever is merged and verified when the
 current review clears.
 
-## 1.3: ready for upload
+## 1.3: shipped
 
-Everything since the v1.2.0 tag is one release. The manifest reads
-1.3.0, the zip builds as okpyeon-1.3.0.zip, and the v1.3.0 tag marks the
-release commit. Built with Jesse across 2026-09-01; the SPEC's Korean
+Everything since the v1.2.0 tag went out as one release, uploaded
+2026-09-01 with the English listing in Jesse's edit, the Korean listing
+under 한국어, five screenshots per language, and bilingual promo tiles.
+The manifest reads 1.3.0, the zip built as okpyeon-1.3.0.zip, and the
+v1.3.0 tag marks the release commit. Built with Jesse across 2026-09-01; the SPEC's Korean
 language mode, Phonetic components, Rare and lessCommon, and Glyph
 aliases addenda hold the contracts. Suites at release: node 209,
 index.html 691, embed.html 386, build verify 89, both screenshot sets
