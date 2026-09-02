@@ -2622,8 +2622,8 @@ Settings:
 | group.search | Search | 검색 |
 | nativeWords.label / sub | Native Korean word search / (today's sentence) | 고유어 검색 / 사전에 고유어를 추가합니다. 검색에 ‘전체 단어’ 범위가 생깁니다. |
 | group.charCards | Character cards | 글자 카드 |
-| jaReadings.label / sub | Japanese reading / Shows the character's on'yomi reading, in katakana. | 일본어 읽기 / 글자의 음독을 가타카나로 보여 줍니다. |
-| zhReadings.label / sub | Chinese reading / Shows the character's Mandarin reading, in pinyin. | 중국어 읽기 / 글자의 표준 중국어 읽기를 병음으로 보여 줍니다. |
+| jaReadings.label / sub | Japanese reading / Shows the character's on'yomi reading in katakana. | 일본어 읽기 / 글자의 음독을 가타카나로 보여 줍니다. |
+| zhReadings.label / sub | Chinese reading / Shows the character's Mandarin reading in pinyin. | 중국어 읽기 / 글자의 표준 중국어 읽기를 병음으로 보여 줍니다. |
 | group.saving | Saving | 저장 |
 | defaultFolder.label | By default, newly saved items go to | 새로 저장하는 항목의 기본 폴더 |
 | anki.wordFront / wordBack | Word cards: front / back | 단어 카드: 앞면 / 뒷면 |

@@ -761,13 +761,13 @@
     "message": "Japanese reading"
   },
   "jaReadings_sub": {
-    "message": "Shows the character's on'yomi reading, in katakana."
+    "message": "Shows the character's on'yomi reading in katakana."
   },
   "zhReadings_label": {
     "message": "Chinese reading"
   },
   "zhReadings_sub": {
-    "message": "Shows the character's Mandarin reading, in pinyin."
+    "message": "Shows the character's Mandarin reading in pinyin."
   },
   "group_saving": {
     "message": "Saving"
