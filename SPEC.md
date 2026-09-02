@@ -2760,6 +2760,49 @@ one sense-set, names user-settled:
   lessCommon chip and rows; tooltip present on both; hedge copy in
   both states; rare unchanged; snapshot byte-identity.
 
+## Glyph aliases (ADDENDUM 2026-09-01, user-raised: 黃 and 黄 were separate)
+
+The variants build keeps an invariant: a variant mapping never shadows
+a character that has its own Korean Wiktionary entry (医, 県, 缶 style
+protection for genuinely distinct characters). Wiktionary also gives
+Korean entries to Japanese new-form and other glyph-style twins of
+Korean-standard characters, so 黄 got a card of its own beside 黃, with
+no vocabulary on it, and a selection of 黄 on a Japanese page opened the
+empty card instead of 黃. The invariant gains one exception, the GLYPH
+ALIAS: character B is folded into character A (B leaves hanja.json,
+variants.json maps B -> A, every surface already handles it exactly as
+学 -> 學: A's card with the "B -> A" variant note) when ALL hold:
+
+1. A source says same character, two styles, not merely related: the
+   jōyō table's old/new pair (old form = A, new form = B) or a Unihan
+   kZVariant link. Semantic-variant links are NOT a source (they
+   produced 面/麵, 後/后, 制/製, 六/陸, which are distinct characters).
+2. A and B have identical eum sets.
+3. Lopsided vocabulary: A appears in at least 5 words.json keys and B
+   in at most 2 (the keys that do carry B canonicalize to A).
+4. B is not a financial numeral (壹貳參肆伍陸柒捌玖拾弍叁) and B is not
+   a curriculum character (lvl m or h): 余 (나 여, middle school) is a
+   character in its own right beside 餘 and stays.
+
+Measured 2026-09-01: 108 candidate pairs, 55 pass rules 1 to 3, 54
+after rule 4 (余 excluded). Every one is a shinjitai or new-form twin:
+対/對, 説/說, 黄/黃, 変/變, 状/狀, 処/處, 労/勞, 当/當, 歩/步, 称/稱,
+圏/圈, 総/總, 乗/乘, 装/裝, 衞/衛, 鉱/鑛, 聴/聽, 効/效, 宝/寶, 郷/鄕,
+横/橫, 増/增, 鎮/鎭, 継/繼, 禅/禪, 弥/彌, 潜/潛, 偽/僞, 瓶/甁, 徴/徵,
+寝/寢, 蛍/螢, 胆/膽, 触/觸, 蛮/蠻, 庁/廳, 值/値, 随/隨, 陥/陷, 惨/慘,
+敕/勅, 砕/碎, 尽/盡, 囲/圍, 巻/卷, 翻/飜, 概/槪, 誉/譽, 並/竝, 鋭/銳,
+県/縣, 稲/稻, 渉/涉, 奨/奬. Balanced pairs where both forms carry
+Korean vocabulary (晚/晩 33/9, 祕/秘 12/15, 艶/艷 22/3) stay separate;
+the Korean-definitions glyph hop already shares their definitions.
+
+Build: the alias set is computed after hanja entries and words keys
+exist and BEFORE words canonicalization, compounds, decomposition, and
+sino, so every downstream file sees only A. The build prints the alias
+list; verify anchors 黄 -> 黃 and 説 -> 說 in variants.json, 黄 and 説
+absent from hanja.json, 余 present, 晩 present, and reports the new
+character count (the listing's 9,469 becomes that number). Everything
+outside the alias set is byte-identical.
+
 ## Verification expectations
 
 - A: after build, spot-check in the output: 國 has eumhun 나라/국 and compounds;
