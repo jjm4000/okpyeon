@@ -83,7 +83,10 @@ Support the project: ko-fi.com/okpyeon
      separators, no blank line after a separator. Mirrors his 1.3 English
      edit (no 국민/國民 parentheticals, the sound sentence split, "most
      common first" dropped, the ko-fi line) and keeps the Korean mode
-     section, which he cut from the English listing. -->
+     section, which he cut from the English listing. The Korean listing
+     addresses native speakers deepening their own vocabulary, not
+     learners of Korean (user rule), so the keyboard-free search section
+     is left out here: a Korean user has a Korean keyboard. -->
 
 Name (from the package): 옥편: 한자 팝업 사전
 
@@ -106,9 +109,6 @@ Detailed description:
 
 --  단어 저장과 Anki 내보내기  --
 카드의 별을 누르면 폴더에 저장됩니다. 폴더는 Anki 텍스트 파일이나 CSV로 내보낼 수 있고, 카드 앞뒷면 항목은 설정에서 고를 수 있습니다.
-
---  한자 키보드 없이 검색  --
-영문 자판 그대로 toddlf를 치면(한국어 자판에서 ㅅㅐㅇㅇㅣㄹ에 해당하는 키) 생일을 찾고, gungmin이나 gukmin(로마자 표기)을 치면 국민을 찾습니다.
 
 --  소리로 찾기  --
 국처럼 한 글자만 드래그하면 그 소리로 읽는 모든 한자가 나옵니다.
