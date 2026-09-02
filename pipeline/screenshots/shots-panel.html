@@ -183,7 +183,12 @@ function handle(msg) {
     case "openTab": return { ok: true };
     case "getPendingQuery": return { ok: true, query: null };
     case "savedGet":
-      return { ok: true, folders: savedState.folders, items: joinItems(savedState.items, data) };
+      // Worker-style: a ko-flagged request joins the rows against the Korean
+      // entries too, so the saved view shows first senses under 한국어.
+      return {
+        ok: true, folders: savedState.folders,
+        items: joinItems(savedState.items, m.ko === true ? { ...data, ko } : data),
+      };
     case "savedCheck": return { ok: true, saved: checkKeys(savedState, m.keys) };
     case "savedToggle": {
       const r = toggleItem(savedState, m.kind, m.key, settings.defaultFolderId, Date.now());

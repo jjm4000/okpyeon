@@ -234,7 +234,7 @@ class Chrome:
 
 
 class Tab:
-    def __init__(self, chrome, width, height, dark=False):
+    def __init__(self, chrome, width, height, dark=False, scale=1):
         self.chrome = chrome
         result = chrome.call("Target.createTarget", {"url": "about:blank"})
         self.target = result["targetId"]
@@ -245,8 +245,12 @@ class Tab:
         self.call("Runtime.enable")
         # Before navigation, always: content.js hides the popup on resize, so a
         # viewport that changes after a scene is staged captures nothing.
+        # `width` and `height` are CSS pixels; `scale` is the device scale the
+        # capture is rasterized at, so a capture measures width * scale by
+        # height * scale pixels. Chrome does the scaling, not PIL.
         self.call("Emulation.setDeviceMetricsOverride", {
-            "width": width, "height": height, "deviceScaleFactor": 1, "mobile": False,
+            "width": width, "height": height, "deviceScaleFactor": scale,
+            "mobile": False,
         })
         self.call("Emulation.setEmulatedMedia", {
             "features": [{"name": "prefers-color-scheme",

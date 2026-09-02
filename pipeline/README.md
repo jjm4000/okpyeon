@@ -587,13 +587,18 @@ A failed check exits non-zero.
 python make_screenshots.py
 ```
 
-Regenerates all nine numbered shots in `screenshots/` (the promotional tiles
-are `make_promo.py`, which is unrelated). Every shot is 1280x800 24-bit RGB
-with no alpha, which is what the store accepts.
+Regenerates all nine numbered shots twice from one scene list: the English UI
+in `screenshots/` and the Korean UI (the 한국어 language setting, with Korean
+definitions and 우리말샘 source links) in `screenshots/ko/` under the same
+names. Both sets are committed. The promotional tiles are `make_promo.py`,
+which is unrelated. Every shot is 1280x800 24-bit RGB with no alpha, which is
+what the store accepts.
 
-`--only 3,8` limits the run to those shot numbers; `--keep-temp` leaves the
-working directory behind. Nothing is written until every shot has passed every
-assertion, so a broken run leaves the committed set alone.
+`--lang en|ko|both` picks the set (default both); the Korean run appends
+`lang=ko` to every staging URL and nothing else. `--only 3,8` limits the run to
+those shot numbers; `--keep-temp` leaves the working directory behind. Nothing
+is written until every shot has passed every assertion, so a broken run leaves
+the committed sets alone.
 
 ### Why there are staging pages
 
@@ -632,7 +637,12 @@ Per shot, before the pixels are kept:
 
 * the scene signalled `data-shot-ready`, and its DOM checks pass — the popup is
   up, the card headline is the expected hanja, the breadcrumb trail exists, the
-  variant note reads `学生 → 學生`, the settings view mounted, and so on;
+  variant note reads `学生 → 學生`, the settings view mounted, and so on. A
+  check's expected text is written once as an `{en, ko}` pair and resolved for
+  the run in hand (the Korean side is the string from
+  `extension/_locales/ko/messages.json`); checks that only 한국어 can satisfy,
+  a Korean definition on screen and the 우리말샘 link on a card, are marked
+  ko-only and pass without evaluating under English;
 * the image is exactly 1280x800, mode RGB, with no transparency key;
 * for the two shots whose point is the corner seal, the seal is actually
   visible in the lower-right of the panel (the room rule hides it when the view
@@ -652,7 +662,9 @@ Per shot, before the pixels are kept:
 
 The `scroll` in each scene is the page offset that frames it; the `bottom` is
 how much page to leave visible under the popup, which is what decides how much
-of a long list the popup shows.
+of a long list the popup shows. A solo scene whose view is taller than the
+frame can hold sets `solo_h` (CSS pixels); Chrome rasterizes that viewport
+down to fit the mount, which is how the settings shot keeps its about footer.
 
 ## Browser self-checks, headless
 

@@ -1,8 +1,11 @@
-"""Regenerate the Chrome Web Store screenshot set.
+"""Regenerate the Chrome Web Store screenshot sets.
 
     python pipeline/make_screenshots.py
 
-Writes screenshots/1-character-lookup.png through 9-decomposition.png, all
+Writes two sets from the same scene definitions: the English UI to
+screenshots/1-character-lookup.png through 9-decomposition.png, and the Korean
+UI (the 한국어 language setting: Korean menus, Korean definitions, 우리말샘
+source links) to screenshots/ko/ under the same nine names. Every file is
 1280x800 24-bit RGB with no alpha channel, which is what the store accepts.
 The promotional tiles are a separate script (make_promo.py); this one only
 touches the numbered shots.
@@ -36,13 +39,22 @@ This script then:
      note rendered, the settings view mounted) and what the pixels say (exact
      size, RGB, no alpha, the corner seal actually visible where it is the
      point of the shot),
-  6. and only then moves the files into screenshots/. Any failed assertion
-     leaves the committed set untouched.
+  6. and only then moves the files into screenshots/ (or screenshots/ko/).
+     Any failed assertion leaves the committed sets untouched.
+
+The Korean set is the same SHOTS list run with lang=ko appended to every
+staging URL: the staging pages install the ko message table, set the language
+setting to 한국어 and pass the flag through every lookup, exactly as the
+worker does. A check's expected text is written once as an {en, ko} pair
+and resolved per run; checks that only make sense under 한국어 (a Korean
+definition on screen, the 우리말샘 link) are marked ko-only and pass
+vacuously under English.
 
 Flags
 -----
-    --only 3,8      regenerate just these shots (still writes atomically)
-    --keep-temp     leave the working directory in place for inspection
+    --lang en|ko|both   which set(s) to regenerate (default both)
+    --only 3,8          regenerate just these shots (still writes atomically)
+    --keep-temp         leave the working directory in place for inspection
 """
 
 import argparse
@@ -59,6 +71,9 @@ from cdp import Chrome, Tab, serve_root
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT_DIR = ROOT / "screenshots"
+# The Korean set sits beside the English one, same names, so the two can be
+# diffed shot for shot.
+OUT_DIRS = {"en": OUT_DIR, "ko": OUT_DIR / "ko"}
 STAGE_DIR = "pipeline/screenshots"
 
 SHOT_W, SHOT_H = 1280, 800
@@ -82,6 +97,13 @@ SOLO_PANEL_H = SHOT_H - 2 * SOLO_MARGIN
 SOLO_BACKDROP = (233, 235, 239)
 SOLO_BORDER = (205, 207, 210)
 SOLO_HALO = (224, 226, 230)
+# The halo ring is 4px deep, so the tallest mount the canvas can hold is the
+# canvas minus one ring top and bottom. A solo shot whose view is taller than
+# that sets "solo_h" (CSS pixels): the tab is that tall and Chrome rasterizes
+# it at SOLO_TALL_H / solo_h, so the whole view lands in the frame at one
+# scale and the mount stays plain PIL.
+SOLO_RING = 4
+SOLO_TALL_H = SHOT_H - 2 * SOLO_RING
 
 
 # --------------------------------------------------------------------------
@@ -94,11 +116,28 @@ SOLO_HALO = (224, 226, 230)
 # the named settings toggles on for the scene (the committed seeding path; no
 # defaults are ever hand-edited for a capture). `checks` are JS expressions
 # that must all evaluate true after the page signals ready, before anything is
-# captured.
+# captured. The Korean run appends lang=ko to the same query string.
 # --------------------------------------------------------------------------
 
 # Shorthands for the checks, which all run against the content script's own
-# test hook rather than poking at the DOM blind.
+# test hook rather than poking at the DOM blind. Expected text is a plain
+# string when both languages render it, or an {en, ko} pair (L) resolved for
+# the run in hand; the pair's Korean side is the ko message table's string.
+# An expression may be a string or a function of the language code.
+
+
+def L(en, ko):
+    return {"en": en, "ko": ko}
+
+
+def word(text, lang):
+    return text[lang] if isinstance(text, dict) else text
+
+
+def resolve(expression, lang):
+    return expression(lang) if callable(expression) else expression
+
+
 POPUP_UP = ("popup is visible", "globalThis.__hanjaHover.isVisible()")
 
 
@@ -109,11 +148,16 @@ def head_is(text):
     )
 
 
+def text_is(label, expression, text):
+    """`expression` names a JS string; it must equal the language's text."""
+    return (label, lambda lang: f'{expression} === "{word(text, lang)}"')
+
+
 def has_text(label, selector, text):
     return (
         label,
-        f'[...globalThis.__hanjaHover.queryAll("{selector}")]'
-        f'.some((n) => n.textContent.includes("{text}"))',
+        lambda lang: f'[...globalThis.__hanjaHover.queryAll("{selector}")]'
+                     f'.some((n) => n.textContent.includes("{word(text, lang)}"))',
     )
 
 
@@ -122,9 +166,53 @@ def panel_has(label, selector, text=None):
         return (label, f'!!document.querySelector("{selector}")')
     return (
         label,
-        f'[...document.querySelectorAll("{selector}")]'
-        f'.some((n) => n.textContent.includes("{text}"))',
+        lambda lang: f'[...document.querySelectorAll("{selector}")]'
+                     f'.some((n) => n.textContent.includes("{word(text, lang)}"))',
     )
+
+
+def ko_only(check):
+    """A check that only the Korean run can satisfy; the English run passes
+    it without evaluating anything."""
+    label, expression = check
+    return (f"{label} (ko)",
+            lambda lang: resolve(expression, lang) if lang == "ko" else "true")
+
+
+# What makes a Korean shot Korean, as the checks see it: a Korean definition
+# in a card's gloss slot (under 한국어 the Korean senses replace the English;
+# hangul in a .gloss-text can only come from ko.json) and the 우리말샘 source
+# link on the card whose entry carries a sense code.
+KO_DEFINITION = ko_only((
+    "a Korean definition is on screen",
+    '[...globalThis.__hanjaHover.queryAll(".card .glosses .gloss-text")]'
+    ".some((n) => /[가-힣]/.test(n.textContent))",
+))
+KO_SOURCE_LINK = ko_only(has_text(
+    "우리말샘 link on a card", ".card a.urimalsaem",
+    "우리말샘 ↗"))
+
+# Text the two language tables render differently, pinned once each.
+ALL_WORDS = L("All words", "전체 단어")
+MADE_OF = L("Made of", "짜임")
+COMPOUNDS = L("Compounds", "단어")
+COMPONENT_HANJA = L("Component hanja", "구성 한자")
+LEVEL_MIDDLE = L("Middle school", "중학")
+MARKER_JA = L("JP", "일")
+MARKER_ZH = L("CN", "중")
+SAVED_ALL = L("All (13)", "전체 (13)")
+SAVED_DELETE = L("Delete", "삭제")
+GROUP_SEARCH = L("Search", "검색")
+GROUP_CHAR_CARDS = L("Character cards", "글자 카드")
+GROUP_ANKI = L("Anki export", "Anki 내보내기")
+LANGUAGE_CHOICE = L("English", "한국어")
+
+
+def sino_line(ja, zh):
+    """The reading sub-line's text: marker, readings, marker, readings, with
+    the markers from the language's table."""
+    return {lang: f"{word(MARKER_JA, lang)}{ja}·{word(MARKER_ZH, lang)}{zh}"
+            for lang in ("en", "ko")}
 
 
 SHOTS = [
@@ -139,11 +227,13 @@ SHOTS = [
         # 1.2: both readings toggles seeded, so the card carries its muted
         # JP テン · CN tiān sub-line inside the same composition.
         "page": {"scene": "1", "scroll": 0, "set": "jaReadings,zhReadings"},
-        "checks": [POPUP_UP, head_is("\u5929"),
-                   has_text("compounds listed", ".compounds .cpd-hangul", "\ucc9c\uc0ac"),
-                   ("reading sub-line carries both languages",
-                    'globalThis.__hanjaHover.query(".sino-line").textContent'
-                    ' === "JP\u30c6\u30f3\u00b7CNti\u0101n"')],
+        "checks": [POPUP_UP, head_is("天"),
+                   has_text("compounds listed", ".compounds .cpd-hangul", "천사"),
+                   has_text("compounds label", ".label", COMPOUNDS),
+                   text_is("reading sub-line carries both languages",
+                           'globalThis.__hanjaHover.query(".sino-line").textContent',
+                           sino_line("テン", "tiān")),
+                   KO_DEFINITION, KO_SOURCE_LINK],
     },
     {
         "n": 2,
@@ -156,11 +246,13 @@ SHOTS = [
         "kind": "page",
         "dark": True,
         "page": {"scene": "2", "scroll": 262, "set": "jaReadings,zhReadings"},
-        "checks": [POPUP_UP, head_is("\u570b\u6c11"),
-                   has_text("hangul headline", ".card .hangul", "\uad6d\ubbfc"),
+        "checks": [POPUP_UP, head_is("國民"),
+                   has_text("hangul headline", ".card .hangul", "국민"),
+                   has_text("component section label", ".label", COMPONENT_HANJA),
                    ("a nested reading line rendered",
                     'globalThis.__hanjaHover.queryAll(".card.component .sino-line")'
-                    ".length >= 1")],
+                    ".length >= 1"),
+                   KO_DEFINITION, KO_SOURCE_LINK],
     },
     {
         "n": 3,
@@ -169,9 +261,10 @@ SHOTS = [
         # followed: the popup's own navigation, two levels deep.
         "kind": "page",
         "page": {"scene": "3", "scroll": 393, "bottom": 100},
-        "checks": [POPUP_UP, head_is("\u8cc7\u672c\u4e3b\u7fa9"),
+        "checks": [POPUP_UP, head_is("資本主義"),
                    ("breadcrumb trail present",
-                    '!!globalThis.__hanjaHover.query(".crumbs .crumb")')],
+                    '!!globalThis.__hanjaHover.query(".crumbs .crumb")'),
+                   KO_DEFINITION, KO_SOURCE_LINK],
     },
     {
         "n": 4,
@@ -182,13 +275,20 @@ SHOTS = [
         "checks": [POPUP_UP,
                    ("several hanja share the reading",
                     'globalThis.__hanjaHover.queryAll(".reading-row").length >= 3'),
-                   has_text("\u570b among them", ".reading-row", "\u570b")],
+                   has_text("國 among them", ".reading-row", "國"),
+                   has_text("a level chip reads in the UI language",
+                            ".reading-row .edu-badge", LEVEL_MIDDLE),
+                   # No card here, so the Korean proof is the row gloss: under
+                   # 한국어 a row with a Korean entry shows its first sense.
+                   ko_only(("a Korean row gloss is on screen",
+                            '[...globalThis.__hanjaHover.queryAll(".reading-row .r-gloss")]'
+                            ".some((n) => /[가-힣]/.test(n.textContent))"))],
     },
     {
         "n": 5,
         "name": "5-sidebar-search.png",
         "kind": "solo",
-        "panel": {"view": "search", "q": "\uad6d\ubbfc", "set": "nativeWords"},
+        "panel": {"view": "search", "q": "국민", "set": "nativeWords"},
         # Solo mount: the panel is the subject, so no article shares the frame.
         # The search view renders through content.js, so its nodes live in the
         # embedded panel's shadow root and only its own query hook sees them.
@@ -196,16 +296,22 @@ SHOTS = [
         # the panel page's own light DOM (hence document.* checks), All words
         # active as the fresh-open default. 국민 is Sino-Korean, so the result
         # list itself is unchanged.
+        # 國's Made of row pins 或 as the phonetic component (dotted
+        # underline); the shot must carry the pin.
         "checks": [head_is("國民"),
                    has_text("component cards", ".card .surface", "民"),
                    ("component section present",
                     '!!globalThis.__hanjaHover.query(".components")'),
+                   has_text("made-of row label", ".madeof-text", MADE_OF),
+                   ("國's made-of row pins its phonetic component",
+                    '!!globalThis.__hanjaHover.query(".card.component .madeof-glyph.phon")'),
                    ("both scope pills render",
                     'document.querySelectorAll(".scopebar .scope-pill")'
                     ".length === 2"),
-                   ("All words is the active pill",
-                    'document.querySelector(".scope-pill--active")'
-                    '.textContent === "All words"')],
+                   text_is("All words is the active pill",
+                           'document.querySelector(".scope-pill--active").textContent',
+                           ALL_WORDS),
+                   KO_DEFINITION, KO_SOURCE_LINK],
     },
     {
         "n": 6,
@@ -217,14 +323,14 @@ SHOTS = [
         # rule wants 230), so the expanded folder is the five-row exam one and
         # the other two are collapsed, which is also the honest picture of a
         # library with three folders in it.
-        "panel": {"view": "saved", "collapse": "Saved,\uad50\uacfc\uc11c"},
+        "panel": {"view": "saved", "collapse": "Saved,교과서"},
         "checks": [
             panel_has("saved view mounted", ".view--saved"),
             ("seal has room", 'document.querySelector(".view--saved")'
                               '.classList.contains("view--roomy")'),
-            panel_has("filter reads All (13)", ".saved-bar", "All (13)"),
-            panel_has("delete action present", ".saved-actions", "Delete"),
-            panel_has("expanded folder rows", ".saved-row", "\u7d93\u6fdf"),
+            panel_has("filter reads All (13)", ".saved-bar", SAVED_ALL),
+            panel_has("delete action present", ".saved-actions", SAVED_DELETE),
+            panel_has("expanded folder rows", ".saved-row", "經濟"),
         ],
         "pixels": "seal",
     },
@@ -237,17 +343,26 @@ SHOTS = [
         # 1.2 made this view taller (the Search and Character cards groups, the
         # about footer), and the product's own room rule now retires the seal:
         # the room under the content falls far short of the 230 the rule wants.
-        # The seal checks left with it; the footer bound proves the taller view
-        # still fits the 752px solo viewport uncropped.
+        # The seal checks left with it. The Language group (a segmented
+        # control) then pushed the about footer to 839px under English and
+        # 823px under 한국어, past any 1:1 mount the 800px frame can hold, so
+        # this shot alone captures an 880px CSS viewport rasterized to fit
+        # (see SOLO_TALL_H). The footer bound proves the whole view is in it.
+        "solo_h": 880,
         "checks": [
             panel_has("settings view mounted", ".view--settings"),
-            panel_has("anki export section", ".view--settings", "Anki export"),
-            panel_has("search group present", ".settings-group", "Search"),
+            panel_has("anki export section", ".view--settings", GROUP_ANKI),
+            panel_has("language group present", ".settings-group",
+                      "Language / 언어"),
+            text_is("the UI language is the checked segment",
+                    'document.querySelector(".settings-segment[aria-checked=\\"true\\"]")'
+                    ".textContent", LANGUAGE_CHOICE),
+            panel_has("search group present", ".settings-group", GROUP_SEARCH),
             panel_has("character cards group present", ".settings-group",
-                      "Character cards"),
+                      GROUP_CHAR_CARDS),
             ("about footer fully in frame",
              'document.querySelector(".settings-about")'
-             ".getBoundingClientRect().bottom < 752"),
+             ".getBoundingClientRect().bottom < 880"),
         ],
     },
     {
@@ -261,15 +376,18 @@ SHOTS = [
         "page": {"scene": "5", "scroll": 230, "set": "jaReadings,zhReadings"},
         "checks": [
             POPUP_UP,
-            head_is("\u5b78\u751f"),
-            has_text("variant note", ".canonical", "\u5b66\u751f \u2192 \u5b78\u751f"),
-            has_text("component card 學", ".card .surface", "\u5b78"),
-            has_text("component card 生", ".card .surface", "\u751f"),
+            head_is("學生"),
+            has_text("variant note", ".canonical", "学生 → 學生"),
+            has_text("component card 學", ".card .surface", "學"),
+            has_text("component card 生", ".card .surface", "生"),
             has_text("reading line on a component card",
                      ".card.component .sino-line", "ガク"),
+            has_text("reading marker in the UI language",
+                     ".card.component .sino-marker", MARKER_JA),
             ("both component heads are in frame",
              '[...globalThis.__hanjaHover.queryAll(".card .surface")]'
              ".every((n) => n.getBoundingClientRect().bottom < 800)"),
+            KO_DEFINITION, KO_SOURCE_LINK,
         ],
     },
     {
@@ -287,9 +405,10 @@ SHOTS = [
                   "set": "jaReadings,zhReadings"},
         "checks": [
             head_is("樂"),
-            ("reading line reads both languages in display order",
-             'globalThis.__hanjaHover.query(".sino-line").textContent'
-             ' === "JPガク·ラク·CNyuè·lè"'),
+            text_is("reading line reads both languages in display order",
+                    'globalThis.__hanjaHover.query(".sino-line").textContent',
+                    sino_line("ガク·ラク", "yuè·lè")),
+            has_text("made-of row label", ".madeof-text", MADE_OF),
             ("made-of row is open",
              'globalThis.__hanjaHover.query(".madeof-row")'
              '.getAttribute("aria-expanded") === "true"'),
@@ -311,37 +430,44 @@ SHOTS = [
             ("the whole section is in frame",
              'globalThis.__hanjaHover.query(".foundin-row")'
              ".getBoundingClientRect().bottom < 752"),
+            KO_DEFINITION, KO_SOURCE_LINK,
         ],
     },
 ]
 
 
-def stage_url(port, page, params):
+def stage_url(port, page, params, lang):
+    # The staging pages take lang=ko and default to English; the English
+    # run's URL is exactly what it always was.
+    if lang == "ko":
+        params = {**params, "lang": "ko"}
     query = urllib.parse.urlencode(params)
     return f"http://127.0.0.1:{port}/{STAGE_DIR}/{page}?{query}"
 
 
-def run_checks(tab, checks, shot_name):
+def run_checks(tab, checks, shot_name, lang):
     for label, expression in checks:
         try:
-            ok = tab.evaluate(expression)
+            ok = tab.evaluate(resolve(expression, lang))
         except RuntimeError as exc:
             raise AssertionError(f"{shot_name}: check {label!r} threw: {exc}") from None
         if ok is not True:
             raise AssertionError(f"{shot_name}: check failed -- {label}")
 
 
-def capture(chrome, port, page, params, width, checks=(), dark=False, height=SHOT_H):
-    tab = Tab(chrome, width, height, dark)
+def capture(chrome, port, page, params, width, checks=(), dark=False,
+            height=SHOT_H, lang="en", scale=1):
+    tab = Tab(chrome, width, height, dark, scale)
     try:
-        tab.navigate(stage_url(port, page, params))
+        tab.navigate(stage_url(port, page, params, lang))
         tab.wait_ready()
-        run_checks(tab, checks, page)
+        run_checks(tab, checks, page, lang)
         image = tab.screenshot()
     finally:
         tab.close()
-    if image.size != (width, height):
-        raise AssertionError(f"{page}: captured {image.size}, wanted {(width, height)}")
+    wanted = (round(width * scale), round(height * scale))
+    if image.size != wanted:
+        raise AssertionError(f"{page}: captured {image.size}, wanted {wanted}")
     return image
 
 
@@ -362,7 +488,7 @@ def compose_solo(panel_image):
     out = Image.new("RGB", (SHOT_W, SHOT_H), SOLO_BACKDROP)
     x = (SHOT_W - panel_image.width) // 2
     y = (SHOT_H - panel_image.height) // 2
-    for inset, color in ((4, SOLO_HALO), (1, SOLO_BORDER)):
+    for inset, color in ((SOLO_RING, SOLO_HALO), (1, SOLO_BORDER)):
         ring = Image.new("RGB", (panel_image.width + 2 * inset,
                                  panel_image.height + 2 * inset), color)
         out.paste(ring, (x - inset, y - inset))
@@ -397,39 +523,55 @@ def assert_seal(image, name, corner=(SHOT_W, SHOT_H)):
         raise AssertionError(f"{name}: seal not visible ({jade} jade pixels)")
 
 
-def build(shot, chrome, port, work_dir):
+def solo_viewport(shot):
+    """CSS width, CSS height and device scale for a solo capture. The
+    default is the 640x752 mount at 1:1; a "solo_h" taller than the canvas
+    can hold is rasterized down to SOLO_TALL_H, width scaled to match."""
+    solo_h = shot.get("solo_h", SOLO_PANEL_H)
+    if solo_h <= SOLO_PANEL_H:
+        return SOLO_PANEL_W, solo_h, 1
+    scale = SOLO_TALL_H / solo_h
+    return round(SOLO_PANEL_W / scale), solo_h, scale
+
+
+def build(shot, chrome, port, work_dir, lang):
     dark = shot.get("dark", False)
     seal_corner = (SHOT_W, SHOT_H)
     if shot["kind"] == "solo":
+        width, height, scale = solo_viewport(shot)
         panel_image = capture(chrome, port, "shots-panel.html", shot["panel"],
-                              SOLO_PANEL_W, shot["checks"], dark,
-                              height=SOLO_PANEL_H)
+                              width, shot["checks"], dark, height=height,
+                              lang=lang, scale=scale)
         image = compose_solo(panel_image)
-        seal_corner = ((SHOT_W + SOLO_PANEL_W) // 2, SOLO_MARGIN + SOLO_PANEL_H)
+        seal_corner = ((SHOT_W + panel_image.width) // 2,
+                       (SHOT_H - panel_image.height) // 2 + panel_image.height)
     else:
         panel_w = shot.get("panel_w", PANEL_W)
         page_width = SHOT_W if shot["kind"] == "page" else SHOT_W - panel_w - 1
         page_checks = shot["checks"] if shot["kind"] == "page" else ()
         page_image = capture(chrome, port, "shots-page.html", shot["page"],
-                             page_width, page_checks, dark)
+                             page_width, page_checks, dark, lang=lang)
         if shot["kind"] == "page":
             image = page_image
         else:
             panel_image = capture(chrome, port, "shots-panel.html", shot["panel"],
-                                  panel_w, shot["checks"], dark)
+                                  panel_w, shot["checks"], dark, lang=lang)
             image = compose(page_image, panel_image, dark)
 
     assert_image(image, shot["name"])
     if shot.get("pixels") == "seal":
         assert_seal(image, shot["name"], seal_corner)
 
-    out = work_dir / shot["name"]
+    out = work_dir / lang / shot["name"]
+    out.parent.mkdir(exist_ok=True)
     image.save(out, "PNG", optimize=True)
     return out
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--lang", choices=("en", "ko", "both"), default="both",
+                        help="which UI language set(s) to regenerate")
     parser.add_argument("--only", help="comma-separated shot numbers, e.g. 3,8")
     parser.add_argument("--keep-temp", action="store_true")
     args = parser.parse_args()
@@ -440,19 +582,21 @@ def main():
         wanted = [s for s in SHOTS if s["n"] in keep]
         if not wanted:
             raise SystemExit(f"--only {args.only} matched no shots")
+    langs = ("en", "ko") if args.lang == "both" else (args.lang,)
 
     server, port = serve_root()
     work_dir = Path(tempfile.mkdtemp(prefix="okp-screenshots-"))
     chrome = Chrome()
     written = []
     try:
-        for shot in wanted:
-            started = time.time()
-            path = build(shot, chrome, port, work_dir)
-            written.append((shot, path))
-            print(f"  ok  {shot['name']}  ({time.time() - started:.1f}s)")
+        for lang in langs:
+            for shot in wanted:
+                started = time.time()
+                path = build(shot, chrome, port, work_dir, lang)
+                written.append((shot, lang, path))
+                print(f"  ok  {lang}/{shot['name']}  ({time.time() - started:.1f}s)")
     except BaseException:
-        # A failed run must leave the committed set exactly as it was.
+        # A failed run must leave the committed sets exactly as they were.
         if not args.keep_temp:
             shutil.rmtree(work_dir, ignore_errors=True)
         raise
@@ -461,9 +605,9 @@ def main():
         server.shutdown()
 
     # Nothing lands until every shot passed every check.
-    OUT_DIR.mkdir(exist_ok=True)
-    for shot, path in written:
-        shutil.move(str(path), str(OUT_DIR / shot["name"]))
+    for shot, lang, path in written:
+        OUT_DIRS[lang].mkdir(parents=True, exist_ok=True)
+        shutil.move(str(path), str(OUT_DIRS[lang] / shot["name"]))
     if not args.keep_temp:
         shutil.rmtree(work_dir, ignore_errors=True)
     print(f"wrote {len(written)} screenshot(s) to {OUT_DIR}")
