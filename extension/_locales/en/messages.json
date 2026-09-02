@@ -112,6 +112,12 @@
   "hedge_note": {
     "message": "Likely native Korean. This hanja spelling is obscure."
   },
+  "hedge_lessCommon_label": {
+    "message": "Less common homograph"
+  },
+  "hedge_lessCommon_note": {
+    "message": "Usually the native word. This hanja spelling is a homograph."
+  },
   "hint_nativeInAll_one": {
     "message": "$COUNT$ native word in All words",
     "placeholders": {
@@ -143,6 +149,14 @@
     "message": "Wiktionary entry for $WORD$ (opens in a new tab)",
     "placeholders": {
       "word": {
+        "content": "$1"
+      }
+    }
+  },
+  "tooltip_lessCommon": {
+    "message": "A less common meaning of $HANGUL$",
+    "placeholders": {
+      "hangul": {
         "content": "$1"
       }
     }

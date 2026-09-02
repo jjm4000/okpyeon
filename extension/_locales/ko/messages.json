@@ -96,6 +96,12 @@
   "hedge_note": {
     "message": "고유어일 가능성이 높습니다. 이 한자 표기는 드뭅니다."
   },
+  "hedge_lessCommon_label": {
+    "message": "덜 흔한 동음어"
+  },
+  "hedge_lessCommon_note": {
+    "message": "보통은 고유어입니다. 이 한자 표기는 동음어입니다."
+  },
   "hint_nativeInAll": {
     "message": "전체 단어에 고유어 $COUNT$개",
     "placeholders": {
@@ -119,6 +125,14 @@
     "message": "$WORD$의 Wiktionary 항목 (새 탭에서 열림)",
     "placeholders": {
       "word": {
+        "content": "$1"
+      }
+    }
+  },
+  "tooltip_lessCommon": {
+    "message": "$HANGUL$의 덜 흔한 뜻",
+    "placeholders": {
+      "hangul": {
         "content": "$1"
       }
     }

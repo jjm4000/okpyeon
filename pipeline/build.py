@@ -1199,6 +1199,22 @@ NOT_RARE_OVERRIDES = {
     ("死因", "사인"), ("驛舍", "역사"), ("自主", "자주"),
 }
 
+# Rare/lessCommon ADDENDUM (2026-09-01): a sense-set the old predicate flags
+# is `rare` when its spelling is used inside fewer than this many OTHER
+# Urimalsaem headwords' hanja origins, else `lessCommon`. Two independent
+# words must vouch (K=1 measured 1,953 lessCommon, K=2 1,420, K=3 1,144).
+RARE_INBOUND_K = 2
+
+
+def flag_rank(senses):
+    """Ordering group of a spelling under the every-sense rule: 0 unflagged,
+    1 lessCommon, 2 rare. Shared by byHangul and verify()."""
+    if senses and all(s.get("rare") for s in senses):
+        return 2
+    if senses and all(s.get("lessCommon") for s in senses):
+        return 1
+    return 0
+
 
 def verify(hanja_obj, words_obj, variants_obj, decomp_obj=None,
            native_obj=None, sino_obj=None, sino_report=None,
@@ -1396,54 +1412,81 @@ def verify(hanja_obj, words_obj, variants_obj, decomp_obj=None,
     # The overrides are anchored not-rare here so verify_only() catches a
     # stale words.json too; the did-it-fire half lives in the build pass.
     not_rare += sorted(NOT_RARE_OVERRIDES)
-    rare_anchors = [("舍廊", "사랑"), ("牛李", "우리"),
-                    # correctly-flagged homographs of common hangul that the
-                    # override review deliberately KEPT rare
-                    ("假裝", "가장"), ("丁抹", "정말"), ("生覺", "생각")]
+    # Rare/lessCommon ADDENDUM: unattested spellings (corpus inbound < K)
+    # stay rare; real words whose hangul usually means something else are
+    # lessCommon (舍廊 and 假裝 moved here from the rare list). The SPEC
+    # names 理想(이상), but the old predicate never fired on that sense-set
+    # (이상 is not native-contested and 理想 is attested); the flagged
+    # sense-set of 理想 is the northern reading 리상, anchored here instead.
+    not_rare.append(("理想", "이상"))
+    rare_anchors = [("牛李", "우리"), ("丁抹", "정말"), ("生覺", "생각")]
+    less_anchors = [("舍廊", "사랑"), ("肝臟", "간장"), ("假裝", "가장"),
+                    ("理想", "리상")]
     bad = []
     for sp, hg in not_rare:
         s = sense_of(sp, hg)
-        if s is None or s.get("rare"):
-            bad.append("%s(%s) should NOT be rare" % (sp, hg))
+        if s is None or s.get("rare") or s.get("lessCommon"):
+            bad.append("%s(%s) should carry NEITHER flag" % (sp, hg))
     for sp, hg in rare_anchors:
         s = sense_of(sp, hg)
         if s is None or not s.get("rare"):
             bad.append("%s(%s) SHOULD be rare" % (sp, hg))
+    for sp, hg in less_anchors:
+        s = sense_of(sp, hg)
+        if s is None or not s.get("lessCommon"):
+            bad.append("%s(%s) SHOULD be lessCommon" % (sp, hg))
     add("rare-flag anchors", not bad,
         "; ".join(bad) if bad else
-        "not rare: 國民 學校 資本主義 感謝 士氣 史記 監査 修道 意中 正史 療養院"
-        " + %d overrides | rare: 舍廊 牛李 假裝 丁抹 生覺"
-        % len(NOT_RARE_OVERRIDES))
-    # Curated compounds carry the rare flag under the runtime join's rule
-    # (every sense of the spelling rare): emitted and joined surfaces must
-    # be incapable of disagreeing. 丁抹 sits in 丁's inline list flagged;
-    # 無理 sits in 無's inline list unflagged (via the override).
+        "neither: 國民 學校 資本主義 感謝 士氣 史記 監査 修道 意中 正史 療養院"
+        " 理想(이상) + %d overrides | rare: 牛李 丁抹 生覺 | lessCommon: 舍廊 "
+        "肝臟 假裝 理想(리상)" % len(NOT_RARE_OVERRIDES))
+    both = [(sp, s["hangul"]) for sp, lst in words_out.items() for s in lst
+            if s.get("rare") and s.get("lessCommon")]
+    n_rare = sum(1 for lst in words_out.values() for s in lst if s.get("rare"))
+    n_less = sum(1 for lst in words_out.values() for s in lst
+                 if s.get("lessCommon"))
+    add("no sense-set carries both rare and lessCommon",
+        not both and n_rare > 0 and n_less > 0,
+        ("%d offenders, e.g. %s" % (len(both), both[:3])) if both else
+        "%s rare, %s lessCommon" % (format(n_rare, ","), format(n_less, ",")))
+    # Curated compounds carry rare and lessCommon under the runtime join's
+    # rule (every sense of the spelling flagged the same way): emitted and
+    # joined surfaces must be incapable of disagreeing, and a row never
+    # carries both. 丁抹 sits in 丁's inline list rare; 舍廊 in 舍's list
+    # lessCommon; 無理 sits in 無's inline list unflagged (via the override).
     def inline_cpd(char, sp):
         e = chars_out.get(char)
         for x in (e["compounds"] if e else []):
             if x["hanja"] == sp:
                 return x
         return None
+
+    def row_rank(x):
+        return 2 if x.get("rare") else 1 if x.get("lessCommon") else 0
     jeongmal = inline_cpd("丁", "丁抹")
+    sarang = inline_cpd("舍", "舍廊")
     muri = inline_cpd("無", "無理")
-    add("inline compound rare matches the join rule",
+    add("inline compound rare/lessCommon matches the join rule",
         jeongmal is not None and jeongmal.get("rare") is True
+        and "lessCommon" not in jeongmal
+        and sarang is not None and sarang.get("lessCommon") is True
+        and "rare" not in sarang
         and muri is not None and "rare" not in muri
-        and all(bool(x.get("rare"))
-                == (x["hanja"] in words_out
-                    and all(s.get("rare") for s in words_out[x["hanja"]]))
+        and "lessCommon" not in muri
+        and all(not (x.get("rare") and x.get("lessCommon"))
+                and row_rank(x) == flag_rank(words_out.get(x["hanja"]))
                 for e in chars_out.values() for x in e["compounds"]
                 if x.get("hanja")),
-        "丁抹=%s 無理=%s" % (json.dumps(jeongmal, ensure_ascii=False),
-                            json.dumps(muri, ensure_ascii=False)))
-    add("byHangul puts non-rare first",
-        all(not any(all(x.get("rare") for x in words_out[a])
-                    and not all(x.get("rare") for x in words_out[b])
-                    for a, b in zip(l, l[1:]))
-            for l in by_hangul.values()),
-        "e.g. 사랑 -> %s, 우리 -> %s"
+        "丁抹=%s 舍廊=%s 無理=%s" % (json.dumps(jeongmal, ensure_ascii=False),
+                                   json.dumps(sarang, ensure_ascii=False),
+                                   json.dumps(muri, ensure_ascii=False)))
+    add("byHangul order: unflagged, then lessCommon, then rare",
+        all(flag_rank(words_out[a]) <= flag_rank(words_out[b])
+            for l in by_hangul.values() for a, b in zip(l, l[1:])),
+        "e.g. 사랑 -> %s, 우리 -> %s, 간장 -> %s"
         % (json.dumps(by_hangul.get("사랑"), ensure_ascii=False),
-           json.dumps(by_hangul.get("우리"), ensure_ascii=False)))
+           json.dumps(by_hangul.get("우리"), ensure_ascii=False),
+           json.dumps(by_hangul.get("간장"), ensure_ascii=False)))
 
     add("words.json 國民 -> 국민",
         any(x["hangul"] == "국민" for x in words_out.get("國民", [])),
@@ -2323,7 +2366,14 @@ def main(argv):
     # minority homograph lacking its own alt_inbound, which wrongly caught
     # common secondary readings - 監査 "audit", 士氣 "morale", 修道 - because
     # alt_inbound is sparse. Only the two unambiguous cases are flagged now.
-    def is_rare(sp, hangul):
+    #
+    # Rare/lessCommon ADDENDUM (2026-09-01): this predicate no longer decides
+    # the flag on its own. It still gates (a sense-set it does not fire on
+    # carries nothing, and `lvl` attestation is defined in terms of it), but a
+    # firing sense-set splits by the corpus inbound count of its SPELLING:
+    # fewer than RARE_INBOUND_K other Urimalsaem headwords use the spelling
+    # inside their hanja origin -> `rare`; otherwise `lessCommon`. Never both.
+    def unattested_by_hangul(sp, hangul):
         a = canon_alt_inbound.get(sp, 0)
         if hangul in native_hangul:
             # 사랑/우리: the hangul's counts belong to the native word, so a
@@ -2337,14 +2387,45 @@ def main(argv):
                 and inbound.get(hangul, 0) == 0
                 and ext_freq.get(hangul, 0) == 0)
 
+    # Corpus inbound: for every words.json spelling, the number of OTHER
+    # Urimalsaem hanja-origin headwords (the intermediate's words lane, NFC
+    # keys) that contain it as a proper substring, counted once per headword.
+    # One pass over the corpus keys; only the lengths words.json actually has
+    # are tried at each offset.
+    spelling_set = set(words_out)
+    spelling_lens = sorted({len(sp) for sp in spelling_set})
+    corpus_inbound = collections.Counter()
+    for key in ko_inter["words"]:
+        n = len(key)
+        hit = set()
+        for i in range(n):
+            for ln in spelling_lens:
+                if i + ln > n:
+                    break
+                sub = key[i:i + ln]
+                if sub != key and sub in spelling_set:
+                    hit.add(sub)
+        corpus_inbound.update(hit)
+
     n_rare = 0
+    n_less = 0
     override_fired = set()
+    override_review = []
     for sp, lst in words_out.items():
         for sense in lst:
-            if is_rare(sp, sense["hangul"]):
-                if (sp, sense["hangul"]) in NOT_RARE_OVERRIDES:
-                    override_fired.add((sp, sense["hangul"]))
-                    continue
+            if not unattested_by_hangul(sp, sense["hangul"]):
+                continue
+            attested = corpus_inbound.get(sp, 0) >= RARE_INBOUND_K
+            if (sp, sense["hangul"]) in NOT_RARE_OVERRIDES:
+                override_fired.add((sp, sense["hangul"]))
+                if attested:
+                    override_review.append(
+                        (sp, sense["hangul"], corpus_inbound.get(sp, 0)))
+                continue
+            if attested:
+                sense["lessCommon"] = True
+                n_less += 1
+            else:
                 sense["rare"] = True
                 n_rare += 1
     dead = NOT_RARE_OVERRIDES - override_fired
@@ -2376,11 +2457,26 @@ def main(argv):
            " ".join("f%d=%s" % (b, format(f_dist[b], ","))
                     for b in range(FREQ_BUCKETS))
            + " unranked=%s" % format(f_dist["-"], ",")))
-    log("  rare flag: %s of %s sense-sets (%.1f%%), %s native-contested hangul"
-        % (format(n_rare, ","), format(n_sets, ","),
-           100.0 * n_rare / max(n_sets, 1), format(len(native_hangul), ",")))
+    log("  rare flag: %s rare + %s lessCommon of %s sense-sets (%.1f%% + "
+        "%.1f%%), %s overrides fired, %s native-contested hangul, inbound "
+        "K=%d over %s corpus keys"
+        % (format(n_rare, ","), format(n_less, ","), format(n_sets, ","),
+           100.0 * n_rare / max(n_sets, 1), 100.0 * n_less / max(n_sets, 1),
+           format(len(override_fired), ","), format(len(native_hangul), ","),
+           RARE_INBOUND_K, format(len(ko_inter["words"]), ",")))
+    # Override review (SPEC): an override that would now compute lessCommon
+    # rather than rare is listed, never dropped. The reviewer decides whether
+    # it should keep leading over the native word.
+    if override_review:
+        log("  override review: %d of %d NOT_RARE_OVERRIDES would compute "
+            "lessCommon (inbound >= %d) without the override: %s"
+            % (len(override_review), len(NOT_RARE_OVERRIDES), RARE_INBOUND_K,
+               ", ".join("%s(%s)=%d" % t for t in sorted(override_review))))
+    # `lvl` attestation is defined on the OLD predicate, which is exactly the
+    # union of the two flags plus the overrides; character levels do not move.
     attested_words = {sp for sp, lst in words_out.items()
-                      if not all(s.get("rare") for s in lst)}
+                      if not all(s.get("rare") or s.get("lessCommon")
+                                 for s in lst)}
 
     # ---- hanja.json -------------------------------------------------
     log("[5/5] building hanja.json (reverse index + compound ranking)")
@@ -2495,6 +2591,8 @@ def main(argv):
             senses = words_out.get(k)
             if senses and all(s.get("rare") for s in senses):
                 row["rare"] = True
+            elif senses and all(s.get("lessCommon") for s in senses):
+                row["lessCommon"] = True
             compounds.append(row)
             if len(compounds) == 8:
                 break
@@ -2540,14 +2638,16 @@ def main(argv):
         if picked:
             by_hangul[hangul] = picked
 
-    # non-rare spellings first in byHangul, so a reverse lookup leads with a
-    # confident match; ordering within each group is unchanged.
-    rare_sp = {sp for sp, lst in words_out.items()
-               if all(s.get("rare") for s in lst)}
+    # unflagged spellings first in byHangul, then lessCommon, then rare, so a
+    # reverse lookup leads with a confident match; ordering within each group
+    # is unchanged. A spelling's group is the every-sense rule (all senses
+    # rare -> rare; all senses lessCommon -> lessCommon; else unflagged),
+    # the same rule the inline compound rows and the runtime join use.
     for hangul, picked in by_hangul.items():
-        if any(sp in rare_sp for sp in picked):
-            by_hangul[hangul] = ([sp for sp in picked if sp not in rare_sp]
-                                 + [sp for sp in picked if sp in rare_sp])
+        ranks = [flag_rank(words_out[sp]) for sp in picked]
+        if any(ranks):
+            by_hangul[hangul] = [sp for _, sp in
+                                 sorted(zip(ranks, picked), key=lambda t: t[0])]
 
     # Romanized search v2 (SPEC ADDENDUM 2026-08-31): no romanization index
     # is built any more. extension/rr.js computes forms at runtime and the

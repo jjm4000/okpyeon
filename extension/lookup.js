@@ -323,7 +323,7 @@ export function buildWordParts(canonical, wordTable, maxLen = MAX_WORD_LEN) {
 }
 
 function buildWordMatch(
-  { surface, canonical, hangul, glosses, rare, hp },
+  { surface, canonical, hangul, glosses, rare, lessCommon, hp },
   wordTable,
   charTable,
   maxWordLen = MAX_WORD_LEN
@@ -336,8 +336,11 @@ function buildWordMatch(
     glosses: Array.isArray(glosses) ? glosses.slice() : [],
     chars: [...canonical],
   };
-  // Rare flag addendum: propagated only when true, like `parts`.
+  // Rare flag addendum: propagated only when true, like `parts`. lessCommon
+  // (rare and lessCommon ADDENDUM) rides the same way; a sense-set never
+  // carries both.
   if (rare === true) match.rare = true;
+  if (lessCommon === true) match.lessCommon = true;
   // Hanja-page flag addendum: the entry lives at the hanja-spelling title, so
   // the UI's Wiktionary link should target <canonical> instead of <hangul>.
   if (hp === true) match.hp = true;
@@ -396,10 +399,14 @@ function joinSpellings(spellings, wordTable) {
           : "",
     };
     // rare propagated only when every sense of the spelling is rare, matching
-    // collapseEntries' any-attested-sense-clears-it semantics.
+    // collapseEntries' any-attested-sense-clears-it semantics. lessCommon
+    // follows the same every-sense rule on its own flag.
     const all = Array.isArray(senses) ? senses : [senses];
     if (all.length > 0 && all.every((s) => s && s.rare === true)) {
       row.rare = true;
+    }
+    if (all.length > 0 && all.every((s) => s && s.lessCommon === true)) {
+      row.lessCommon = true;
     }
     out.push(row);
   }
@@ -477,6 +484,7 @@ function collapseEntries(entries, hangulSpan) {
     // Rare only when every contributing sense-set is flagged rare: a single
     // attested sense is enough to make the spelling a confident match.
     rare: chosen.every((e) => e.rare === true),
+    lessCommon: chosen.every((e) => e.lessCommon === true),
     // hp when ANY contributing sense came from the hanja-spelling page: the
     // page's existence is what the link cares about, not which sense won.
     hp: chosen.some((e) => e.hp === true),
@@ -621,6 +629,7 @@ export function buildMatches(text, data) {
       // clears the flag — matching collapseEntries' semantics on the hangul
       // path, so both paths agree on what "rare" means.
       if (existing.rare === true && match.rare !== true) delete existing.rare;
+      if (existing.lessCommon === true && match.lessCommon !== true) delete existing.lessCommon;
       // hp is any-wins on both paths: one sense living at the hanja page is
       // enough to make that page the better link target.
       if (existing.hp !== true && match.hp === true) existing.hp = true;
@@ -648,6 +657,7 @@ export function buildMatches(text, data) {
                   hangul: entry.hangul,
                   glosses: entry.glosses,
                   rare: entry.rare,
+                  lessCommon: entry.lessCommon,
                   hp: entry.hp,
                 },
                 wordTable,
@@ -677,11 +687,13 @@ export function buildMatches(text, data) {
         }
         if (resolved.length === 0) continue;
 
-        // Rare flag addendum: non-rare spellings order FIRST, byHangul order
-        // preserved within each group. `ordered[0]` is therefore the first
-        // non-rare spelling, or the first spelling when every one is rare.
+        // Rare flag addendum: unflagged spellings order FIRST, then lessCommon,
+        // then rare (rare and lessCommon ADDENDUM), byHangul order preserved
+        // within each group. `ordered[0]` is therefore the best unflagged
+        // spelling, else the best lessCommon one, else the first rare one.
         const ordered = [
-          ...resolved.filter((r) => !r.sense.rare),
+          ...resolved.filter((r) => !r.sense.rare && !r.sense.lessCommon),
+          ...resolved.filter((r) => r.sense.lessCommon && !r.sense.rare),
           ...resolved.filter((r) => r.sense.rare),
         ];
 
@@ -694,6 +706,7 @@ export function buildMatches(text, data) {
                 hangul: sense.hangul,
                 glosses: sense.glosses,
                 rare: sense.rare,
+                lessCommon: sense.lessCommon,
                 hp: sense.hp,
               },
               wordTable,
@@ -1348,7 +1361,7 @@ function charSuggestion(char, hun, eum, gloss, lvl) {
  * Up to 5 omnibox suggestions for a typed query, reusing buildMatches so the
  * omnibox and the popup always agree on what the input means.
  *
- * Order: word matches (non-rare first, rare last), then the reading-browse
+ * Order: word matches (unflagged first, then lessCommon, rare last), then the reading-browse
  * candidates of a single hangul syllable, then character matches. Each row's
  * `content` is the candidate's own canonical searchable string — the canonical
  * hanja spelling for a word, the canonical character for a char/reading row —
@@ -1401,12 +1414,14 @@ export function buildOmniboxSuggestions(text, data, options) {
     for (const { matches, nativeMatches } of groups) {
       const words = matches.filter((m) => m.kind === "word");
       rows.push(
-        // Rare-flagged spellings rank last across the whole query, not just
+        // Flagged spellings rank last across the whole query, not just
         // within one hangul span (buildMatches only orders within a span).
-        // Native rows sit between them, per the lead rule's priority order:
-        // non-rare hanja, then native, then rare hanja.
-        ...words.filter((m) => m.rare !== true),
+        // Native rows sit after the unflagged hanja, per the lead rule's
+        // priority order: unflagged hanja, native, lessCommon hanja, rare
+        // hanja.
+        ...words.filter((m) => m.rare !== true && m.lessCommon !== true),
         ...nativeMatches,
+        ...words.filter((m) => m.lessCommon === true && m.rare !== true),
         ...words.filter((m) => m.rare === true),
         ...matches.filter((m) => m.kind === "reading"),
         ...matches.filter((m) => m.kind === "char")

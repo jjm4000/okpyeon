@@ -2577,19 +2577,33 @@
   }
 
   // Hedging is a GROUP verdict, not a spelling verdict: the banner claims the
-  // word is likely native Korean, which is only defensible when EVERY hanja
-  // spelling of the group is rare. In a mixed group (가장: 家長 + rare 假裝)
-  // the word is demonstrably Sino-Korean, so selecting a rare chip must not
-  // hedge; the chip's own RARE marker carries the rarity. And only when the
-  // user highlighted HANGUL: if they highlighted the hanja itself, the flag
-  // is ignored.
+  // word is usually native Korean, which is only defensible when EVERY hanja
+  // spelling of the group is flagged (rare or lessCommon). In a mixed group
+  // (가장: 家長 + 假裝) the word is demonstrably Sino-Korean, so selecting a
+  // flagged chip must not hedge; a rare chip's own RARE marker carries the
+  // rarity. And only when the user highlighted HANGUL: if they highlighted
+  // the hanja itself, the flags are ignored.
+  function isFlagged(m) {
+    return !!m && (m.rare === true || m.lessCommon === true);
+  }
+
   function isHedged(items) {
     if (!items || !items.length) return false;
     for (var i = 0; i < items.length; i++) {
-      if (!items[i] || items[i].rare !== true) return false;
+      if (!isFlagged(items[i])) return false;
     }
     var surface = nonEmptyString(items[0].surface);
     return !!surface && !HAN_RE.test(surface);
+  }
+
+  // Which copy a hedged group gets: "rare" when every spelling is rare,
+  // "lessCommon" when any spelling is lessCommon (the milder claim is the
+  // true one for a group that mixes the two).
+  function hedgeKind(items) {
+    for (var i = 0; i < items.length; i++) {
+      if (items[i] && items[i].lessCommon === true) return "lessCommon";
+    }
+    return "rare";
   }
 
   // Everything on a word card that depends on the selected spelling.
@@ -2601,8 +2615,9 @@
     state.card.classList.toggle("hedged", hedged);
     clearNode(state.hedgeBox);
     if (hedged) {
-      state.hedgeBox.appendChild(el("div", "label", t("hedge.label")));
-      state.hedgeBox.appendChild(el("div", "hedge-note", t("hedge.note")));
+      var prefix = hedgeKind(state.items) === "lessCommon" ? "hedge.lessCommon." : "hedge.";
+      state.hedgeBox.appendChild(el("div", "label", t(prefix + "label")));
+      state.hedgeBox.appendChild(el("div", "hedge-note", t(prefix + "note")));
     }
     fillWordBody(state.body, m, state.natives);
     renderParts(state);
@@ -2627,6 +2642,9 @@
       if (m.rare === true) {
         chip.classList.add("rare");
         chip.appendChild(el("sup", "chip-rare", t("marker.rare")));
+      } else if (m.lessCommon === true) {
+        // No marker and no grey: the tooltip is the only sign.
+        chip.title = t("tooltip.lessCommon", { HANGUL: nonEmptyString(m.hangul) });
       }
       chip.addEventListener("click", function (ev) {
         ev.preventDefault();
@@ -2650,7 +2668,7 @@
     state.body = body;
     state.chips = [];
 
-    // Hedge banner: filled only when the selected spelling is a rare hangul match.
+    // Hedge banner: filled only when every spelling is a flagged hangul match.
     var hedgeBox = el("div", "hedge");
     card.appendChild(hedgeBox);
     state.hedgeBox = hedgeBox;
@@ -2737,6 +2755,7 @@
         hanja: hanja,
         gloss: asArray(m.glosses).map(nonEmptyString).filter(Boolean)[0] || "",
         rare: m.rare === true,
+        lessCommon: m.lessCommon === true,
         ko: m.ko
       }, "samesound-row");
       if (row) box.appendChild(row);
@@ -3391,6 +3410,10 @@
     if (c.rare === true) {
       row.classList.add("rare");
       text.appendChild(el("sup", "cpd-rare", t("marker.rare")));
+    } else if (c.lessCommon === true) {
+      // A lessCommon row renders as an ordinary one; the tooltip alone says
+      // the hangul usually means something else.
+      row.title = t("tooltip.lessCommon", { HANGUL: hangul || hanja });
     }
     var gloss = rowGloss(c, nonEmptyString(c.gloss));
     if (gloss) text.appendChild(el("span", "cpd-gloss", ": " + gloss));
@@ -3848,12 +3871,15 @@
     }
 
     groups.forEach(function (group) {
-      // LEAD RULE per word group: the best non-rare hanja spelling leads
-      // exactly as today; a hedge-worthy group (all spellings rare, hangul
-      // surface) with a native entry hands the lead to the native card
-      // instead. HEDGE RETIREMENT falls out of that: the hedged word card is
-      // never built, so its banner cannot render, and the muted rare row in
-      // Same sound states what the banner used to guess.
+      // LEAD RULE per word group: the best unflagged hanja spelling leads
+      // exactly as today; a hedge-worthy group (every spelling rare or
+      // lessCommon, hangul surface) with a native entry hands the lead to
+      // the native card instead; without one the group's own order (the
+      // worker sorts unflagged, lessCommon, rare) puts the best lessCommon
+      // spelling ahead of the rare ones. HEDGE RETIREMENT falls out of the
+      // native lead: the hedged word card is never built, so its banner
+      // cannot render, and the Same sound row states what the banner used
+      // to guess.
       var nativeGroup = claimNativeGroup(nonEmptyString(group[0].hangul));
       if (nativeGroup && isHedged(group)) {
         group.forEach(function (m) {

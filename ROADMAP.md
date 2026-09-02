@@ -58,6 +58,20 @@ current review clears.
   before release: the Korean store listing text, screenshot scenes for
   the Korean UI (7-settings needs a taller solo viewport; 5-sidebar is
   stale from the phonetic pins), and a README paragraph.
+- **Rare and lessCommon.** User rule: rare shows up only when a
+  spelling is actually rare, not when it is less common than a native
+  word. The one flag that did both jobs is now two: `rare` (the old
+  unattested test plus fewer than two other Urimalsaem headwords using
+  the spelling) keeps the marker, the grey rows, and the "obscure"
+  banner; `lessCommon` (attested, but the hangul usually means
+  something else) keeps only the ordering job, a truthful banner
+  ("Usually the native word. This hanja spelling is a homograph."), and
+  a hover tooltip. 2,263 sense-sets stay rare, 1,426 become lessCommon
+  (肝臟, 假裝, 舍廊 among them); character levels unchanged. Rejected:
+  Urimalsaem presence alone as the attestation test (unflags 佳芳 and
+  牙旗 too, a 1.2M-entry dictionary contains everything), a single
+  narrow flag (舍廊 would lead for 사랑), and a tuned higher bar. The
+  name lessCommon was picked over shadowed, minor, secondary.
 - **Headless self-check runner.** `python pipeline/run_selfchecks.py`
   runs both test pages headless over the CDP client now shared with the
   screenshot tool (pipeline/cdp.py) and reports per-check results. It

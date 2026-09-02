@@ -292,8 +292,23 @@ than wrong. Obscure sino-sino homographs such as 靚飾 (정식) and 識度 (식
 also go unflagged, because `alt_inbound` is too sparse to tell them apart from
 監査.
 
-`byHangul` lists all non-rare spellings before rare ones, so a reverse lookup
-leads with a confident match; ordering within each group is unchanged.
+**Rare and lessCommon (addendum 2026-09-01).** The predicate above still
+gates, but a sense-set it fires on now splits by the corpus inbound count of
+its spelling: how many *other* Urimalsaem headwords (the preprocess
+intermediate's words lane) contain the spelling inside their hanja origin,
+counted once per headword. Fewer than `RARE_INBOUND_K` (2) is `rare`
+(unattested: 牛李 0, 生覺 0, 丁抹 1); otherwise `lessCommon` (a real word whose
+hangul usually means something else: 肝臟 15, 舍廊 9, 假裝 27). A sense-set
+never carries both. `NOT_RARE_OVERRIDES` suppress both flags and must still
+fire; the build logs every override that would now compute `lessCommon` on
+its own, for review. The `lvl` attestation rule is unchanged: it counts a
+spelling as attested when any sense carries neither flag, which is exactly
+the old predicate.
+
+`byHangul` lists unflagged spellings first, then `lessCommon`, then `rare`
+(a spelling's group is the every-sense rule, the same one inline compound
+rows use), so a reverse lookup leads with a confident match; ordering within
+each group is unchanged.
 
 ## Romanization (`rr.json`) and the `f` frequency bucket
 
@@ -536,8 +551,10 @@ Every run ends with counts, output sizes, and spot-checks:
 * 國 has eumhun 나라/국, a "country" gloss, and 국민/國民 among its compounds.
 * 国→國, 学→學, and the shinjitai set 気→氣 実→實 図→圖 戦→戰 続→續 楽→樂 広→廣.
 * `rare` anchors: 國民/學校/資本主義/感謝/士氣/史記/監査/修道/意中/正史/療養院
-  not rare, 舍廊 and 牛李 rare, and `byHangul` ordering puts non-rare
-  spellings first.
+  and every override carry neither flag, 牛李/丁抹/生覺 rare, 舍廊/肝臟/假裝
+  lessCommon, no sense-set carries both, `byHangul` ordering puts unflagged
+  spellings first and rare last, and inline compound rows agree with the
+  every-sense rule.
 * No gloss anywhere ends in `…`, and 韓's eumhun is exactly
   `[한국(韓國) 한, 나라 이름 한]` with no marker left in any hun or eum.
 * 医, 県, 缶 keep their own Korean entries and stay **unmapped** (regression

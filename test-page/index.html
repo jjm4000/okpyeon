@@ -361,6 +361,19 @@
     // Highlighting the native word 사랑 ("love") turns up only this obscure
     // spelling — the canonical hedging case.
     "舍廊": [{ hangul: "사랑", glosses: ["a detached building; men's quarters"], rare: true }],
+    // --- rare and lessCommon (SPEC ADDENDUM 2026-09-01) -------------------
+    // 가장 in all three states, listed rare, lessCommon, unflagged so the
+    // worker's ordering has to reorder every one of them. 가장 is also a
+    // native word (the adverb), and 家長 is unflagged, so the hanja leads.
+    "假葬": [{ hangul: "가장", glosses: ["a temporary burial"], rare: true }],
+    "假裝": [{ hangul: "가장", glosses: ["disguise; pretense"], lessCommon: true }],
+    "家長": [{ hangul: "가장", glosses: ["the head of a family"] }],
+    // 간장 usually means soy sauce (native); 肝臟 is a real word that merely
+    // loses that contest (lessCommon), 肝腸 an unattested one (rare). No
+    // unflagged spelling, so the native word leads and the toggle-off
+    // hedge takes the lessCommon copy.
+    "肝腸": [{ hangul: "간장", glosses: ["liver and intestines"], rare: true }],
+    "肝臟": [{ hangul: "간장", glosses: ["the liver"], lessCommon: true }],
     // The native word 무리 also has this COMMON spelling, so the hanja card
     // keeps the lead and the native entry rides in its Same sound section.
     "無理": [{ hangul: "무리", glosses: ["unreasonableness; overexertion"] }],
@@ -553,13 +566,14 @@
           gloss: (sense.glosses || [])[0] || ""
         };
         if (sense.rare === true) entry.rare = true;
+        if (sense.lessCommon === true) entry.lessCommon = true;
         return entry;
       });
   }
 
   // The service worker's `buildFullCompounds`: join each cw spelling against
-  // `words` (first sense: hangul, first gloss or "", rare only when true),
-  // preserving cw order.
+  // `words` (first sense: hangul, first gloss or "", rare and lessCommon
+  // only when true), preserving cw order.
   function fullCompounds(char) {
     var canon = canonicalize(String(char || "").normalize("NFC"));
     return (CW[canon] || []).map(function (spelling) {
@@ -570,6 +584,7 @@
         gloss: (sense.glosses || [])[0] || ""
       };
       if (sense.rare === true) entry.rare = true;
+      if (sense.lessCommon === true) entry.lessCommon = true;
       return entry;
     });
   }
@@ -605,11 +620,14 @@
   // ONLY when a lookup carries native:true; the read counter lets checks
   // prove the unflagged path never touches it, and __swapNativeTable stands
   // in for the file being absent. 하늘 is native-only, 사랑 rides beside the
-  // rare 舍廊, 무리 beside the common 無理, and 처음 carries two POS entries.
+  // rare 舍廊, 무리 beside the common 無理, 간장 beside the lessCommon 肝臟,
+  // 가장 beside the common 家長, and 처음 carries two POS entries.
   var NATIVE = {
     "하늘": [{ pos: "noun", glosses: ["sky", "heaven"] }],
     "사랑": [{ pos: "noun", glosses: ["love; affection"] }],
     "무리": [{ pos: "noun", glosses: ["group; crowd; flock"] }],
+    "간장": [{ pos: "noun", glosses: ["soy sauce"] }],
+    "가장": [{ pos: "adverb", glosses: ["most; extremely"] }],
     "처음": [
       { pos: "noun", glosses: ["beginning; first time"] },
       { pos: "adverb", glosses: ["for the first time"] }
@@ -821,6 +839,12 @@
   function isRare(hanja) {
     return (WORDS[hanja] || [])[0] ? (WORDS[hanja][0].rare === true) : false;
   }
+  function isLessCommon(hanja) {
+    return (WORDS[hanja] || [])[0] ? (WORDS[hanja][0].lessCommon === true) : false;
+  }
+  function isPlain(hanja) {
+    return !isRare(hanja) && !isLessCommon(hanja);
+  }
 
   function wordMatch(surface, hanja, hangul) {
     var m = {
@@ -828,7 +852,8 @@
       glosses: (WORDS[hanja][0] || {}).glosses || [],
       chars: hanja.split("")
     };
-    if (isRare(hanja)) m.rare = true;   // flag omitted when false
+    if (isRare(hanja)) m.rare = true;   // flags omitted when false
+    if (isLessCommon(hanja)) m.lessCommon = true;
     // ADDENDUM used-in: how many larger words contain this spelling. Omitted
     // when 0, so the UI knows to render no disclosure row at all.
     var usedIn = usedInSpellings(hanja).length;
@@ -1122,9 +1147,11 @@
             if (BY_HANGUL[c]) { found = c; foundLen = l; break; }
           }
           if (!found) { j += 1; continue; }
-          // ALL hanja spellings, no cap — the UI renders a selector. Non-rare
-          // spellings order first; the first of them contributes the char cards.
-          var spellings = BY_HANGUL[found].filter(function (h) { return !isRare(h); })
+          // ALL hanja spellings, no cap: the UI renders a selector. Unflagged
+          // spellings order first, then lessCommon, then rare; the first of
+          // them contributes the char cards.
+          var spellings = BY_HANGUL[found].filter(isPlain)
+            .concat(BY_HANGUL[found].filter(isLessCommon))
             .concat(BY_HANGUL[found].filter(isRare));
           spellings.forEach(function (hanja, idx) {
             words.push(wordMatch(found, hanja, found));
@@ -1254,6 +1281,7 @@
       });
       row.glosses = glosses;
       if (senses.every(function (s) { return s.rare === true; })) row.rare = true;
+      if (senses.every(function (s) { return s.lessCommon === true; })) row.lessCommon = true;
       if (withKo && KO.words[item.key]) row.ko = KO.words[item.key];
       return row;
     });
@@ -2549,6 +2577,90 @@
     check("normal chip stays unhedged too",
       !api.query(".card.hedged") && api.queryAll(".hedge:not(:empty)").length === 0);
 
+    // --- rare and lessCommon (SPEC ADDENDUM 2026-09-01) -------------------
+    // 가장: unflagged 家長, lessCommon 假裝, rare 假葬. Chips follow the three
+    // states; only the rare chip carries the marker and the grey, and the
+    // lessCommon chip renders as an ordinary chip with a hover tooltip.
+    function flagTag(m) { return m.canonical + (m.rare ? "*" : m.lessCommon ? "+" : ""); }
+    var lcGroup = fake.__lookup("가장");
+    var lcOrder = lcGroup.matches.filter(function (m) { return m.kind === "word"; })
+      .map(flagTag).join(",");
+    check("가장 orders unflagged, then lessCommon, then rare",
+      lcOrder === "家長,假裝+,假葬*", lcOrder);
+    api.showAt(anchor, lcGroup.matches, "가장");
+    await wait(60);
+    var lcChips = api.queryAll(".spell-chip");
+    check("chip order follows the three states",
+      lcChips.map(function (c) { return c.textContent; }).join(",") === "家長,假裝,假葬rare",
+      lcChips.map(function (c) { return c.textContent; }).join(","));
+    check("the lessCommon chip is an ordinary chip: no class, no marker, no grey",
+      lcChips[1].className === "spell-chip" &&
+      !lcChips[1].querySelector(".chip-rare") &&
+      getComputedStyle(lcChips[1]).color !== getComputedStyle(lcChips[2]).color,
+      lcChips[1].className + " " + getComputedStyle(lcChips[1]).color);
+    check("only the rare chip is marked",
+      api.queryAll(".spell-chip.rare").length === 1 &&
+      lcChips[2].classList.contains("rare") && !!lcChips[2].querySelector(".chip-rare"));
+    check("the lessCommon chip carries the tooltip; the others carry none",
+      lcChips[1].title === "A less common meaning of 가장" &&
+      lcChips[0].title === "" && lcChips[2].title === "",
+      JSON.stringify(lcChips.map(function (c) { return c.title; })));
+    check("the unflagged spelling leads the group",
+      api.query(".word-body .surface").textContent === "家長" && !api.query(".card.hedged"));
+    lcChips[1].click();                       // select the lessCommon spelling
+    await wait(90);
+    check("a lessCommon chip in a MIXED group does not hedge or mute the card",
+      !api.query(".card.hedged") && api.queryAll(".hedge:not(:empty)").length === 0 &&
+      api.query(".word-body .surface").textContent === "假裝" &&
+      getComputedStyle(api.query(".word-body .surface")).color === api.panelStyle("color"),
+      api.query(".word-body .surface").textContent);
+
+    // 간장: lessCommon 肝臟 and rare 肝腸, nothing unflagged. Toggle off, the
+    // group hedges, and the copy claims only what is true of the milder flag.
+    var lcSoy = fake.__lookup("간장");
+    var lcSoyOrder = lcSoy.matches.filter(function (m) { return m.kind === "word"; })
+      .map(flagTag).join(",");
+    check("간장 orders lessCommon before rare", lcSoyOrder === "肝臟+,肝腸*", lcSoyOrder);
+    api.showAt(anchor, lcSoy.matches, "간장");
+    await wait(60);
+    var lcHedged = api.query(".card.hedged");
+    check("an all-flagged group with a lessCommon spelling hedges with the lessCommon copy",
+      !!lcHedged &&
+      api.query(".hedge .label").textContent === "Less common homograph" &&
+      api.query(".hedge-note").textContent === "Usually the native word. This hanja spelling is a homograph.",
+      api.query(".hedge") ? api.query(".hedge").textContent : "no hedge");
+    check("the lessCommon hedge gets the same muted card treatment",
+      !!lcHedged &&
+      getComputedStyle(lcHedged).backgroundColor !== "rgba(0, 0, 0, 0)" &&
+      getComputedStyle(api.query(".card.hedged > .word-body .surface")).color !==
+        api.panelStyle("color") &&
+      getComputedStyle(api.query(".card.hedged > .word-body .surface")).color !==
+        api.panelStyle("background-color"),
+      lcHedged ? getComputedStyle(lcHedged).backgroundColor : "none");
+    check("the lessCommon spelling leads the hedged group; its chip is ordinary with the tooltip",
+      api.query(".word-body .surface").textContent === "肝臟" &&
+      api.queryAll(".spell-chip")[0].className === "spell-chip sel" &&
+      api.queryAll(".spell-chip")[0].title === "A less common meaning of 간장" &&
+      api.queryAll(".spell-chip")[1].classList.contains("rare") &&
+      api.queryAll(".spell-chip")[1].title === "",
+      api.queryAll(".spell-chip").map(function (c) { return c.className + "/" + c.title; }).join(" | "));
+    api.showAt(anchor, fake.__lookup("사랑").matches, "사랑");
+    await wait(60);
+    check("an all-rare group keeps the rare hedge copy",
+      !!api.query(".card.hedged") &&
+      api.query(".hedge .label").textContent === "Rare hanja homograph" &&
+      api.query(".hedge-note").textContent === "Likely native Korean. This hanja spelling is obscure.",
+      api.query(".hedge").textContent);
+    var lcHan = fake.__lookup("假裝");
+    check("Han-sourced 假裝 carries lessCommon:true and no rare",
+      lcHan.matches[0].lessCommon === true && !("rare" in lcHan.matches[0]));
+    api.showAt(anchor, lcHan.matches, "假裝");
+    await wait(60);
+    check("Han-sourced lessCommon match renders NORMALLY (no hedge, no chips)",
+      !api.query(".card.hedged") && api.queryAll(".hedge:not(:empty)").length === 0 &&
+      api.queryAll(".spell-chip").length === 0 &&
+      getComputedStyle(api.query(".word-body .surface")).color === api.panelStyle("color"));
+
     // --- gloss-less data must render without blanks ---------------------
     var bare = fake.__lookup("무기");
     var bareWord = bare.matches.filter(function (m) { return m.kind === "word"; })[0];
@@ -3019,6 +3131,28 @@
       ", calls " + callsBeforeCpdMore + " → " + fake.__calls);
     check("gloss expander on a compound row still expands",
       api.query(".compound.clamp").classList.contains("expanded"));
+
+    // --- an inline lessCommon compound: an ordinary row plus the tooltip --
+    api.showAt(anchor, [{ kind: "char", surface: "長", canonical: "長",
+      eumhun: [{ hun: "긴", eum: "장" }], readings: ["장"], glosses: [],
+      compounds: [{ hangul: "장문", hanja: "長文", gloss: "a long piece of writing" },
+      { hangul: "장기", hanja: "長期", gloss: "a long period", lessCommon: true },
+      { hangul: "장죽", hanja: "長竹", gloss: "long-stemmed bamboo tobacco pipe", rare: true }] }]);
+    check("an INLINE lessCommon compound renders as an ordinary row",
+      !cpdRows()[1].classList.contains("rare") &&
+      !cpdRows()[1].querySelector(".cpd-rare") &&
+      cpdRows()[1].classList.contains("nav") &&
+      getComputedStyle(cpdRows()[1].querySelector(".cpd-hangul")).color ===
+      getComputedStyle(cpdRows()[0].querySelector(".cpd-hangul")).color,
+      cpdRows()[1].className + " " + getComputedStyle(cpdRows()[1].querySelector(".cpd-hangul")).color);
+    check("the lessCommon row carries the tooltip; the plain and rare rows carry none",
+      cpdRows()[1].title === "A less common meaning of 장기" &&
+      cpdRows()[0].title === "" && cpdRows()[2].title === "",
+      JSON.stringify(cpdRows().map(function (r) { return r.title; })));
+    check("the rare row beside it is unchanged: marker, grey, no tooltip",
+      cpdRows()[2].classList.contains("rare") && !!cpdRows()[2].querySelector(".cpd-rare") &&
+      getComputedStyle(cpdRows()[2].querySelector(".cpd-hangul")).color !==
+      getComputedStyle(cpdRows()[0].querySelector(".cpd-hangul")).color);
 
     // --- failure path: rows stay, control stays pressable ----------------
     api.showAt(anchor, [hak]);                 // fresh session: cache cleared
@@ -5316,7 +5450,43 @@
       fake.__calls === ntvCallsBack2,
       "depth=" + api.viewDepth());
 
-    // (c) 하늘: native-only, where today nothing renders at all.
+    // (b2) 간장: lessCommon 肝臟 and rare 肝腸, nothing unflagged, so the
+    // native word leads (rare and lessCommon ADDENDUM). The hedge retires in
+    // both copies; Same sound holds both spellings, only the rare one marked.
+    var ntvSoy = await sendNative("간장");
+    api.showAt(anchor, ntvSoy.matches, "간장", undefined, ntvSoy.nativeMatches);
+    await wait(60);
+    check("a lessCommon spelling yields the lead to the native card",
+      api.viewKeys().join(",") === "native:간장" && api.cardCount() === 1 &&
+      api.query(".card.native .surface").textContent === "간장",
+      api.viewKeys().join(",") + " cards=" + api.cardCount());
+    check("hedge retirement covers the lessCommon copy too",
+      !api.query(".card.hedged") && api.queryAll(".hedge:not(:empty)").length === 0 &&
+      api.panelText().indexOf("Usually the native word") < 0 &&
+      api.panelText().indexOf("Likely native Korean") < 0,
+      JSON.stringify(api.panelText().slice(0, 40)));
+    var ntvSoyRows = api.queryAll(".card.native .samesound-row");
+    check("Same sound: the lessCommon row is ordinary with the tooltip, the rare row muted with the marker",
+      ntvSoyRows.length === 2 &&
+      /^간장 \(肝臟\): the liver/.test(ntvSoyRows[0].textContent) &&
+      !ntvSoyRows[0].classList.contains("rare") && !ntvSoyRows[0].querySelector(".cpd-rare") &&
+      ntvSoyRows[0].title === "A less common meaning of 간장" &&
+      getComputedStyle(ntvSoyRows[0].querySelector(".cpd-hangul")).color === api.panelStyle("color") &&
+      ntvSoyRows[1].classList.contains("rare") && !!ntvSoyRows[1].querySelector(".cpd-rare") &&
+      /^간장 \(肝腸\)rare: /.test(ntvSoyRows[1].textContent) && ntvSoyRows[1].title === "",
+      JSON.stringify(ntvSoyRows.map(function (r) { return r.className + "|" + r.title + "|" + r.textContent; })));
+
+    // 가장: 家長 is unflagged, so the hanja keeps the lead over the native
+    // word, exactly as 無理 does; the lessCommon chip keeps its tooltip.
+    var ntvGa = await sendNative("가장");
+    api.showAt(anchor, ntvGa.matches, "가장", undefined, ntvGa.nativeMatches);
+    await wait(60);
+    check("an unflagged spelling still leads over the native word",
+      !api.query(".card.native") && !api.query(".card.hedged") &&
+      api.query(".word-body .surface").textContent === "家長" &&
+      api.queryAll(".samesound-row .native-tag").length === 1 &&
+      api.queryAll(".spell-chip")[1].title === "A less common meaning of 가장",
+      api.query(".word-body .surface").textContent);
     var ntvSky = await sendNative("하늘");
     check("fixture: 하늘 is native-only",
       ntvSky.matches.length === 0 && ntvSky.nativeMatches.length === 1,
@@ -5800,6 +5970,14 @@
         api.query(".hedge-note").textContent === "고유어일 가능성이 높습니다. 이 한자 표기는 드뭅니다.",
         api.query(".hedge").textContent);
       sweepView("사랑");
+      api.showAt(anchor, fake.__lookup("간장").matches, "간장");
+      await wait(60);
+      check("KO: the lessCommon hedge banner and the chip tooltip",
+        api.query(".hedge .label").textContent === "덜 흔한 동음어" &&
+        api.query(".hedge-note").textContent === "보통은 고유어입니다. 이 한자 표기는 동음어입니다." &&
+        api.queryAll(".spell-chip")[0].title === "간장의 덜 흔한 뜻",
+        api.query(".hedge").textContent + " / " + api.queryAll(".spell-chip")[0].title);
+      sweepView("간장");
       api.showAt(anchor, fake.__lookup("사기").matches, "사기");
       await wait(60);
       check("KO: the rare spelling marker",

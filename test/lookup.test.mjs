@@ -349,6 +349,13 @@ const words = {
     // 우리 is likewise native — both hanja spellings are rare.
     牛李: [{ hangul: "우리", glosses: ["the Niu-Li factional strife"], rare: true }],
     隅籬: [{ hangul: "우리", glosses: ["a corner fence"], rare: true }],
+    // --- rare and lessCommon addendum: 가장 in all three states. byHangul
+    // lists them rare, lessCommon, unflagged, so correct output requires
+    // reordering to unflagged, lessCommon, rare. 가장 is also a native word
+    // (the adverb), so the omnibox order can be pinned with all four kinds.
+    假葬: [{ hangul: "가장", glosses: ["a temporary burial"], rare: true }],
+    假裝: [{ hangul: "가장", glosses: ["disguise; pretense"], lessCommon: true }],
+    家長: [{ hangul: "가장", glosses: ["the head of a family"] }],
     // --- length-metadata addendum: a 7-char headword, longer than the old
     // hardcoded segmentation cap of 6, in both scripts ---
     中華人民共和國: [{ hangul: "중화인민공화국", glosses: ["the People's Republic of China"] }],
@@ -378,6 +385,7 @@ const words = {
     사기전: ["詐欺戰", "士氣戰"],
     사랑: ["舍廊", "沙羅"],
     우리: ["牛李", "隅籬"],
+    가장: ["假葬", "假裝", "家長"],
     안전: ["安全"],
     중화인민공화국: ["中華人民共和國"],
     특수: ["特殊"],
@@ -668,6 +676,72 @@ test("a spelling is rare only when every contributing sense-set is rare", () => 
   assert.deepEqual(saranng.glosses, ["obscure sense", "an attested sense"]);
 });
 
+// --- rare and lessCommon addendum ------------------------------------------
+
+test("lessCommon: absent flag emits no key; a flagged sense-set carries it", () => {
+  for (const text of ["國民", "국민", "사랑", "우리"]) {
+    for (const m of wordsOf(lookup(text, data).matches)) {
+      assert.equal("lessCommon" in m, false, `${text} → ${m.canonical} should have no lessCommon key`);
+    }
+  }
+  // Han-sourced: the flag rides the match, exactly like rare.
+  const han = wordsOf(lookup("假裝", data).matches);
+  assert.equal(han.length, 1);
+  assert.equal(han[0].lessCommon, true);
+  assert.equal("rare" in han[0], false);
+});
+
+test("hangul 가장 orders unflagged, then lessCommon, then rare; the unflagged leads", () => {
+  assert.deepEqual(words.byHangul["가장"], ["假葬", "假裝", "家長"], "byHangul lists rare first");
+  const w = wordsOf(lookup("가장", data).matches);
+  assert.deepEqual(canonicals(w), ["家長", "假裝", "假葬"]);
+  assert.equal("rare" in w[0], false);
+  assert.equal("lessCommon" in w[0], false);
+  assert.equal(w[1].lessCommon, true);
+  assert.equal("rare" in w[1], false);
+  assert.equal(w[2].rare, true);
+  assert.equal("lessCommon" in w[2], false);
+});
+
+test("lessCommon leads a group with no unflagged spelling; rare still sorts last", () => {
+  const noPlain = {
+    ...data,
+    words: {
+      ...words,
+      words: { ...words.words, 家長: undefined },
+    },
+  };
+  const w = wordsOf(lookup("가장", noPlain).matches);
+  assert.deepEqual(canonicals(w), ["假裝", "假葬"]);
+  assert.equal(w[0].lessCommon, true);
+  assert.equal(w[1].rare, true);
+});
+
+test("a spelling is lessCommon only when every contributing sense-set is", () => {
+  const mixed = {
+    ...data,
+    words: {
+      ...words,
+      words: {
+        ...words.words,
+        假裝: [
+          { hangul: "가장", glosses: ["a homograph sense"], lessCommon: true },
+          { hangul: "가장", glosses: ["a plain sense"] },
+        ],
+      },
+    },
+  };
+  const w = wordsOf(lookup("가장", mixed).matches);
+  const gajang = w.find((m) => m.canonical === "假裝");
+  assert.equal("lessCommon" in gajang, false, "one unflagged sense clears the flag");
+  // Cleared on the hangul path, so it sorts with the unflagged spellings.
+  assert.deepEqual(canonicals(w), ["假裝", "家長", "假葬"]);
+  // The Han path agrees: a deduped headword drops the flag the same way.
+  const han = wordsOf(lookup("假裝", mixed).matches);
+  assert.equal(han.length, 1);
+  assert.equal("lessCommon" in han[0], false);
+});
+
 test("lvl: propagated onto char matches, one value per char", () => {
   const guk = charsOf(lookup("國", data).matches)[0];
   assert.equal(guk.lvl, "m");
@@ -798,6 +872,55 @@ test("buildFullCompounds: rare only when every sense of a spelling is rare", () 
   const rows = buildFullCompounds("國", patched);
   assert.equal(rows[0].rare, true, "舍廊 is rare in the fixture");
   assert.equal("rare" in rows[1], false, "沙羅 is not");
+});
+
+test("buildFullCompounds and buildUsedIn: lessCommon rides the join row under the every-sense rule", () => {
+  const patched = {
+    ...data,
+    hanja: {
+      ...hanja,
+      chars: { ...hanja.chars, 國: { ...hanja.chars.國, cw: ["假裝", "假葬", "家長"] } },
+    },
+  };
+  const rows = buildFullCompounds("國", patched);
+  assert.equal(rows[0].lessCommon, true, "假裝 is lessCommon in the fixture");
+  assert.equal("rare" in rows[0], false);
+  assert.equal(rows[1].rare, true);
+  assert.equal("lessCommon" in rows[1], false);
+  assert.equal("lessCommon" in rows[2], false);
+  assert.equal("rare" in rows[2], false);
+  // A mixed spelling (one lessCommon sense, one plain) carries neither.
+  const mixed = {
+    ...patched,
+    words: {
+      ...words,
+      words: {
+        ...words.words,
+        假裝: [
+          { hangul: "가장", glosses: ["a homograph sense"], lessCommon: true },
+          { hangul: "가장", glosses: ["a plain sense"] },
+        ],
+      },
+    },
+  };
+  assert.equal("lessCommon" in buildFullCompounds("國", mixed)[0], false);
+  // Used-in rows go through the same join (假 has no chars entry, so the
+  // word-table scan supplies the larger words).
+  const usedIn = {
+    ...data,
+    words: {
+      ...words,
+      words: {
+        ...words.words,
+        假裝舞: [{ hangul: "가장무", glosses: ["a masked dance"], lessCommon: true }],
+        假裝舞會: [{ hangul: "가장무회", glosses: ["a masquerade ball"] }],
+      },
+    },
+  };
+  const used = buildUsedIn("假裝", usedIn);
+  assert.deepEqual(used.map((r) => r.hanja), ["假裝舞", "假裝舞會"]);
+  assert.equal(used[0].lessCommon, true);
+  assert.equal("lessCommon" in used[1], false);
 });
 
 test("usedInCount: present when larger words exist, absent otherwise", () => {
@@ -1579,13 +1702,46 @@ test("joinItems merges homograph glosses, flags all-rare, and follows variants",
   );
   assert.equal(rows[0].missing, true, "a hangul spelling is not a words key");
   assert.equal(rows[1].rare, true);
+  assert.equal(rows[1].lessCommon, undefined);
   // 安全 has two senses; both glosses show, the hangul comes from the first.
   assert.deepEqual(rows[2].glosses, ["safety; security", "archaic sense"]);
   assert.equal(rows[2].hangul, "안전");
   assert.equal(rows[2].rare, undefined);
+  assert.equal(rows[2].lessCommon, undefined);
   // A variant glyph still resolves rather than reading as missing.
   assert.equal(rows[3].missing, undefined);
   assert.deepEqual(rows[3].readings, ["국"]);
+});
+
+test("joinItems: a saved lessCommon spelling carries the flag, every-sense rule", () => {
+  const rows = joinItems(
+    [
+      { id: "i0", kind: "word", key: "假裝", folderId: "f0", addedAt: 1 },
+      { id: "i1", kind: "word", key: "假葬", folderId: "f0", addedAt: 2 },
+      { id: "i2", kind: "word", key: "家長", folderId: "f0", addedAt: 3 },
+    ],
+    data
+  );
+  assert.equal(rows[0].lessCommon, true);
+  assert.equal(rows[0].rare, undefined);
+  assert.equal(rows[1].rare, true);
+  assert.equal(rows[1].lessCommon, undefined);
+  assert.equal(rows[2].rare, undefined);
+  assert.equal(rows[2].lessCommon, undefined);
+  const mixed = {
+    ...data,
+    words: {
+      ...words,
+      words: {
+        ...words.words,
+        假裝: [
+          { hangul: "가장", glosses: ["a homograph sense"], lessCommon: true },
+          { hangul: "가장", glosses: ["a plain sense"] },
+        ],
+      },
+    },
+  };
+  assert.equal(joinItems([{ id: "i0", kind: "word", key: "假裝", folderId: "f0", addedAt: 1 }], mixed)[0].lessCommon, undefined);
 });
 
 // --- settings -------------------------------------------------------------
@@ -2848,6 +3004,7 @@ const native = {
     하늘: [{ pos: "noun", glosses: ["sky", "heaven"] }],
     사랑: [{ pos: "noun", glosses: ["love"] }],
     우리: [{ pos: "pron", glosses: ["we; us"] }],
+    가장: [{ pos: "adv", glosses: ["most"] }],
     먹다: [{ pos: "verb", glosses: ["to eat"] }],
     // Distinct POS = distinct entries (POS homonyms merged at build time).
     가득: [
@@ -3122,6 +3279,30 @@ test("flagged omnibox: native rows sit between non-rare and rare hanja", () => {
   });
   assert.deepEqual(contentsOf(typed), ["하늘"]);
   assert.equal(typed[0].description, "<match>하늘</match> <dim>sky · native</dim>");
+});
+
+test("omnibox: unflagged hanja, native, lessCommon hanja, rare hanja, in that order", () => {
+  // 가장 carries all four kinds at once. The lessCommon row gets no marker
+  // in its dim tail; the rare row keeps its own.
+  const rows = buildOmniboxSuggestions("가장", nativeData, { native: true });
+  assert.deepEqual(contentsOf(rows).slice(0, 4), ["家長", "가장", "假裝", "假葬"]);
+  assert.equal(rows[2].description, "<match>假裝</match> 가장 <dim>disguise; pretense</dim>");
+  assert.equal(rows[3].description, "<match>假葬</match> 가장 <dim>a temporary burial · rare</dim>");
+  // Toggle off: the native row drops out and the hanja keep their order.
+  assert.deepEqual(contentsOf(buildOmniboxSuggestions("가장", data)).slice(0, 3), [
+    "家長",
+    "假裝",
+    "假葬",
+  ]);
+  // Across spans: the lessCommon spelling of an earlier span still yields to
+  // a later span's unflagged one, and still beats every rare one.
+  assert.deepEqual(contentsOf(buildOmniboxSuggestions("가장 우리 국민", data)).slice(0, 5), [
+    "家長",
+    "國民",
+    "假裝",
+    "假葬",
+    "牛李",
+  ]);
 });
 
 await testAsync("native: guardNative shapes junk into an empty table", async () => {
@@ -4298,8 +4479,12 @@ await testAsync("smoke: real native.json resolves 하늘 / 사랑 / 무리 / tog
     "사랑 should still resolve 舍廊"
   );
   assert.ok(
-    loveWords.every((m) => m.rare === true),
-    "every hanja spelling of 사랑 should be rare (native leads)"
+    loveWords.every((m) => m.rare === true || m.lessCommon === true),
+    "every hanja spelling of 사랑 should be flagged, rare or lessCommon (native leads)"
+  );
+  assert.ok(
+    loveWords.every((m) => !(m.rare === true && m.lessCommon === true)),
+    "no spelling of 사랑 carries both flags"
   );
 
   // 무리: 無理 is non-rare, so hanja still leads.

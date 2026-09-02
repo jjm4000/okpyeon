@@ -464,6 +464,7 @@ function joinWord(item, wordTable, koWords) {
   };
   // rare only when EVERY sense is rare, matching lookup.js's join semantics.
   if (senses.every((sense) => sense.rare === true)) row.rare = true;
+  if (senses.every((sense) => sense.lessCommon === true)) row.lessCommon = true;
   const ko = koEntryFor(koWords ?? {}, item.key);
   if (ko !== null) row.ko = ko;
   return row;

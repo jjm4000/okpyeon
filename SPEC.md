@@ -2715,7 +2715,9 @@ one sense-set, names user-settled:
   would now compute lessCommon rather than rare is reported, kept
   only if the reviewer wants it to lead over the native word.
 - Anchors: 舍廊 (사랑) lessCommon, 肝臟 (간장) lessCommon, 假裝 (가장)
-  lessCommon, 理想 (이상) lessCommon; 牛李, 生覺, 丁抹 rare; 記者 and
+  lessCommon, 理想 (리상, the northern reading; 이상 itself was never
+  flagged, the measurement counted spellings not sense-sets)
+  lessCommon; 牛李, 生覺, 丁抹 rare; 記者 and
   the other overrides neither; no sense-set carries both; byHangul
   order is unflagged, then lessCommon, then rare; inline compound rows
   carry lessCommon under the same every-sense rule as rare.
