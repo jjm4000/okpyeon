@@ -22,10 +22,10 @@ A study tool for Korean learners. Highlight hanja, hanzi, or kanji to read them 
      This is Jesse's edited 1.2 text, verbatim (the uploaded version is the
      canonical one): user-facing sections ordered by value, navigation
      mechanics cut, and cryptic examples decoded in short parentheticals.
-     1.3 additions, drafted for his edit: the sound-giving part sentence in
-     CHARACTERS SPLIT INTO PARTS, the KOREAN LANGUAGE MODE section, two
-     WHAT IS INSIDE lines, 우리말샘 and Unihan in SOURCES, and the Korean
-     listing at the end. -->
+     The 1.3 text below is Jesse's own edit, verbatim, with the WHAT IS
+     INSIDE counts corrected to the built data after the glyph-alias
+     merge. He cut the drafted KOREAN LANGUAGE MODE section from the
+     English listing; it stays in the Korean one. -->
 
 Okpyeon is a popup hanja dictionary for Korean learners. Much of Korean vocabulary is built from hanja roots the way English words are built from Latin, so once you know that 國 is 나라 국, the shared root in 국민, 국가, and 외국 becomes visible.
 
@@ -35,10 +35,10 @@ Select text on any page and a card appears. Or click the toolbar icon for a side
 Select a hanja to see its eumhun (나라 국 for 國), English definitions, and common compounds. Simplified Chinese and Japanese forms resolve to the same entries, so those pages work too.
 
 --  KOREAN WORDS INTO HANJA  --
-Highlight a Sino-Korean word in hangul (국민) to see its hanja (國民), meaning, and component characters. A word with several spellings shows all of them (사기: 詐欺, 士氣, 沙器).
+Highlight a Sino-Korean word in hangul to see its hanja, meaning, and component characters. A word with several spellings shows all of them (사기: 詐欺, 士氣, 沙器).
 
 --  CHARACTERS SPLIT INTO PARTS  --
-A character's card shows what it is made of (樂 = 幺 + 白 + 幺 + 木), each part with its own reading, and which other characters use it as a component. The part that gives a character its sound is marked: in 請 (청), that part is 靑 (청).
+A character's card shows what it is made of (樂 = 幺 + 白 + 幺 + 木), each part with its own reading, and which other characters use it as a component. The part that gives a character its sound is marked. For example, in 請 (청), that part is 靑 (청).
 
 --  SAVED WORDS AND ANKI EXPORT  --
 Star any card to save it into a folder. Folders export as an Anki text file or a CSV, with adjustable card fields in the settings section.
@@ -47,7 +47,7 @@ Star any card to save it into a folder. Folders export as an Anki text file or a
 Typing toddlf (what would normally be the keys for ㅅㅐㅇㅇㅣㄹ on a Korean keyboard) finds 생일, and gungmin or gukmin (romanized versions) finds 국민.
 
 --  BROWSE BY SOUND  --
-Highlight a single syllable like 국 to list every hanja read that way, most common first.
+Highlight a single syllable like 국 to list every hanja read that way.
 
 --  EVERY CHARACTER IS GRADED  --
 Middle school and High school mark the roughly 1,800 characters of the Korean Ministry of Education list. Advanced and Rare cover everything else, so a glance tells you whether a character is worth your time.
@@ -58,16 +58,13 @@ One setting adds native words as their own cards and an All words search scope, 
 --  JAPANESE AND CHINESE READINGS (OPTIONAL)  --
 Two settings add each character's on'yomi and pinyin beside its Korean reading: 學 is 학 in Korean, ガク in Japanese, xué in Mandarin.
 
---  KOREAN LANGUAGE MODE (OPTIONAL)  --
-One setting switches the whole extension into Korean: menus, labels, and definitions. The definitions come from 우리말샘, the open dictionary of the National Institute of Korean Language, and each card links to its 우리말샘 entry. If Chrome is set to Korean, the extension starts in Korean.
-
 --  WHAT IS INSIDE  --
 - 9,415 hanja characters with readings, eumhun, definitions, levels and compounds
-- 27,627 Sino-Korean words indexed by both hanja and hangul
+- 27,620 Sino-Korean words indexed by both hanja and hangul
 - 15,527 native Korean words, included when the option is on
-- Korean definitions for 25,510 Sino-Korean words, 12,071 native words, and 1,795 characters
-- Japanese readings for 3,566 characters and Mandarin readings for 9,249
-- 9,178 character decompositions, with the sound-giving part marked on 7,165
+- Korean definitions for 25,508 Sino-Korean words, 12,071 native words, and 1,795 characters
+- Japanese readings for 3,513 characters and Mandarin readings for 9,195
+- 9,130 character decompositions, with the sound-giving part marked on 7,151
 - 3,791 variant mappings covering simplified Chinese and Japanese shinjitai
 
 --  PRIVATE AND OFFLINE  --
@@ -76,12 +73,17 @@ The whole dictionary ships inside the extension. It makes no network requests an
 --  SOURCES  --
 Definitions and compounds: English Wiktionary via kaikki.org (CC BY-SA). Korean definitions: 우리말샘, National Institute of Korean Language (CC BY-SA 2.0 KR). Variant mappings, Chinese readings, and sound-giving parts: Wiktionary and Unicode Unihan. Japanese readings: the joyo kanji table via Wikipedia (CC BY-SA). Decompositions: BabelStone IDS (public domain). School tiers: the Korean Wikipedia article 대한민국 중고등학교 기초한자 목록 (CC BY-SA 4.0). The Advanced and Rare levels are Okpyeon's own classification.
 
+Support the project: ko-fi.com/okpyeon
+
 ## Korean listing (dashboard language 한국어)
 
 <!-- Draft for Jesse to edit, the way the English was. The name and the
      short description come from the package (_locales/ko), so only the
      detailed description is pasted here. Same plain-text rules: dash
-     separators, no blank line after a separator. -->
+     separators, no blank line after a separator. Mirrors his 1.3 English
+     edit (no 국민/國民 parentheticals, the sound sentence split, "most
+     common first" dropped, the ko-fi line) and keeps the Korean mode
+     section, which he cut from the English listing. -->
 
 Name (from the package): 옥편: 한자 팝업 사전
 
@@ -97,10 +99,10 @@ Detailed description:
 한자를 드래그하면 음훈(國은 나라 국), 뜻풀이, 자주 쓰는 단어가 나옵니다. 중국어 간체와 일본어 한자도 같은 글자로 찾아 주므로 중국어와 일본어 페이지에서도 쓸 수 있습니다.
 
 --  한글 단어를 한자로  --
-한글로 쓰인 한자어(국민)를 드래그하면 한자(國民), 뜻, 구성 한자가 나옵니다. 한자 표기가 여럿인 단어는 모두 보여 줍니다(사기: 詐欺, 士氣, 沙器).
+한글로 쓰인 한자어를 드래그하면 한자, 뜻, 구성 한자가 나옵니다. 한자 표기가 여럿인 단어는 모두 보여 줍니다(사기: 詐欺, 士氣, 沙器).
 
 --  한자의 짜임  --
-글자 카드에는 그 글자가 무엇으로 이루어졌는지(樂 = 幺 + 白 + 幺 + 木), 각 부분의 음훈, 그리고 그 글자를 부분으로 쓰는 다른 글자들이 나옵니다. 소리를 나타내는 부분에는 표시가 붙습니다. 請(청)에서는 靑(청)이 그 부분입니다.
+글자 카드에는 그 글자가 무엇으로 이루어졌는지(樂 = 幺 + 白 + 幺 + 木), 각 부분의 음훈, 그리고 그 글자를 부분으로 쓰는 다른 글자들이 나옵니다. 소리를 나타내는 부분에는 표시가 붙습니다. 예를 들어 請(청)에서는 靑(청)이 그 부분입니다.
 
 --  단어 저장과 Anki 내보내기  --
 카드의 별을 누르면 폴더에 저장됩니다. 폴더는 Anki 텍스트 파일이나 CSV로 내보낼 수 있고, 카드 앞뒷면 항목은 설정에서 고를 수 있습니다.
@@ -109,7 +111,7 @@ Detailed description:
 영문 자판 그대로 toddlf를 치면(한국어 자판에서 ㅅㅐㅇㅇㅣㄹ에 해당하는 키) 생일을 찾고, gungmin이나 gukmin(로마자 표기)을 치면 국민을 찾습니다.
 
 --  소리로 찾기  --
-국처럼 한 글자만 드래그하면 그 소리로 읽는 모든 한자가 자주 쓰는 순서로 나옵니다.
+국처럼 한 글자만 드래그하면 그 소리로 읽는 모든 한자가 나옵니다.
 
 --  모든 글자에 등급  --
 중학과 고등은 교육부 기초 한자 1,800자 정도를 표시합니다. 고급과 희귀는 그 밖의 글자로, 한눈에 익힐 만한 글자인지 알 수 있습니다. 고급과 희귀는 옥편 자체 분류입니다.
@@ -125,11 +127,11 @@ Detailed description:
 
 --  들어 있는 것  --
 - 한자 9,415자의 음, 음훈, 뜻풀이, 등급, 단어
-- 한자어 27,627개, 한자와 한글 양쪽으로 찾기
+- 한자어 27,620개, 한자와 한글 양쪽으로 찾기
 - 고유어 15,527개 (선택 사항을 켰을 때)
-- 한자어 25,510개, 고유어 12,071개, 한자 1,795자의 한국어 뜻풀이
-- 일본어 읽기 3,566자, 중국어 읽기 9,249자
-- 한자 짜임 9,178자, 그중 7,165자에 소리 부분 표시
+- 한자어 25,508개, 고유어 12,071개, 한자 1,795자의 한국어 뜻풀이
+- 일본어 읽기 3,513자, 중국어 읽기 9,195자
+- 한자 짜임 9,130자, 그중 7,151자에 소리 부분 표시
 - 간체와 일본 신자체를 포함한 이체자 대응 3,791개
 
 --  개인 정보와 오프라인  --
@@ -137,6 +139,8 @@ Detailed description:
 
 --  출처  --
 뜻풀이와 단어: 영어 위키낱말사전 (kaikki.org 경유, CC BY-SA). 한국어 뜻풀이: 국립국어원 우리말샘 (CC BY-SA 2.0 KR). 이체자 대응, 중국어 읽기, 소리 부분: 위키낱말사전과 유니코드 Unihan. 일본어 읽기: 위키백과의 상용한자표 (CC BY-SA). 한자 짜임: BabelStone IDS (퍼블릭 도메인). 학교 등급: 한국어 위키백과 대한민국 중고등학교 기초한자 목록 (CC BY-SA 4.0). 고급과 희귀 등급은 옥편 자체 분류입니다.
+
+프로젝트 후원: ko-fi.com/okpyeon
 
 ## Privacy tab (dashboard form)
 
