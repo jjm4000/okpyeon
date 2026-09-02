@@ -6243,7 +6243,8 @@
         api.queryAll(".madeof-part").length === 4 &&
         textsOf(".madeof-part .r-eumhun").join("|") === "가죽 혁|사람 인" &&
         textsOf(".madeof-part .r-gloss").join("|") === "  짐승의 가죽." &&
-        !api.query(".madeof .ko-marker"),
+        !api.query(".madeof .ko-marker") &&
+        !api.query(".madeof-part .madeof-name"),
         textsOf(".madeof-part .r-eumhun").join("|") + " / " + textsOf(".madeof-part .r-gloss").join("|"));
       sweepKo("靴 ko");
 
