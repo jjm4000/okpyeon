@@ -3278,7 +3278,10 @@
         if (gloss) body.appendChild(el("span", "r-gloss", (label ? "  " : "") + gloss));
       } else {
         part.classList.add("inert");
-        var name = nonEmptyString(p.name);
+        // The shape name is Unihan's English (steam, hair, radical 87), data
+        // with no Korean twin: under 한국어 the glyph stands alone, the
+        // char-row rule.
+        var name = koRenderOn() ? "" : nonEmptyString(p.name);
         if (name) body.appendChild(el("span", "madeof-name", name));
       }
       part.appendChild(clampWrap(body, 1));
