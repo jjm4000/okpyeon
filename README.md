@@ -22,7 +22,8 @@ typing `hj` in the address bar searches from anywhere.
   earlier step.
 - **Character breakdown.** A character's card shows what it is made of
   (樂 = 幺 + 白 + 幺 + 木), each part clickable with its own reading,
-  and which other characters use it as a part.
+  and which other characters use it as a part. The part that gives a
+  character its sound is marked: in 請 (청), that part is 靑 (청).
 - **Browse by sound.** Highlight a single syllable (국) to list every hanja
   read that way. Readings on cards are links too: a character's eum opens its
   homophone list, and a word's hangul shows its other spellings.
@@ -48,6 +49,11 @@ typing `hj` in the address bar searches from anywhere.
 - **Japanese and Chinese readings (optional).** Two settings add each
   character's on'yomi and pinyin beside its Korean reading: 學 is 학 in
   Korean, ガク in Japanese, xué in Mandarin.
+- **Korean language mode.** One setting switches the whole extension
+  into Korean: menus, labels, and definitions. The definitions come from
+  우리말샘, the open dictionary of the National Institute of Korean
+  Language, and each card links to its 우리말샘 entry. If Chrome is set
+  to Korean, the extension starts in Korean.
 - **Private and offline.** The whole dictionary ships inside the extension.
   It makes no network requests and collects no data. Saved words stay on your
   device. See [privacy-policy.html](privacy-policy.html).
@@ -67,6 +73,10 @@ typing `hj` in the address bar searches from anywhere.
 ![Sidebar search](screenshots/5-sidebar-search.png)
 
 *The sidebar's search view.*
+
+![Sidebar search in Korean](screenshots/ko/5-sidebar-search.png)
+
+*The same view in Korean language mode, with 우리말샘 definitions.*
 
 ![Saved words](screenshots/6-saved-words.png)
 
@@ -97,11 +107,12 @@ SPEC.md        the internal spec the implementation follows
 python pipeline/build.py
 ```
 
-Downloads the source corpora into `pipeline/cache/` on first run (~412 MB:
+Downloads the source corpora into `pipeline/cache/` on first run (~600 MB:
 kaikki.org Wiktionary extracts for Korean/Translingual/Japanese, Unicode
-Unihan, a subtitle-derived frequency list), then builds
-`extension/data/*.json` in about 11 seconds from a warm cache and verifies the
-output against a set of anchor entries. See `pipeline/README.md` for details.
+Unihan, a subtitle-derived frequency list, and the 우리말샘 XML, which is
+preprocessed once into a small intermediate file), then builds
+`extension/data/*.json` from a warm cache and verifies the output against a
+set of anchor entries. See `pipeline/README.md` for details.
 
 Tests:
 
@@ -109,14 +120,20 @@ Tests:
 node test/lookup.test.mjs
 ```
 
-UI self-checks: open `test-page/index.html` in a browser and press
-"Run self-checks".
+UI self-checks, headless:
+
+```
+python pipeline/run_selfchecks.py
+```
+
+Or open `test-page/index.html` in a browser and press "Run self-checks".
 
 ## Licenses
 
 - **Code**: [GPL-3.0](LICENSE).
-- **Dictionary data** (`extension/data/*.json`): CC BY-SA 4.0, derived from
-  English Wiktionary (via kaikki.org), the Unicode Unihan database, and the
-  Korean Wikipedia curriculum table. See
+- **Dictionary data** (`extension/data/*.json`): CC BY-SA, derived from
+  English Wiktionary (via kaikki.org), 우리말샘 (National Institute of Korean
+  Language, CC BY-SA 2.0 KR), the Unicode Unihan database, the jōyō kanji
+  table via Wikipedia, and the Korean Wikipedia curriculum table. See
   [extension/data/DATA-LICENSE.md](extension/data/DATA-LICENSE.md) for full
   attribution.
