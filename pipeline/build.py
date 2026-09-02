@@ -827,6 +827,7 @@ def parse_kaikki(path):
 # than they win (卫→衞 vs 衛, 发→髮 vs 發, 团→糰 vs 團, 宽→寛 vs 寬, 须→鬚 vs 須),
 # so kTraditionalVariant outranks those. Shinjitai coverage is unaffected either
 # way: Unihan has no opinion at all on 気/実/楽/戦/続.
+PRIO_ALIAS = -1          # glyph alias (SPEC "Glyph aliases"): B folded into A
 PRIO_KO_ALT = 0          # Korean Wiktionary "alternative form of"
 PRIO_KO_FORMS = 1        # Korean Wiktionary forms tagged "alternative", inverted
 PRIO_MUL_SIMP = 2        # Translingual "Han simp" etymology template
@@ -840,6 +841,7 @@ PRIO_UNI_Z = 9           # Unihan kZVariant
 PRIO_UNI_SEM = 10        # Unihan kSemanticVariant
 
 PRIO_NAMES = {
+    PRIO_ALIAS: "glyph alias",
     PRIO_KO_ALT: "wiktionary-ko alt-of",
     PRIO_KO_FORMS: "wiktionary-ko forms",
     PRIO_MUL_SIMP: "translingual Han-simp",
@@ -1128,6 +1130,55 @@ def parse_edu_tiers(path):
     return tiers
 
 
+# Glyph aliases (SPEC "Glyph aliases" addendum). B leaves hanja.json and
+# variants.json maps B -> A when all four rules hold. Rule 4 protects
+# financial numerals and curriculum characters (lvl m or h).
+GLYPH_ALIAS_NUMERALS = set("壹貳參肆伍陸柒捌玖拾弍叁")
+GLYPH_ALIAS_MIN_A = 5     # A appears in at least this many words keys
+GLYPH_ALIAS_MAX_B = 2     # B appears in at most this many words keys
+# The measured set, a verify anchor: the build's data-driven result must
+# equal it (pairs are "B A").
+GLYPH_ALIASES_EXPECTED = {tuple(p) for p in (
+    "対對 説說 黄黃 変變 状狀 処處 労勞 当當 歩步 称稱 圏圈 総總 乗乘 装裝 "
+    "衞衛 鉱鑛 聴聽 効效 宝寶 郷鄕 横橫 増增 鎮鎭 継繼 禅禪 弥彌 潜潛 偽僞 "
+    "瓶甁 徴徵 寝寢 蛍螢 胆膽 触觸 蛮蠻 庁廳 值値 随隨 陥陷 惨慘 敕勅 砕碎 "
+    "尽盡 囲圍 巻卷 翻飜 概槪 誉譽 並竝 鋭銳 県縣 稲稻 渉涉 奨奬").split()}
+
+
+def glyph_aliases(chars, char_keys, char_word_count, old2new, zvar, edu_tier):
+    """-> ({B: A}, report). Rule 1 sources: the joyo table's old/new pair
+    and Unihan kZVariant (sino.parse_zvariants: the first target, the
+    same link the sino bridge follows). Semantic variants are not a
+    source. A pair is tried in both directions and rule 3 fixes which
+    form is A: usually the joyo old form, but 勅 and 衛 are the Korean
+    standard beside their old forms 敕 and 衞. Both characters must have
+    a hanja.json entry, else the ordinary variant machinery already
+    handles the pair."""
+    pairs = set()
+    for links in (old2new.items(), zvar.items()):
+        for x, y in links:
+            if x in char_keys and y in char_keys and x != y:
+                pairs.add((x, y))
+                pairs.add((y, x))
+    n_cand = len({frozenset(p) for p in pairs})
+    passed, excluded, alias = [], [], {}
+    for b, a in sorted(pairs):
+        if set(chars[a]["readings"]) != set(chars[b]["readings"]):
+            continue
+        if char_word_count[a] < GLYPH_ALIAS_MIN_A \
+                or char_word_count[b] > GLYPH_ALIAS_MAX_B:
+            continue
+        passed.append((b, a))
+        if b in GLYPH_ALIAS_NUMERALS or edu_tier.get(b) in ("m", "h"):
+            excluded.append(b)
+            continue
+        if b in alias and char_word_count[a] <= char_word_count[alias[b]]:
+            continue              # two sources, two A: the busier A wins
+        alias[b] = a
+    return alias, {"candidates": n_cand, "rules123": len(passed),
+                   "excluded": excluded}
+
+
 def parse_unihan_variants(text):
     """Yield (variant, canonical, priority); lower priority number wins."""
     out = []
@@ -1388,8 +1439,33 @@ def verify(hanja_obj, words_obj, variants_obj, decomp_obj=None,
 
     # Regression: a variant that has its own Korean entry must never be
     # remapped, or the popup would show the wrong character's data.
-    for var, gloss in (("医", "동개 예"), ("県", "현"), ("缶", "부")):
+    # 県 is no longer an example here: it is a glyph alias of 縣 (below).
+    for var, gloss in (("医", "동개 예"), ("缶", "부")):
         add("  %s keeps its own entry, stays unmapped (%s)" % (var, gloss),
+            var in chars_out and var not in vmap,
+            "in hanja.json=%s, variants[%s]=%r"
+            % (var in chars_out, var, vmap.get(var)))
+
+    # Glyph aliases (SPEC addendum): the measured list, B -> A in variants
+    # and B gone from hanja.json; the balanced twins and 余 keep their cards.
+    built = {(b, a) for b, a in vmap.items()
+             if a in chars_out and (b, a) in GLYPH_ALIASES_EXPECTED}
+    ga_bad = sorted(b for b, a in GLYPH_ALIASES_EXPECTED
+                    if vmap.get(b) != a or b in chars_out)
+    add("glyph aliases: %d pairs match the SPEC list, none in hanja.json"
+        % len(GLYPH_ALIASES_EXPECTED),
+        len(built) == len(GLYPH_ALIASES_EXPECTED) and not ga_bad,
+        "%d built; wrong: %s" % (len(built), " ".join(ga_bad) or "-"))
+    for var, canon in (("黄", "黃"), ("説", "說"), ("県", "縣")):
+        add("  %s -> %s in variants, %s absent from hanja.json"
+            % (var, canon, var),
+            vmap.get(var) == canon and var not in chars_out,
+            "variants[%s]=%r, in hanja.json=%s"
+            % (var, vmap.get(var), var in chars_out))
+    for var, why in (("余", "curriculum char beside 餘"),
+                     ("晩", "balanced twin of 晚"),
+                     ("秘", "balanced twin of 祕")):
+        add("  %s keeps its own entry (%s)" % (var, why),
             var in chars_out and var not in vmap,
             "in hanja.json=%s, variants[%s]=%r"
             % (var in chars_out, var, vmap.get(var)))
@@ -1590,6 +1666,10 @@ def verify(hanja_obj, words_obj, variants_obj, decomp_obj=None,
             # (2 strokes), which is what keeps 上 emitted at all.
             ("上", [["⺊", "卜"], ["一"]]),
             ("玉", [["王"], ["丶"]]),
+            # glyph-alias parts: the IDS writes the folded twin, the row
+            # opens the Korean-standard card (SPEC "Glyph aliases").
+            ("普", [["並", "竝"], ["日"]]),
+            ("讏", [["衞", "衛"], ["言"]]),
         ]
         bad = ["%s -> %s (want %s)" % (c, json.dumps(dp.get(c), ensure_ascii=False),
                                        json.dumps(want, ensure_ascii=False))
@@ -2217,6 +2297,30 @@ def main(argv):
     for variant, (target, prio) in wiki_alt.items():
         cands.append((variant, target, prio))
 
+    # Glyph aliases (SPEC addendum): decided here, before the map, the words
+    # canonicalization, and every later stage, so all of them see only A.
+    with io.open(JA_JOYO_FILE, encoding="utf-8") as fh:
+        joyo_text = fh.read()
+    _, _, joyo_old2new, _ = sino.parse_joyo(joyo_text)
+    glyph_alias, ga = glyph_aliases(chars, char_keys, char_word_count,
+                                    joyo_old2new,
+                                    sino.parse_zvariants(unihan_text),
+                                    edu_tier)
+    log("  glyph aliases: %s candidate pairs, %s pass rules 1 to 3, %s after "
+        "rule 4%s" % (format(ga["candidates"], ","), ga["rules123"],
+                      len(glyph_alias),
+                      (" (excluded: %s)" % " ".join(ga["excluded"]))
+                      if ga["excluded"] else ""))
+    log("    " + " ".join("%s->%s" % (b, a)
+                          for b, a in sorted(glyph_alias.items())))
+    for b, a in glyph_alias.items():
+        # B's curated derived terms live on A's card; their spellings
+        # canonicalize to A below.
+        chars[a]["derived"].extend(chars[b]["derived"])
+        del chars[b]
+        char_keys.discard(b)
+        cands.append((b, a, PRIO_ALIAS))
+
     def canon_rank(c):
         """Tie-break within one source: Unihan fields are multi-valued
         (药 kTraditionalVariant = 葯 藥) and the first token is not always the
@@ -2231,12 +2335,16 @@ def main(argv):
 
     chosen = {}
     for variant, canonical, prio in cands:
+        # a mapping onto an aliased B lands on A
+        canonical = glyph_alias.get(canonical, canonical)
         if variant == canonical:
             continue                      # self-mapping
         if canonical not in char_keys:
             continue                      # canonical must exist in hanja.json
         if variant in char_keys:
-            continue                      # never shadow a real hanja entry
+            # never shadow a real hanja entry; a glyph alias is the one
+            # exception and has already left char_keys
+            continue
         rank = canon_rank(canonical)
         cur = chosen.get(variant)
         if cur is None or prio < cur[1] or (prio == cur[1] and rank > cur[2]):
@@ -2668,7 +2776,8 @@ def main(argv):
                 uni_strokes[chr(int(p[0][2:], 16))] = int(p[2].split()[0])
     with open(IDS_FILE, "r", encoding="utf-8-sig") as fh:
         decomp_obj, decomp_stats = decomp.build(fh.read(), set(chars_out),
-                                                uni_defs, uni_strokes)
+                                                uni_defs, uni_strokes,
+                                                glyph_alias)
     log("  decomp: %s of %s chars decomposed (%s parts, %s aliased, %s named "
         "shape rows, %s unnamed)"
         % (format(decomp_stats["emitted"], ","),
@@ -2712,8 +2821,6 @@ def main(argv):
     # Built after chars_out and words_out are final: the card's readings
     # order is the alignment master, and the compound bridge walks the
     # emitted words.json keys.
-    with io.open(JA_JOYO_FILE, encoding="utf-8") as fh:
-        joyo_text = fh.read()
     with io.open(JA_EXTFREQ_FILE, encoding="utf-8", errors="replace") as fh:
         ja_freq_text = fh.read()
     sino_obj, sino_report = sino.build(
@@ -2834,6 +2941,8 @@ def main(argv):
     log("words      : %-9s (expect >= 20000)" % format(len(words_out), ","))
     log("byHangul   : %-9s" % format(len(by_hangul), ","))
     log("variants   : %-9s (expect >= 1000)" % format(len(variant_map), ","))
+    log("aliases    : %-9s (glyph aliases folded out of chars)"
+        % len(glyph_alias))
     log("native     : %-9s (expect ~ 16000; maxLen %d)"
         % (format(len(native_words), ","), native_obj["maxLen"]))
     log("sino       : %-9s (ja %s / zh %s; expect ~ 3500 ja, ~ 10000 zh)"

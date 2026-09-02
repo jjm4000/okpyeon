@@ -72,6 +72,18 @@ current review clears.
   牙旗 too, a 1.2M-entry dictionary contains everything), a single
   narrow flag (舍廊 would lead for 사랑), and a tuned higher bar. The
   name lessCommon was picked over shadowed, minor, secondary.
+- **Glyph aliases.** User-raised: 黃 and 黄 were separate cards, the
+  Japanese-form twin empty, because Wiktionary gives both a Korean
+  entry and the variants build never shadows a character with one. A
+  narrow exception folds 54 shinjitai and new-form twins (対, 説, 黄,
+  変, 状, 処, 労, 当, 歩, 県, 宝 …) into their Korean-standard
+  character when a jōyō old/new pair or Unihan kZVariant joins them,
+  readings match, one side carries the vocabulary, and the folded side
+  is neither a financial numeral nor a curriculum character (余 stays
+  beside 餘). hanja.json 9,469 to 9,415; selecting 黄 opens 黃 with the
+  variant note, as 学 opens 學. Rejected: Unihan semantic-variant links
+  as a source (746 pairs including 面/麵 and 後/后, distinct
+  characters). Balanced pairs like 晚/晩 stay separate.
 - **Headless self-check runner.** `python pipeline/run_selfchecks.py`
   runs both test pages headless over the CDP client now shared with the
   screenshot tool (pipeline/cdp.py) and reports per-check results. It

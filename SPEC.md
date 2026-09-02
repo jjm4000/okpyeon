@@ -2774,9 +2774,12 @@ variants.json maps B -> A, every surface already handles it exactly as
 学 -> 學: A's card with the "B -> A" variant note) when ALL hold:
 
 1. A source says same character, two styles, not merely related: the
-   jōyō table's old/new pair (old form = A, new form = B) or a Unihan
-   kZVariant link. Semantic-variant links are NOT a source (they
-   produced 面/麵, 後/后, 制/製, 六/陸, which are distinct characters).
+   jōyō table's old/new pair or a Unihan kZVariant link (the first
+   target, the link the sino bridge already follows). The pair is
+   tried in BOTH directions and rule 3 decides which side is A: for
+   敕/勅 and 衞/衛 Korea's standard is the jōyō NEW form. Semantic-
+   variant links are NOT a source (they produced 面/麵, 後/后, 制/製,
+   六/陸, which are distinct characters).
 2. A and B have identical eum sets.
 3. Lopsided vocabulary: A appears in at least 5 words.json keys and B
    in at most 2 (the keys that do carry B canonicalize to A).
@@ -2797,11 +2800,17 @@ the Korean-definitions glyph hop already shares their definitions.
 
 Build: the alias set is computed after hanja entries and words keys
 exist and BEFORE words canonicalization, compounds, decomposition, and
-sino, so every downstream file sees only A. The build prints the alias
-list; verify anchors 黄 -> 黃 and 説 -> 說 in variants.json, 黄 and 説
-absent from hanja.json, 余 present, 晩 present, and reports the new
-character count (the listing's 9,469 becomes that number). Everything
-outside the alias set is byte-identical.
+sino, so every downstream file sees only A; a folded twin that appears
+as a decomposition part resolves to A as a clickable row (讏's 衞 opens
+衛, 普's 並 opens 竝). The build prints the alias list and verify pins
+it equal to the 54 above; anchors 黄 -> 黃, 説 -> 說, 県 -> 縣 in
+variants.json (県 was the never-shadow guard's own example and now
+demonstrates the exception; 医 and 缶 keep guarding), 余, 晩, 秘
+present. Built 2026-09-01: hanja.json 9,469 -> 9,415 characters,
+variants 3,737 -> 3,791; eleven words keys merged into their A
+spelling (入鄕循俗, 槪念, 英語圈, 藥甁 gained senses); sino.json lost
+the 54 twins and re-aligned three readings the bridge now sees through
+the alias. Everything outside the alias set is byte-identical.
 
 ## Verification expectations
 

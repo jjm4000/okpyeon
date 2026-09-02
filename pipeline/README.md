@@ -196,9 +196,24 @@ provides (亜→亞, 剣→劍, 単→單, 図→圖, 売→賣, 徳→德, 桜�
 canonical exists in `hanja.json`, the variant does **not** have its own
 `hanja.json` entry, and the two differ. The never-shadow rule is deliberate and
 load-bearing: 医 has a real Korean entry (동개 예, "quiver") that has nothing to
-do with 醫, and 県 and 缶 likewise, so those stay unmapped even though a
+do with 醫, and 缶 likewise, so those stay unmapped even though a
 shinjitai link exists. The output is also chain-free — no canonical is itself a
 variant key — so the service worker's single-pass mapping is sufficient.
+
+**Glyph aliases** (SPEC "Glyph aliases" addendum) are the one exception to
+never-shadow. Wiktionary also gives Korean entries to Japanese new-form twins of
+Korean-standard characters, so 黄 used to get an empty card beside 黃. When the
+jōyō old/new column or a Unihan `kZVariant` link joins two characters that both
+have entries, their eum sets are identical, one appears in at least 5 `words`
+keys and the other in at most 2, and the minor one is neither a financial
+numeral nor a middle/high curriculum character, the minor one (B) is folded
+into the other (A): B leaves `hanja.json`, `variants.json` maps B → A, and the
+`words` keys spelled with B canonicalize to A before anything downstream runs.
+The pair is tried in both directions and the vocabulary count picks A; for 勅
+and 衛 that is the jōyō new form. The build prints the list (54 pairs; 余 is
+excluded by the curriculum rule and keeps its card beside 餘) and `verify()`
+checks it against the SPEC's list, so a data refresh that changes the set is
+caught rather than shipped.
 
 **Conflict resolution.** Sources are ranked (see `PRIO_*` in `build.py`):
 Korean Wiktionary → Translingual `Han simp` → Unihan `kTraditionalVariant` →
@@ -406,7 +421,9 @@ decomposition on a mirror, rotation or subtraction operator, or on a `？` left
 behind by an unrepresentable placeholder. A part above the BMP cannot be
 trusted to render, so it is replaced by its own decomposition (乾 = 𠦝 + 乞
 becomes 十 + 早 + 乞), depth-capped at 6, dropping the character if it will
-not reduce.
+not reduce. A part written as a glyph-alias twin (the IDS says 衞 or 並) keeps
+its display glyph and opens the Korean-standard card, like 亻 → 人: 讏 shows
+衞 → 衛 and 普 shows 並 → 竝.
 
 Radical display forms alias to the character they stand for: NFKD covers the
 two radical blocks (⺊ → 卜), a pinned table covers the forms encoded as
@@ -557,8 +574,10 @@ Every run ends with counts, output sizes, and spot-checks:
   every-sense rule.
 * No gloss anywhere ends in `…`, and 韓's eumhun is exactly
   `[한국(韓國) 한, 나라 이름 한]` with no marker left in any hun or eum.
-* 医, 県, 缶 keep their own Korean entries and stay **unmapped** (regression
-  guard on the never-shadow invariant).
+* 医, 缶 keep their own Korean entries and stay **unmapped** (regression
+  guard on the never-shadow invariant); the 54 glyph aliases match the SPEC
+  list, with 黄 → 黃, 説 → 說, 県 → 縣 mapped and gone from `hanja.json`, while
+  余, 晩, 秘 keep their own cards.
 * 國民 → 국민 in `words`, and 國民 in `byHangul[국민]`.
 * Every `words` key is variant-canonical (canonicalizing it is a no-op),
   `byHangul` points only at existing keys, `cw`/compound spellings are

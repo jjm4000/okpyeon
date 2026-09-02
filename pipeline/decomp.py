@@ -224,14 +224,30 @@ def short_name(defn: str) -> str:
 
 # ---------------------------------------------------------------- build
 
-def build(ids_text: str, dict_chars, unihan_defs, unihan_strokes=None):
+def build(ids_text: str, dict_chars, unihan_defs, unihan_strokes=None,
+          glyph_alias=None):
     """decomp.json object plus a counts dict.
 
     Emitted only for characters the dictionary has a card for; the runtime
-    never asks about anything else.
+    never asks about anything else. glyph_alias: variants.json's glyph
+    aliases (B -> A, SPEC "Glyph aliases"); a part written as a folded
+    twin keeps its display glyph and targets A's card, the way 亻 -> 人
+    does (讏 shows 衞 -> 衛).
     """
     seqs, placeholders = parse_ids(ids_text)
     strokes = unihan_strokes or {}
+    twins = glyph_alias or {}
+
+    def target(g):
+        """The card a display glyph opens: the radical alias, else the
+        glyph-alias twin, else the glyph itself."""
+        return alias(g) or twins.get(g) or g
+
+    def carded(t, ch):
+        """A part must open a card other than the one it is on: 縣 is
+        written 県 + 系 and 県 folds into 縣 itself, so that part is
+        card-less here (dead-end split, else a shape row)."""
+        return t in dict_chars and t != ch
     parts_out = {}
     stats = {"considered": 0, "nosource": 0,
              "operator": 0, "placeholder": 0, "skipthrough": 0,
@@ -244,7 +260,7 @@ def build(ids_text: str, dict_chars, unihan_defs, unihan_strokes=None):
         split of nothing but strokes carries no information."""
         return max(strokes.get(g, 0), strokes.get(t, 0)) >= 2
 
-    def expand_dead(g, depth):
+    def expand_dead(g, depth, ch):
         """Dead-end rule (SPEC): a card-less part is replaced by its own
         parts when EVERY resulting piece carries a card (雔 -> 隹 + 隹 on
         雙). All-or-nothing: a split that would introduce even one new
@@ -258,11 +274,11 @@ def build(ids_text: str, dict_chars, unihan_defs, unihan_strokes=None):
             return None
         out = []
         for s in sub:
-            t = alias(s) or s
-            if t in dict_chars:
+            t = target(s)
+            if carded(t, ch):
                 out.append((s, t))
                 continue
-            deeper = expand_dead(s, depth + 1)
+            deeper = expand_dead(s, depth + 1, ch)
             if deeper is None:
                 return None
             out.extend(deeper)
@@ -276,16 +292,16 @@ def build(ids_text: str, dict_chars, unihan_defs, unihan_strokes=None):
             continue
         pairs = []
         for g in glyphs:
-            t = alias(g) or g
-            if t in dict_chars:
+            t = target(g)
+            if carded(t, ch):
                 pairs.append((g, t))
                 continue
-            expanded = expand_dead(g, 0)
+            expanded = expand_dead(g, 0, ch)
             if expanded:
                 stats["deadend"] += 1
                 pairs.extend(expanded)
             else:
-                pairs.append((g, t))
+                pairs.append((g, g if t == ch else t))
         # Visibility: a two-part split with nothing clickable in it is
         # stroke soup (匕 = 乚 + ㇒), and the card is better with no row.
         if len(pairs) < 2 or not any(t in dict_chars for _, t in pairs):

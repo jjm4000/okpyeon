@@ -62,13 +62,13 @@ Two settings add each character's on'yomi and pinyin beside its Korean reading: 
 One setting switches the whole extension into Korean: menus, labels, and definitions. The definitions come from 우리말샘, the open dictionary of the National Institute of Korean Language, and each card links to its 우리말샘 entry. If Chrome is set to Korean, the extension starts in Korean.
 
 --  WHAT IS INSIDE  --
-- 9,469 hanja characters with readings, eumhun, definitions, levels and compounds
+- 9,415 hanja characters with readings, eumhun, definitions, levels and compounds
 - 27,627 Sino-Korean words indexed by both hanja and hangul
 - 15,527 native Korean words, included when the option is on
 - Korean definitions for 25,510 Sino-Korean words, 12,071 native words, and 1,795 characters
 - Japanese readings for 3,566 characters and Mandarin readings for 9,249
 - 9,178 character decompositions, with the sound-giving part marked on 7,165
-- 3,737 variant mappings covering simplified Chinese and Japanese shinjitai
+- 3,791 variant mappings covering simplified Chinese and Japanese shinjitai
 
 --  PRIVATE AND OFFLINE  --
 The whole dictionary ships inside the extension. It makes no network requests and collects no data, and saved words stay on your device.
@@ -124,13 +124,13 @@ Detailed description:
 설정 하나로 메뉴, 항목 이름, 뜻풀이가 모두 한국어로 바뀝니다. 뜻풀이는 국립국어원의 개방형 사전 우리말샘에서 가져오며, 카드마다 우리말샘 항목으로 가는 링크가 있습니다. 크롬이 한국어로 설정되어 있으면 처음부터 한국어로 시작합니다.
 
 --  들어 있는 것  --
-- 한자 9,469자의 음, 음훈, 뜻풀이, 등급, 단어
+- 한자 9,415자의 음, 음훈, 뜻풀이, 등급, 단어
 - 한자어 27,627개, 한자와 한글 양쪽으로 찾기
 - 고유어 15,527개 (선택 사항을 켰을 때)
 - 한자어 25,510개, 고유어 12,071개, 한자 1,795자의 한국어 뜻풀이
 - 일본어 읽기 3,566자, 중국어 읽기 9,249자
 - 한자 짜임 9,178자, 그중 7,165자에 소리 부분 표시
-- 간체와 일본 신자체를 포함한 이체자 대응 3,737개
+- 간체와 일본 신자체를 포함한 이체자 대응 3,791개
 
 --  개인 정보와 오프라인  --
 사전 전체가 확장 프로그램 안에 들어 있습니다. 네트워크 요청을 하지 않고, 아무 정보도 수집하지 않으며, 저장한 단어는 기기 안에만 있습니다.
