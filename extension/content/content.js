@@ -2700,6 +2700,14 @@
   // A single POS rides in the head beside the NATIVE marker. Several POS
   // entries for one headword render as one POS-chipped gloss block each, so
   // the noun senses and the verb senses never share a numbering.
+  // native.json's POS codes render through the message table (the ko
+  // sweep missed them: capitalized codes are not table values); an unknown
+  // code falls back to the capitalized code, as before.
+  var POS_CODES = ["noun", "verb", "adj", "adv", "intj", "pron", "num", "det"];
+  function posLabel(code) {
+    return POS_CODES.indexOf(code) >= 0 ? t("pos." + code) : capitalizeSense(code);
+  }
+
   function buildNativeCard(word, entries, spellings) {
     var card = el("div", "card native");
 
@@ -2708,7 +2716,7 @@
     var meta = el("div", "headmeta");
     var line = el("div", "native-meta");
     if (entries.length === 1 && entries[0].pos) {
-      line.appendChild(el("span", "pos-chip", capitalizeSense(entries[0].pos)));
+      line.appendChild(el("span", "pos-chip", posLabel(entries[0].pos)));
     }
     line.appendChild(el("span", "native-tag", t("marker.native")));
     meta.appendChild(line);
@@ -2726,7 +2734,7 @@
     } else {
       entries.forEach(function (entry) {
         var block = el("div", "native-pos");
-        if (entry.pos) block.appendChild(el("span", "pos-chip", capitalizeSense(entry.pos)));
+        if (entry.pos) block.appendChild(el("span", "pos-chip", posLabel(entry.pos)));
         appendDefinitions(block, entry, entry.glosses);
         if (block.firstChild) card.appendChild(block);
       });

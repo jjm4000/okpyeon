@@ -29,6 +29,30 @@
   "marker_native": {
     "message": "고유어"
   },
+  "pos_noun": {
+    "message": "명사"
+  },
+  "pos_verb": {
+    "message": "동사"
+  },
+  "pos_adj": {
+    "message": "형용사"
+  },
+  "pos_adv": {
+    "message": "부사"
+  },
+  "pos_intj": {
+    "message": "감탄사"
+  },
+  "pos_pron": {
+    "message": "대명사"
+  },
+  "pos_num": {
+    "message": "수사"
+  },
+  "pos_det": {
+    "message": "관형사"
+  },
   "marker_phonetic": {
     "message": "소리"
   },

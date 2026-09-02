@@ -6001,6 +6001,9 @@
       await wait(60);
       check("KO: the native card's marker", api.query(".card.native .native-tag").textContent === "고유어",
         (api.query(".card.native") || {}).textContent);
+      check("KO: the native card's POS chip renders through the table (명사, not the capitalized code)",
+        !!api.query(".card.native .pos-chip") && api.query(".card.native .pos-chip").textContent === "명사",
+        (api.query(".card.native .pos-chip") || {}).textContent);
       sweepView("하늘 native card");
 
       // The sibling readings, both languages on.

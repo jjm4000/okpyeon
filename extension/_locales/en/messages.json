@@ -29,6 +29,30 @@
   "marker_native": {
     "message": "native"
   },
+  "pos_noun": {
+    "message": "Noun"
+  },
+  "pos_verb": {
+    "message": "Verb"
+  },
+  "pos_adj": {
+    "message": "Adj"
+  },
+  "pos_adv": {
+    "message": "Adv"
+  },
+  "pos_intj": {
+    "message": "Intj"
+  },
+  "pos_pron": {
+    "message": "Pron"
+  },
+  "pos_num": {
+    "message": "Num"
+  },
+  "pos_det": {
+    "message": "Det"
+  },
   "marker_phonetic": {
     "message": "PHONETIC"
   },
