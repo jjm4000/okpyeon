@@ -80,7 +80,7 @@ def render(width, height, spec):
     # Right: wordmark and what it is.
     tx = round(spec["tx"] * SS)
     d.text((tx, round(spec["name_y"] * SS)), "Okpyeon", font=name, fill=WHITE)
-    for i, line in enumerate(("Hanja popup dictionary", "for Korean learners")):
+    for i, line in enumerate(("Hanja popup dictionary", "한자 팝업 사전")):
         d.text((tx, round((spec["tag_y"] + i * spec["tag_lh"]) * SS)),
                line, font=tag, fill=MIST)
 
