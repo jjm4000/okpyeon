@@ -420,6 +420,95 @@ NOT_PLACE_OVERRIDES = {
 
 RE_HANGUL_ANY = re.compile(r"[가-힣]")
 
+# Hybrid parts (SPEC "Whole-word native precedence and hybrid parts"): the
+# 우리말샘 origin segments of a 혼종어 headword, walked against the headword.
+# A 한자 segment consumes one syllable per character; a 고유어 or 외래어
+# segment must match the headword literally at that position. Parts are
+# emitted only when the walk consumes the headword exactly. Any other
+# language_type yields none: a loan segment carries the source spelling
+# ("guard" typed 영어), never hangul, so a loan-bearing hybrid has no parts.
+PART_HANGUL_TYPES = frozenset({"고유어", "외래어"})
+# Band for the verify check; measured 2026-09-05.
+PARTS_LOW = 1000
+
+
+def hybrid_parts(hangul, segments):
+    """-> (parts, None), or (None, reason) when the walk fails."""
+    parts = []
+    pos = 0
+    for orig, ltype in segments:
+        seg = RE_WS.sub("", unicodedata.normalize("NFC", orig or ""))
+        if not seg:
+            return None, "empty segment"
+        if ltype == "한자":
+            if not all_han(seg):
+                return None, "non-hanja text in a 한자 segment"
+            syl = hangul[pos:pos + len(seg)]
+            if len(syl) < len(seg):
+                return None, "hanja segment overruns the headword"
+            parts.append({"hanja": seg, "hangul": syl})
+        elif ltype in PART_HANGUL_TYPES:
+            if not hangul.startswith(seg, pos):
+                return None, "%s segment does not match the headword" % ltype
+            parts.append({"hangul": seg})
+        else:
+            return None, "language_type " + (ltype or "(none)")
+        pos += len(seg)
+    if pos != len(hangul):
+        return None, "segments end before the headword does"
+    return parts, None
+
+
+# Mixed forms (SPEC "MIXED-FORM ADMISSION"): (hangul, POS) -> the hanja-
+# tagged forms of a Wiktionary lemma that mix han characters and hangul
+# (工夫하다, 全혀, 先生님), in extract order. Such a lemma is a hybrid; a
+# form that is all han means Sino-Korean and keeps the lemma out.
+mixed_forms = {}
+RE_HAN_RUN = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff"
+                        r"\U00020000-\U0003134f]+|[가-힣]+")
+
+
+def mixed_form_segments(form):
+    """A mixed form as hybrid_parts segments: han runs typed 한자, hangul
+    runs typed 고유어. Affix hyphens and spaces are dropped; any other
+    character (a digit, a Latin letter) yields None."""
+    form = re.sub(r"[-\s]", "", form)
+    segs = []
+    pos = 0
+    for m in RE_HAN_RUN.finditer(form):
+        if m.start() != pos:
+            return None
+        run = m.group()
+        segs.append((run, "한자" if all_han(run) else "고유어"))
+        pos = m.end()
+    if pos != len(form) or not segs:
+        return None
+    return segs
+
+
+def mixed_form_parts(hangul, forms, words_out):
+    """Parts from the first mixed form that walks, taking the forms in
+    words.json frequency order of their hanja stem (SPEC "DOMINANT
+    HOMOGRAPH", applied to a lemma with several forms: 始作하다 before
+    詩作하다), else extract order. -> (parts, None) or (None, reason)."""
+    def rank(item):
+        i, form = item
+        segs = mixed_form_segments(form) or ()
+        stem = urimalsaem.hanja_stem(segs)
+        f = [x["f"] for x in words_out.get(stem, ()) if "f" in x]
+        return (min(f) if f else urimalsaem.FREQ_UNRANKED, i)
+
+    why = "no mixed form"
+    for _, form in sorted(enumerate(forms), key=rank):
+        segs = mixed_form_segments(form)
+        if segs is None:
+            why = "mixed form has other characters"
+            continue
+        parts, why = hybrid_parts(hangul, segs)
+        if parts:
+            return parts, None
+    return None, why
+
 
 def etym_origin_of(o):
     """Origin of an entry from its etymology templates, else None. A
@@ -817,19 +906,34 @@ def handle_word_entry(o):
 def collect_native(o, hangul):
     """native.json candidates, gathered on the same kaikki stream. The bar
     is quality, NOT frequency (SPEC: a cutoff was measured and rejected).
-    A hanja spelling means sino-Korean, words.json territory; the test is
-    the "hanja" form tag, not the presence of han characters, because a
-    native word may carry a rare untagged transcription (사랑's 思郞,
-    tagged "sometimes") that must not disqualify it."""
+    An all-han hanja spelling means sino-Korean, words.json territory;
+    the test is the "hanja" form tag, not the presence of han characters,
+    because a native word may carry a rare untagged transcription (사랑's
+    思郞, tagged "sometimes") that must not disqualify it. A hanja tag
+    whose form mixes han and hangul (工夫하다) marks a hybrid instead
+    (SPEC "MIXED-FORM ADMISSION"): the lemma is admitted and the form
+    kept for its parts."""
     pos = o.get("pos") or ""
     if pos not in NATIVE_POS:
         return
-    for f in o.get("forms") or []:
-        if "hanja" in (f.get("tags") or []):
-            return
+    tagged = [str(f.get("form") or "") for f in o.get("forms") or []
+              if "hanja" in (f.get("tags") or [])]
     for h in o.get("head_templates") or []:
-        if (h.get("args") or {}).get("hanja"):
-            return
+        v = (h.get("args") or {}).get("hanja")
+        if v:
+            tagged.append(str(v))
+    mixed = []
+    for raw in tagged:
+        for part in re.split(r"[,/]", raw):
+            form = part.strip()
+            has_han = any(is_han(c) for c in form)
+            if has_han and not RE_HANGUL_ANY.search(form):
+                return
+            if has_han and form not in mixed:
+                mixed.append(form)
+    if mixed:
+        known = mixed_forms.setdefault((hangul, pos), [])
+        known.extend(f for f in mixed if f not in known)
     note_etym_origin(o, hangul, pos)
     # Entries whose senses all fail the bar leave an empty gloss list here;
     # the emit step drops those rather than shipping glossless rows.
@@ -1954,6 +2058,68 @@ def verify(hanja_obj, words_obj, variants_obj, decomp_obj=None,
             add("native origin: %s %s" % (h, want),
                 origin(h, pos) == want,
                 json.dumps(nw.get(h), ensure_ascii=False))
+        # Hybrid parts (SPEC "Whole-word native precedence and hybrid
+        # parts"): the SPEC's anchors, never on a non-hybrid, and every
+        # parts list reassembles its headword (hanja parts one syllable
+        # per character). 공부하다, 전혀 and 선생님 enter through the
+        # mixed-form rule (Wiktionary's only hanja tag on them is a mixed
+        # form); 연습하다 and 상하다 pin the dominant homograph.
+        def parts_of(h, pos):
+            e = next((e for e in nw.get(h) or [] if e["pos"] == pos), None)
+            return e.get("parts") if e else None
+
+        for h, pos, want in (
+                ("가공되다", "verb",
+                 [{"hanja": "加工", "hangul": "가공"}, {"hangul": "되다"}]),
+                ("이해하다", "verb",
+                 [{"hanja": "理解", "hangul": "이해"}, {"hangul": "하다"}]),
+                ("공부하다", "verb",
+                 [{"hanja": "工夫", "hangul": "공부"}, {"hangul": "하다"}]),
+                ("전혀", "adv",
+                 [{"hanja": "全", "hangul": "전"}, {"hangul": "혀"}]),
+                ("선생님", "noun",
+                 [{"hanja": "先生", "hangul": "선생"}, {"hangul": "님"}]),
+                ("연습하다", "verb",
+                 [{"hanja": "練習", "hangul": "연습"}, {"hangul": "하다"}]),
+                ("상하다", "verb",
+                 [{"hanja": "傷", "hangul": "상"}, {"hangul": "하다"}])):
+            add("native parts: %s == %s" % (h, " + ".join(
+                    p.get("hanja", p["hangul"]) for p in want)),
+                parts_of(h, pos) == want,
+                json.dumps(nw.get(h), ensure_ascii=False))
+        for h, pos in (("공부하다", "verb"), ("전혀", "adv"),
+                       ("선생님", "noun")):
+            add("native origin: %s hybrid (mixed-form admission)" % h,
+                origin(h, pos) == "hybrid", "origin %s" % origin(h, pos))
+        stray = [h for h, rows in nw.items() for e in rows
+                 if "parts" in e and e.get("origin") != "hybrid"]
+        add("native parts: never on a non-hybrid", not stray,
+            " ".join(stray[:5]))
+
+        def well_formed(h, ps):
+            return (bool(ps)
+                    and "".join(p["hangul"] for p in ps) == h
+                    and all(p["hangul"]
+                            and set(p) in ({"hangul"}, {"hanja", "hangul"})
+                            and ("hanja" not in p
+                                 or (all_han(p["hanja"])
+                                     and len(p["hanja"]) == len(p["hangul"])))
+                            for p in ps))
+
+        broken = [h for h, rows in nw.items() for e in rows
+                  if "parts" in e and not well_formed(h, e["parts"])]
+        add("native parts: every parts list reassembles its headword",
+            not broken, " ".join(broken[:5]))
+        n_hybrid = sum(1 for rows in nw.values() for e in rows
+                       if e.get("origin") == "hybrid")
+        n_parts = sum(1 for rows in nw.values() for e in rows
+                      if "parts" in e)
+        add("native parts: hybrids with parts (at least %d, measured "
+            "2026-09-05)" % PARTS_LOW,
+            PARTS_LOW <= n_parts <= n_hybrid,
+            "%s of %s hybrids carry parts, %s without"
+            % (format(n_parts, ","), format(n_hybrid, ","),
+               format(n_hybrid - n_parts, ",")))
         add("native: every NOT_PLACE_OVERRIDES entry is out of the lane "
             "(%d listed)" % len(NOT_PLACE_OVERRIDES),
             all(place(h) is None for h in NOT_PLACE_OVERRIDES),
@@ -2141,6 +2307,12 @@ def verify(hanja_obj, words_obj, variants_obj, decomp_obj=None,
         add("ko anchor: 서울|name carries a sense code and a 수도 definition",
             "s" in seoul and any("수도" in d for d in seoul.get("d") or []),
             json.dumps(seoul, ensure_ascii=False)[:160])
+        # Dominant homograph (SPEC): the definition follows the same
+        # headword as the parts, 練習하다 (practice), not 沿襲하다.
+        yeonseup = kn.get("연습하다|verb") or {}
+        add("ko anchor: 연습하다|verb defines practice (되풀이하여 익히다)",
+            any("익히" in d for d in yeonseup.get("d") or []),
+            json.dumps(yeonseup, ensure_ascii=False)[:160])
 
         want = ["학예를 배우는 사람.", "학교에 다니면서 공부하는 사람."]
         add("ko anchor: 學生 = 학예를 배우는 사람 / 학교에 다니면서 공부하는 사람",
@@ -3141,40 +3313,108 @@ def main(argv):
     two_syllable = sorted(h for h in place_admit if len(h) == 2)
     log("  places, two-syllable admits for review (%d): %s"
         % (len(two_syllable), " ".join(two_syllable)))
+    # ---- one 우리말샘 headword per natives key (SPEC "DOMINANT
+    # HOMOGRAPH"): needs words.json's f buckets, so it runs here and not
+    # in the preprocess. Both the parts below and ko.json's natives lane
+    # read the resolved tables.
+    n_repointed, dom_report = urimalsaem.pick_dominant(ko_inter, words_out)
+    log("  dominant headword: %s natives keys with several headwords, %s "
+        "re-pointed away from the first (%s)"
+        % (format(dom_report["homograph_keys"], ","),
+           format(n_repointed, ","),
+           " ".join("%s=%d" % kv
+                    for kv in sorted(dom_report["by_rule"].items()))))
     # ---- origin on every row: 우리말샘 word_type of the matched headword
-    # (any corpus POS mapping onto the row's POS, table order), else the
+    # (any corpus POS mapping onto the row's POS, table order), else a
+    # mixed hanja+hangul form on the Wiktionary lemma (hybrid), else the
     # extract's etymology templates, else absent.
-    native_types = ko_inter.get("native_types", {})
+    native_types = ko_inter["native_types"]
+    native_segments = ko_inter["native_segments"]
     origin_counts = collections.Counter()
+    # Hybrid parts: from the origin segments of the 우리말샘 key that
+    # supplied the origin, else from the lemma's mixed form; a hybrid
+    # known only from the etymology templates has none.
+    parts_counts = collections.Counter()
+    parts_why = collections.Counter()
+    mixed_admitted = []
     for hangul, rows in native_words.items():
         for r in rows:
             origin = None
+            ukey = None
             for upos, npos in urimalsaem.POS_MAP.items():
                 if npos != r["pos"]:
                     continue
+                ukey = hangul + "|" + upos
                 origin = urimalsaem.WORD_TYPE_ORIGIN.get(
-                    native_types.get(hangul + "|" + upos))
+                    native_types.get(ukey))
                 if origin:
                     break
             src = "우리말샘"
+            forms = mixed_forms.get((hangul, r["pos"]))
             if not origin:
-                origin = etym_origins.get((hangul, r["pos"]))
-                src = "wiktionary"
+                ukey = None
+                if forms:
+                    origin = "hybrid"
+                    src = "wiktionary mixed form"
+                    mixed_admitted.append(hangul)
+                else:
+                    origin = etym_origins.get((hangul, r["pos"]))
+                    src = "wiktionary"
             if origin:
                 r["origin"] = origin
                 origin_counts[origin] += 1
                 origin_counts["via " + src] += 1
             else:
                 origin_counts["unmarked"] += 1
+            if origin != "hybrid":
+                continue
+            parts = why = None
+            if ukey is None:
+                why = "hybrid by wiktionary etymology only"
+            elif not native_segments.get(ukey):
+                why = "no origin segments in the corpus"
+            else:
+                parts, why = hybrid_parts(hangul, native_segments[ukey])
+            if not parts and forms:
+                parts, why = mixed_form_parts(hangul, forms, words_out)
+                parts_counts["via mixed form"] += bool(parts)
+                if parts and src == "우리말샘":
+                    parts_counts["mixed form behind 우리말샘"] += 1
+            if parts:
+                r["parts"] = parts
+                parts_counts["with"] += 1
+            else:
+                parts_counts["without"] += 1
+                parts_why[why] += 1
     log("  origin: native %s, loan %s, hybrid %s, unmarked %s "
-        "(%s rows; 우리말샘 %s, wiktionary etymology %s)"
+        "(%s rows; 우리말샘 %s, wiktionary mixed form %s, wiktionary "
+        "etymology %s)"
         % (format(origin_counts["native"], ","),
            format(origin_counts["loan"], ","),
            format(origin_counts["hybrid"], ","),
            format(origin_counts["unmarked"], ","),
            format(sum(len(v) for v in native_words.values()), ","),
            format(origin_counts["via 우리말샘"], ","),
+           format(origin_counts["via wiktionary mixed form"], ","),
            format(origin_counts["via wiktionary"], ",")))
+    # Rows the gate would have excluded before the mixed-form rule.
+    mixed_rows = [(h, p) for (h, p) in mixed_forms
+                  if any(r["pos"] == p for r in native_words.get(h, ()))]
+    log("  mixed forms: %s rows (%s headwords) admitted through the "
+        "mixed-form rule; origin from the form alone on %s rows, from "
+        "우리말샘 on the rest; most frequent: %s"
+        % (format(len(mixed_rows), ","),
+           format(len({h for h, _ in mixed_rows}), ","),
+           format(len(mixed_admitted), ","),
+           " ".join(sorted({h for h, _ in mixed_rows},
+                           key=lambda h: (-ext_freq.get(h, 0), h))[:10])))
+    log("  hybrid parts: %s of %s hybrids carry parts (%s walked from a "
+        "mixed form, %s of those behind a 우리말샘 origin); without: %s"
+        % (format(parts_counts["with"], ","),
+           format(parts_counts["with"] + parts_counts["without"], ","),
+           format(parts_counts["via mixed form"], ","),
+           format(parts_counts["mixed form behind 우리말샘"], ","),
+           " ".join("%s=%d" % kv for kv in parts_why.most_common())))
     # Romanized search v2: no `rr` block. The runtime computes forms with
     # extension/rr.js, so native.json carries only the words themselves.
     native_obj = {"version": 1,

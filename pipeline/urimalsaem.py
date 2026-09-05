@@ -27,9 +27,16 @@ build       consumes only the intermediate and matches it onto the finished
             a 명사 지명 sense also lands on the "hangul|지명" key, which
             maps to native.json's place rows ("hangul|name"); surname
             senses sort last; every other proper-noun class and every
-            work/slang sense is dropped. The intermediate also keeps the
-            word_type behind each natives key ("native_types"), which the
-            build turns into native.json's origin field. The chars lane has a second,
+            work/slang sense is dropped. The intermediate keeps every
+            우리말샘 headword behind a natives key ("native_heads": word_type
+            and origin segments per headword; each row names its headword
+            by index). pick_dominant, run by the build once words.json
+            carries its frequency buckets, resolves each key to ONE
+            headword (SPEC "DOMINANT HOMOGRAPH"), whose word_type becomes
+            native.json's origin, whose segments become the parts of a
+            hybrid, and whose senses become the ko.json entry, so the
+            mixed-script spelling and the definition agree. The chars
+            lane has a second,
             lower-priority source (SPEC "SECOND CHAR SOURCE"): the 한자
             section of Korean Wiktionary, read from the cached kaikki dump
             by parse_kowiktionary and used only where 우리말샘 has no sense
@@ -72,7 +79,7 @@ RAW_URL = ("https://raw.githubusercontent.com/spellcheck-ko/korean-dict-nikl/"
            "master/opendict/%s")
 
 CAP = 2                       # definitions per entry (SPEC: numbered, cap two)
-INTERMEDIATE_VERSION = 2
+INTERMEDIATE_VERSION = 4
 
 # Sense selection (SPEC, user-approved). Senses of any type but 일반어 are
 # dropped (방언, 옛말, 북한어). PROPER_NOUN_CATS drops the encyclopedic
@@ -471,10 +478,15 @@ def preprocess(chunks=None):
             "natives": collections.OrderedDict(),
             "chars": collections.OrderedDict()}
     per_head = collections.Counter()     # (tier, lane, headword, key) -> kept
-    # word_type of the headword behind each natives key, per tier, so the
-    # build can mark origin from the tier that survives (first headword
-    # on a key wins; the tag is per headword, not per sense).
-    ntype = {}
+    # Every headword behind a natives key, in corpus order: [word_type,
+    # segments] with the segments as [original_language, language_type]
+    # pairs (first alternative of a 병기 origin). Homographs on one key
+    # (연습하다: 練習하다, 沿襲하다) differ by word_type or segments; a
+    # row names its headword by index so pick_dominant can choose one.
+    # The per-headword cap counts per homograph, else a later homograph
+    # could lose every sense to the first.
+    nheads = {}
+    nhead_idx = {}
     # Definitions of the KO_OVERRIDES codes, collected before any filter.
     override_rows = {lane: {} for lane in KO_OVERRIDES}
 
@@ -602,18 +614,28 @@ def preprocess(chunks=None):
                                (tier, "w", word, k)):
                         capped += 1
                 if native_key:
-                    ntype.setdefault((tier, native_key), wtype)
-                    if not put(n_tbl, native_key, [code, d],
-                               (tier, "n", word, pos)):
+                    segs = [list(seg) for seg in alts[0]] if alts else []
+                    sig = (wtype, tuple(map(tuple, segs)))
+
+                    def head_index(k):
+                        hi = nhead_idx.get((k, sig))
+                        if hi is None:
+                            hi = len(nheads.setdefault(k, []))
+                            nheads[k].append([wtype, segs])
+                            nhead_idx[(k, sig)] = hi
+                        return hi
+                    hi = head_index(native_key)
+                    if not put(n_tbl, native_key, [code, d, hi],
+                               (tier, "n", word, pos, hi)):
                         capped += 1
                     # A 명사 place sense also lands on the name key, as
                     # ordinary content there (tier 0): the survival rule
                     # governs the noun key only.
                     if tier == 1 and pos == "명사":
                         pkey = word + "|" + PLACE_POS
-                        ntype.setdefault((0, pkey), wtype)
-                        if not put(natives, pkey, [code, d],
-                                   (0, "n", word, PLACE_POS)):
+                        hi = head_index(pkey)
+                        if not put(natives, pkey, [code, d, hi],
+                                   (0, "n", word, PLACE_POS, hi)):
                             capped += 1
                 for c in char_keys:
                     if not put(c_tbl, c, [code, d], (tier, "c", word, c)):
@@ -653,15 +675,12 @@ def preprocess(chunks=None):
                 tbl[k] = rows
                 keys.append(k)
         rescued[lane] = keys
-    # The word_type behind each surviving natives key: the ordinary tier
-    # (surname senses included) for keys that kept one, the held tier for
-    # keys rescued by 지명 senses.
-    native_types = {}
-    for k in natives:
-        t = (ntype.get((1, k)) if k in rescued["natives"]
-             else ntype.get((0, k)) or ntype.get((2, k)))
-        if t:
-            native_types[k] = t
+    # The headwords behind each surviving natives key. Only the tier that
+    # survived has rows left, so the headwords with a row are exactly the
+    # candidates pick_dominant chooses among.
+    native_heads = {k: nheads[k] for k in natives}
+    homograph_keys = sum(1 for k, rows in natives.items()
+                         if len({r[2] for r in rows}) > 1)
 
     report = {
         "chunks": [os.path.basename(p) for p in chunks],
@@ -673,7 +692,8 @@ def preprocess(chunks=None):
         "capped": capped,
         "words": len(words),
         "natives": len(natives),
-        "native_types": len(native_types),
+        "native_heads": sum(len(v) for v in native_heads.values()),
+        "native_homograph_keys": homograph_keys,
         "native_places": sum(1 for k in natives
                              if k.endswith("|" + PLACE_POS)),
         "chars": len(chars),
@@ -688,7 +708,7 @@ def preprocess(chunks=None):
     seconds = time.time() - t0
     obj = {"version": INTERMEDIATE_VERSION, "report": report,
            "words": words, "natives": natives, "chars": chars,
-           "native_types": native_types,
+           "native_heads": native_heads,
            "rescued": rescued, "overrides": override_rows}
     tmp = INTERMEDIATE + ".part"
     # Key order is corpus order and order-bearing (first survivor first),
@@ -714,12 +734,13 @@ def preprocess(chunks=None):
                         format(root_dropped, ",")))
     log("    work or slang by pattern: " + " ".join(
         "%s=%d" % kv for kv in pattern_hits.most_common()))
-    log("  urimalsaem: lanes words %s, natives %s (%s place keys, %s with "
-        "a word_type), chars %s (keys kept only by 지명 senses: %s / %s) "
-        "-> %s (%s)" % (
+    log("  urimalsaem: lanes words %s, natives %s (%s place keys, %s "
+        "headwords, %s keys with several), chars %s (keys kept only by "
+        "지명 senses: %s / %s) -> %s (%s)" % (
             format(len(words), ","), format(len(natives), ","),
             format(report["native_places"], ","),
-            format(len(native_types), ","),
+            format(report["native_heads"], ","),
+            format(homograph_keys, ","),
             format(len(chars), ","), format(len(rescued["words"]), ","),
             format(len(rescued["natives"]), ","),
             os.path.basename(INTERMEDIATE),
@@ -758,6 +779,74 @@ def ensure_intermediate():
         raise SystemExit("urimalsaem: preprocess produced no intermediate; "
                          "run `python pipeline/urimalsaem.py preprocess`")
     return obj
+
+
+# ------------------------------------------------------- dominant headword
+
+def hanja_stem(segs):
+    """The concatenated 한자 segments of a headword's origin, NFC, or ""."""
+    stem = "".join(o for o, t in segs if t == "한자")
+    return RE_WS.sub("", unicodedata.normalize("NFC", stem))
+
+
+def pick_dominant(inter, words_out):
+    """Resolve every natives key to ONE headword (SPEC "DOMINANT
+    HOMOGRAPH"). Among the headwords with a surviving row, the one whose
+    hanja stem is a words_out key carrying the lowest f bucket wins, else
+    the one with the most rows, else the first in corpus order. The key's
+    rows are cut to that headword (and lose their headword index), and
+    inter gains "native_types" and "native_segments" (word_type and
+    segments of the chosen headword), the tables the build reads.
+    -> (keys re-pointed away from the first candidate, report dict)"""
+    heads = inter["native_heads"]
+    natives = inter["natives"]
+    native_types = {}
+    native_segments = {}
+    changed = 0
+    by_rule = collections.Counter()
+
+    def bucket(hi, k):
+        stem = hanja_stem(heads[k][hi][1])
+        f = [s["f"] for s in words_out.get(stem, ()) if "f" in s]
+        return min(f) if f else None
+
+    for k, rows in natives.items():
+        counts = collections.Counter(r[2] for r in rows)
+        cands = sorted(counts)
+        if len(cands) == 1:
+            best = cands[0]
+        else:
+            ranked = []
+            for hi in cands:
+                f = bucket(hi, k)
+                ranked.append((f if f is not None else FREQ_UNRANKED,
+                               -counts[hi], hi))
+            ranked.sort()
+            best = ranked[0][2]
+            if ranked[0][0] != FREQ_UNRANKED:
+                by_rule["f bucket"] += 1
+            elif ranked[0][1] != ranked[1][1]:
+                by_rule["most senses"] += 1
+            else:
+                by_rule["first"] += 1
+            if best != cands[0]:
+                changed += 1
+        natives[k] = [r[:2] for r in rows if r[2] == best]
+        wtype, segs = heads[k][best]
+        if wtype:
+            native_types[k] = wtype
+        if segs:
+            native_segments[k] = segs
+    inter["native_types"] = native_types
+    inter["native_segments"] = native_segments
+    report = {"homograph_keys": sum(by_rule.values()),
+              "repointed": changed, "by_rule": dict(by_rule)}
+    return changed, report
+
+
+# f buckets run 0-9 (build.FREQ_BUCKETS); a stem outside words.json or
+# without a bucket sorts after every ranked one.
+FREQ_UNRANKED = 99
 
 
 # ---------------------------------------------------------------- build
@@ -828,7 +917,8 @@ def build(inter, words_out, native_words, chars_out, variant_map,
     """-> (ko_obj, report).
 
     words_out: the finished words.json words dict (keys canonical, NFC).
-    native_words: the finished native.json words dict {hangul: [{pos,
+    inter must have been through pick_dominant (one headword per natives
+    key). native_words: the finished native.json words dict {hangul: [{pos,
     glosses}]}. chars_out: the finished hanja.json chars dict. variant_map:
     variants.json's map, for routing a variant-form single char to its
     canonical card. unihan_variants_text: Unihan_Variants.txt, for the

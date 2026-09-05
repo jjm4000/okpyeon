@@ -583,9 +583,14 @@ function resolveReadingIndex(bundle) {
  *
  * @param {string} text raw selected text
  * @param {{hanja?:object, words?:object, variants?:object}} data parsed data files
+ * @param {boolean} [native] whole-word precedence ADDENDUM: true on the
+ *        flagged path only, where a native headword for an entire hangul run
+ *        keeps rule 3b off that run (nativeWholeLength). Absent or false
+ *        (every unflagged caller), `data.native` is never read and the
+ *        result is byte-identical to before the addendum.
  * @returns {Array<object>} matches (possibly empty)
  */
-export function buildMatches(text, data) {
+export function buildMatches(text, data, native) {
   const bundle = data || {};
   const charTable = (bundle.hanja && bundle.hanja.chars) || {};
   const wordTable = (bundle.words && bundle.words.words) || {};
@@ -688,8 +693,14 @@ export function buildMatches(text, data) {
         }
       }
     } else {
+      // Whole-word precedence (flagged only): a native headword for the
+      // entire run keeps rule 3b off it; the native pass answers for it in
+      // buildNativeMatches. What the claim leaves (a josa at most) is still
+      // rule 3b's, so the two passes agree syllable for syllable.
+      const claimed = native === true ? nativeWholeLength(run.chars, bundle) : 0;
+      const rest = claimed > 0 ? run.chars.slice(claimed) : run.chars;
       // Rule 3b: hangul reverse lookup.
-      for (const span of segmentHangulRun(run.chars, byHangul, maxHangulLen)) {
+      for (const span of segmentHangulRun(rest, byHangul, maxHangulLen)) {
         // Rule 3b: ALL spellings, no cap — the UI renders a selector.
         const resolved = [];
         for (const spelling of byHangul[span.surface]) {
@@ -770,7 +781,88 @@ export function buildMatches(text, data) {
  * `maxLen`. So selecting 하늘이 finds 하늘, the greedy pass leaving the josa
  * unmatched exactly as rule 3b leaves it on 국민이. Conjugation is not
  * deconjugated (documented gap).
+ *
+ * Whole-word precedence ADDENDUM (2026-09-05): ONE exception to the Sino
+ * resolver's authority. Before rule 3b touches a hangul run, the native
+ * table is asked for the entire run as a headword (nativeWholeLength). When
+ * it holds one, that headword claims the run: the Sino resolver never sees
+ * the prefix it would otherwise split off, so 가공되다 answers with the
+ * hybrid entry and not with 加工 + 되다. The check is the flagged path's
+ * alone (buildMatches takes the flag as its third argument), so unflagged
+ * responses stay byte-identical.
  * ------------------------------------------------------------------------- */
+
+/** Usable entries of one native key: objects with a string pos, else []. */
+function usableNativeEntries(nativeWords, word) {
+  if (!hasOwn(nativeWords, word)) return [];
+  const raw = nativeWords[word];
+  return (Array.isArray(raw) ? raw : []).filter(
+    (e) => e && typeof e === "object" && typeof e.pos === "string"
+  );
+}
+
+/** Longest key satisfying `isWord` at the run's first syllable, else 0. */
+function anchoredLength(chars, isWord, minLen, maxLen) {
+  const limit = Math.min(maxLen, chars.length);
+  for (let len = limit; len >= minLen; len -= 1) {
+    if (isWord(chars.slice(0, len).join(""))) return len;
+  }
+  return 0;
+}
+
+/**
+ * The native whole-string check: how many syllables of a hangul run a native
+ * headword claims before the Sino resolver runs, or 0 when none does.
+ *
+ * The run is "the entire josa-stripped candidate" in the sense every other
+ * pass here already uses: greedy longest match leaves a trailing syllable
+ * unmatched when nothing spans it, so a headword covering the run except a
+ * remainder shorter than MIN_HANGUL_WORD_LEN (the josa of 가공되다가) claims
+ * it too. A rule 3b span anchored at the same syllable and reaching as far
+ * keeps its authority: at equal length the string is both a hanja word's
+ * hangul and a native headword, and the ordinary flow joins the native
+ * entry on the Sino span (the identity group the lead rule decides);
+ * longer, the hanja word explains more than the native headword does.
+ *
+ * @param {string[]} chars one hangul run
+ * @param {object} bundle parsed data bundle (`native` and `words` consulted)
+ * @returns {number} claimed syllable count, 0 for no claim
+ */
+function nativeWholeLength(chars, bundle) {
+  if (chars.length < MIN_HANGUL_WORD_LEN) return 0;
+  const nativeWords = (bundle.native && bundle.native.words) || {};
+  const isNativeWord = (key) => usableNativeEntries(nativeWords, key).length > 0;
+  const claimed = anchoredLength(chars, isNativeWord, MIN_HANGUL_WORD_LEN, nativeMaxLenOf(bundle.native));
+  if (claimed === 0 || chars.length - claimed >= MIN_HANGUL_WORD_LEN) return 0;
+  const byHangul = (bundle.words && bundle.words.byHangul) || {};
+  const isSinoWord = (key) =>
+    hasOwn(byHangul, key) && Array.isArray(byHangul[key]) && byHangul[key].length > 0;
+  const sino = anchoredLength(chars, isSinoWord, MIN_HANGUL_WORD_LEN, maxHangulLenOf(bundle.words));
+  return claimed > sino ? claimed : 0;
+}
+
+/**
+ * Hybrid parts ADDENDUM: the entry's `parts`, validated, for the wire. Each
+ * part keeps its `hangul` and, for a hanja segment, its `hanja`; a hangul-only
+ * part additionally carries `native: true` when the native table holds that
+ * hangul as a headword, which is what tells the renderer the part's chip
+ * opens a native card rather than sitting inert. Anything malformed means no
+ * parts at all: the card degrades to the marker alone.
+ */
+function nativePartsOf(entry, nativeWords) {
+  if (!Array.isArray(entry.parts) || entry.parts.length === 0) return null;
+  const parts = [];
+  for (const part of entry.parts) {
+    if (!part || typeof part !== "object") return null;
+    if (typeof part.hangul !== "string" || part.hangul === "") return null;
+    const hasHanja = part.hanja !== undefined;
+    if (hasHanja && (typeof part.hanja !== "string" || part.hanja === "")) return null;
+    const out = hasHanja ? { hanja: part.hanja, hangul: part.hangul } : { hangul: part.hangul };
+    if (!hasHanja && usableNativeEntries(nativeWords, part.hangul).length > 0) out.native = true;
+    parts.push(out);
+  }
+  return parts;
+}
 
 /**
  * Build the `nativeMatches` array for a flagged lookup. One match per
@@ -799,14 +891,7 @@ export function buildNativeMatches(text, data) {
   const out = [];
   const seen = new Set();
 
-  /** Usable entries of one native key: an object with a string pos. */
-  const entriesOf = (word) => {
-    if (!hasOwn(nativeWords, word)) return [];
-    const raw = nativeWords[word];
-    return (Array.isArray(raw) ? raw : []).filter(
-      (e) => e && typeof e === "object" && typeof e.pos === "string"
-    );
-  };
+  const entriesOf = (word) => usableNativeEntries(nativeWords, word);
 
   const joinNative = (word) => {
     for (const entry of entriesOf(word)) {
@@ -821,6 +906,10 @@ export function buildNativeMatches(text, data) {
       };
       const origin = nativeOriginOf(entry);
       if (origin !== null) match.origin = origin;
+      // Hybrid parts ADDENDUM: the field rides only when the entry's parts
+      // validate; absent parts (or junk) add no field.
+      const parts = nativePartsOf(entry, nativeWords);
+      if (parts !== null) match.parts = parts;
       out.push(match);
     }
   };
@@ -850,15 +939,21 @@ export function buildNativeMatches(text, data) {
         }
       }
     } else {
+      // Whole-word precedence: a native headword for the entire run claims
+      // it before the Sino resolver sees a prefix to split off. What it
+      // leaves (a josa at most) goes through the ordinary flow below.
+      const claimed = nativeWholeLength(run.chars, bundle);
+      if (claimed > 0) joinNative(run.chars.slice(0, claimed).join(""));
+      const rest = claimed > 0 ? run.chars.slice(claimed) : run.chars;
       // Hangul runs: rule 3b spans are authoritative where they exist; the
       // stretches between them get the native-only pass.
       let cursor = 0;
-      for (const span of segmentHangulRun(run.chars, byHangul, maxHangulLen)) {
-        nativePass(run.chars.slice(cursor, span.start));
+      for (const span of segmentHangulRun(rest, byHangul, maxHangulLen)) {
+        nativePass(rest.slice(cursor, span.start));
         joinNative(span.surface);
         cursor = span.start + span.length;
       }
-      nativePass(run.chars.slice(cursor));
+      nativePass(rest.slice(cursor));
     }
   }
 
@@ -916,7 +1011,7 @@ function matchKey(match) {
 function dubeolsikInterpretation(raw, data, native) {
   const to = qwertyToHangul(raw);
   if (to === "" || to === raw) return null;
-  const matches = buildMatches(to, data);
+  const matches = buildMatches(to, data, native);
   const nativeMatches = native ? buildNativeMatches(to, data) : [];
   if (matches.length === 0 && nativeMatches.length === 0) return null;
   const interp = { kind: "dubeolsik", from: raw, to, matches };
@@ -954,7 +1049,6 @@ function coverageOf(hangul, data, native) {
   const bundle = data || {};
   const byHangul = (bundle.words && bundle.words.byHangul) || {};
   const chars = [...hangul];
-  const spans = segmentHangulRun(chars, byHangul, maxHangulLenOf(bundle.words));
   // Disjoint covered intervals: rule 3b spans, plus native segs inside the
   // gaps between them on a flagged request.
   const intervals = [];
@@ -963,13 +1057,7 @@ function coverageOf(hangul, data, native) {
   if (native) {
     const nativeWords = (bundle.native && bundle.native.words) || {};
     const nativeMaxLen = nativeMaxLenOf(bundle.native);
-    const isNativeWord = (key) => {
-      if (!hasOwn(nativeWords, key)) return false;
-      const raw = nativeWords[key];
-      return (Array.isArray(raw) ? raw : []).some(
-        (e) => e && typeof e === "object" && typeof e.pos === "string"
-      );
-    };
+    const isNativeWord = (key) => usableNativeEntries(nativeWords, key).length > 0;
     fillStretch = (base, slice) => {
       for (const seg of greedySegment(asItems(slice), isNativeWord, MIN_HANGUL_WORD_LEN, nativeMaxLen)) {
         if (seg.kind === "word") intervals.push([base + seg.start, seg.length]);
@@ -980,11 +1068,18 @@ function coverageOf(hangul, data, native) {
     if (fillStretch !== null && end > base) fillStretch(base, chars.slice(base, end));
   };
 
-  let cursor = 0;
+  // Whole-word precedence: the same claim the lookup makes, so a candidate
+  // the native table holds whole measures as the lookup answers it.
+  const claimed = native ? nativeWholeLength(chars, bundle) : 0;
+  if (claimed > 0) intervals.push([0, claimed]);
+  const spans = segmentHangulRun(chars.slice(claimed), byHangul, maxHangulLenOf(bundle.words));
+
+  let cursor = claimed;
   for (const span of spans) {
-    stretch(cursor, span.start);
-    intervals.push([span.start, span.length]);
-    cursor = span.start + span.length;
+    const start = claimed + span.start;
+    stretch(cursor, start);
+    intervals.push([start, span.length]);
+    cursor = start + span.length;
   }
   stretch(cursor, chars.length);
   intervals.sort((a, b) => a[0] - b[0]);
@@ -1043,7 +1138,7 @@ function rrInterpretation(raw, data, native) {
   const survivors = [];
   for (let i = 0; i < limit; i += 1) {
     const { hangul, tier } = candidates[i];
-    const matches = buildMatches(hangul, data);
+    const matches = buildMatches(hangul, data, native);
     // Native words ADDENDUM: flagged calls consult the native table for every
     // candidate too, and a native-only candidate still counts as explained.
     const nativeMatches = native ? buildNativeMatches(hangul, data) : [];
@@ -1302,7 +1397,7 @@ export function lookup(text, data, options) {
         return result;
       }
     }
-    const result = { ok: true, matches: buildMatches(text, data) };
+    const result = { ok: true, matches: buildMatches(text, data, native) };
     if (native) {
       const nativeMatches = buildNativeMatches(text, data);
       if (nativeMatches.length > 0) result.nativeMatches = nativeMatches;
@@ -1429,7 +1524,7 @@ export function buildOmniboxSuggestions(text, data, options) {
           }))
         : [
             {
-              matches: buildMatches(text, data),
+              matches: buildMatches(text, data, native),
               nativeMatches: native ? buildNativeMatches(text, data) : [],
             },
           ];

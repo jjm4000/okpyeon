@@ -383,6 +383,10 @@
     // The loan word 사인 (signature) shares this hangul, so the hanja card
     // leads and the loan entry rides in its Same sound section marked LOAN.
     "死因": [{ hangul: "사인", glosses: ["cause of death"] }],
+    // Whole-word precedence (SPEC ADDENDUM 2026-09-05): the prefix of the
+    // hybrid 가공되다. Rule 3b would split the hybrid into this word plus the
+    // native 되다; the native whole-string check must claim the run first.
+    "加工": [{ hangul: "가공", glosses: ["processing; manufacturing"] }],
     "國民": [{ hangul: "국민", glosses: ["the people; citizens of a nation"] }],
     "學生": [{ hangul: "학생", glosses: ["student; pupil"] }],
     "韓國": [{ hangul: "한국", glosses: ["Korea; South Korea"] }],
@@ -646,9 +650,54 @@
     "런던": [{ pos: "name", glosses: ["London"], origin: "loan" }],
     "밥상": [{ pos: "noun", glosses: ["dining table"], origin: "hybrid" }],
     "사인": [{ pos: "noun", glosses: ["signature; autograph"], origin: "loan" }],
-    "담배": [{ pos: "noun", glosses: ["tobacco"] }]
+    "담배": [{ pos: "noun", glosses: ["tobacco"] }],
+    // Hybrid parts (SPEC ADDENDUM 2026-09-05): 가공되다 carries its segments
+    // (加工 is a fixture word, 되다 a fixture native entry, so both chips
+    // navigate); 공부하다 carries segments the tables lack (工夫 is no
+    // fixture word, 하다 no fixture entry: the hanja chip still issues its
+    // lookup, the hangul chip renders inert). 밥상 above stays a hybrid
+    // WITHOUT parts: the marker alone.
+    "가공되다": [{
+      pos: "verb", glosses: ["to be processed"], origin: "hybrid",
+      parts: [{ hanja: "加工", hangul: "가공" }, { hangul: "되다" }]
+    }],
+    "공부하다": [{
+      pos: "verb", glosses: ["to study"], origin: "hybrid",
+      parts: [{ hanja: "工夫", hangul: "공부" }, { hangul: "하다" }]
+    }],
+    "되다": [{ pos: "verb", glosses: ["to become"], origin: "native" }]
   };
   var nativeReads = 0;
+
+  // Whole-word precedence: the native whole-string check, as the worker
+  // makes it (nativeWholeLength). The longest native headword anchored at
+  // the run's first syllable claims the run when what it leaves is shorter
+  // than a word (a josa at most) and no hanja word anchored there reaches
+  // as far; equal length is the identity group and takes the ordinary flow.
+  function nativeWholeLength(h) {
+    if (h.length < 2) return 0;
+    var claimed = 0, len;
+    for (len = Math.min(5, h.length); len >= 2; len--) {
+      if (NATIVE[h.substr(0, len)]) { claimed = len; break; }
+    }
+    if (!claimed || h.length - claimed >= 2) return 0;
+    var sino = 0;
+    for (len = Math.min(MAX_WORD, h.length); len >= 2; len--) {
+      if (BY_HANGUL[h.substr(0, len)]) { sino = len; break; }
+    }
+    return claimed > sino ? claimed : 0;
+  }
+
+  // Hybrid parts on the wire: {hanja?, hangul}, plus native:true on a hangul
+  // part the table holds (the chip that opens a native card).
+  function nativePartsFor(entry) {
+    if (!entry.parts) return null;
+    return entry.parts.map(function (p) {
+      var out = p.hanja ? { hanja: p.hanja, hangul: p.hangul } : { hangul: p.hangul };
+      if (!p.hanja && NATIVE[p.hangul]) out.native = true;
+      return out;
+    });
+  }
 
   // The worker's flagged-lookup join: native words in the text's hangul runs
   // (greedy longest match, 2-syllable floor) plus the entry sharing any word
@@ -662,7 +711,8 @@
     }
     runs(String(text || "").normalize("NFC")).forEach(function (run) {
       if (run.kind !== "hangul") return;
-      var h = run.s, i = 0;
+      var h = run.s, i = nativeWholeLength(h);
+      if (i > 0) claim(h.substr(0, i));
       while (i < h.length) {
         var hit = null;
         for (var len = Math.min(5, h.length - i); len >= 2; len--) {
@@ -684,6 +734,8 @@
         // Origin markers ADDENDUM: the field rides through as written, and
         // an entry without one carries none.
         if (entry.origin) m.origin = entry.origin;
+        var parts = nativePartsFor(entry);
+        if (parts) m.parts = parts;
         out.push(m);
       });
     });
@@ -962,7 +1014,9 @@
   // the stretches the Sino pass left, mirroring the worker.
   function coveredSyllables(h, native) {
     var mark = [], i, j, len;
-    i = 0;
+    var claimed = native ? nativeWholeLength(h) : 0;
+    for (i = 0; i < claimed; i++) mark[i] = true;
+    i = claimed;
     while (i < h.length) {
       var hit = 0;
       for (len = Math.min(MAX_WORD, h.length - i); len >= 2; len--) {
@@ -1003,7 +1057,7 @@
   function dubeolsikInterpretation(typed, native) {
     if (!Object.prototype.hasOwnProperty.call(DUBEOLSIK, typed)) return null;
     var to = DUBEOLSIK[typed];
-    var matches = lookup(to).matches;
+    var matches = lookup(to, { native: native }).matches;
     var nativeMatches = native ? nativeMatchesFor(to, matches) : [];
     if (!matches.length && !nativeMatches.length) return null;
     return {
@@ -1026,7 +1080,7 @@
     var survivors = [];
     for (var i = 0; i < candidates.length && i < RESOLVE_CAP; i++) {
       var hangul = candidates[i].hangul;
-      var matches = lookup(hangul).matches;
+      var matches = lookup(hangul, { native: native }).matches;
       var nativeMatches = native ? nativeMatchesFor(hangul, matches) : [];
       if (!matches.length && !nativeMatches.length) continue;
       var whole = matches.some(function (m) {
@@ -1160,7 +1214,9 @@
           }
         }
       } else {
-        var h = run.s, j = 0;
+        // Whole-word precedence, flagged only: the claimed syllables are the
+        // native pass's; rule 3b starts after them.
+        var h = run.s, j = o.native === true ? nativeWholeLength(h) : 0;
         while (j < h.length) {
           var found = null, foundLen = 0;
           for (var l = Math.min(MAX_WORD, h.length - j); l >= 2; l--) {
@@ -2279,6 +2335,46 @@
       ntvAllLoanTag === "loan" && ntvAllHybridTag === "hybrid" &&
       api.query(".card.native .surface").textContent === "담배" && !api.query(".native-tag"),
       ntvAllLoanTag + "|" + ntvAllHybridTag + "|" + !!api.query(".native-tag"));
+    // --- Whole-word precedence + hybrid parts (SPEC ADDENDUM 2026-09-05) --
+    var ntvAllProc = await embed.searchFor("가공되다", { native: true, scope: "all" });
+    await wait(TAIL);
+    check("typing the hybrid yields ONE lead card and no split cards",
+      ntvAllProc.ok === true && ntvAllProc.count === 1 && api.cardCount() === 1 &&
+      api.viewKeys().join(",") === "native:가공되다" &&
+      api.query(".card.native .surface").textContent === "가공되다" &&
+      !api.query(".word-body") && !api.query(".samesound") &&
+      api.query(".card.native .native-tag").textContent === "hybrid" &&
+      api.query(".hybrid-spelling").textContent === "加工되다" &&
+      api.queryAll(".hybrid-parts .part-row").length === 2,
+      JSON.stringify(ntvAllProc) + " " + JSON.stringify(api.viewKeys()) + " " + api.panelText());
+    api.queryAll(".hybrid-parts .part-row")[0].click();
+    await wait(TAIL);
+    check("the hanja chip drills into the 加工 word card in the sidebar",
+      api.viewKeys().join(",") === "native:가공되다,word:加工" &&
+      api.query(".word-body .surface").textContent === "加工",
+      JSON.stringify(api.viewKeys()));
+    api.queryAll(".crumb")[0].click();
+    await wait(TAIL);
+    api.queryAll(".hybrid-parts .part-row")[1].click();
+    await wait(TAIL);
+    check("the hangul chip drills into the native 되다 card in the sidebar",
+      api.viewKeys().join(",") === "native:가공되다,native:되다" &&
+      api.query(".card.native .surface").textContent === "되다" &&
+      !api.query(".hybrid-parts"),
+      JSON.stringify(api.viewKeys()));
+    var ntvHanjaProc = await embed.searchFor("가공되다", { native: true, scope: "hanja" });
+    await wait(TAIL);
+    check("hanja scope never renders the split either: the hint stands in for the hybrid",
+      ntvHanjaProc.ok === true && ntvHanjaProc.count === 0 &&
+      !api.query(".word-body") && !!api.query(".native-hint"),
+      JSON.stringify(ntvHanjaProc) + " " + api.panelText());
+    await embed.searchFor("밥상", { native: true, scope: "all" });
+    await wait(TAIL);
+    check("a hybrid without parts still renders the marker alone",
+      api.query(".card.native .surface").textContent === "밥상" &&
+      api.query(".card.native .native-tag").textContent === "hybrid" &&
+      !api.query(".hybrid-spelling") && !api.query(".hybrid-parts"),
+      api.panelText());
     await embed.searchFor("사인", { native: true, scope: "all" });
     await wait(TAIL);
     check("a Same sound row carries its own origin marker in the sidebar too",

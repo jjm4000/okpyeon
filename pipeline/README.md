@@ -481,9 +481,11 @@ chunks, 1.73 GiB, one `<item>` per sense. It runs in three steps:
   with three lanes: hanja-origin senses keyed by the NFC hanja string,
   senses of every word that is not a pure hanja-origin word (word types
   고유어, 외래어, 혼종어) keyed by `hangul|pos` in Urimalsaem's own POS
-  terms (a 명사 sense with cat 지명 also lands on `hangul|지명`, and each
-  key's word_type is kept for native.json's origin field), and
-  single-character senses keyed by the character. It also
+  terms (a 명사 sense with cat 지명 also lands on `hangul|지명`; each
+  key keeps every 우리말샘 headword behind it, word_type and origin
+  segments, and each sense names its headword, so the build can pick
+  one headword per key; the per-headword cap of two senses counts per
+  homograph), and single-character senses keyed by the character. It also
   collects the definitions named by `KO_OVERRIDES`. Rerun it only when the
   mirror updates or the override table changes.
 * **build** (inside `build.py`): reads only the intermediate. On a cold cache
@@ -562,33 +564,89 @@ admit for review. Glosses are the entry's first two, cleaned the same way
 as the other native rows. Measured 2026-09-05: 608 places of 903
 candidates (584 attested by 우리말샘, 24 by subtitles alone).
 
+**Mixed-form admission.** The candidate gate reads a Wiktionary lemma's
+`hanja` form tags (and the head template's `hanja` argument). A form
+that is all han characters means Sino-Korean and keeps the lemma out of
+`native.json` (국민 with 國民). A form that mixes han characters and
+hangul (工夫하다, 全혀, 別로, 先生님, 虎狼이, 그女) means a hybrid (SPEC
+"MIXED-FORM ADMISSION"): the lemma is admitted under the usual sense
+filters, marked `hybrid`, and the form is kept for its parts. A lemma
+with both kinds of form stays out. Measured 2026-09-05: 550 rows (528
+headwords; 245 nouns, 162 verbs, 105 adjectives, 35 adverbs, 2
+interjections, 1 pronoun) enter this way; by subtitle frequency the top
+ten are 정말, 그녀, 선생님, 세상에, 전혀, 별로, 충분히, 특히, 사실은 and
+절대로.
+
+**Dominant homograph.** A natives-lane key can carry several 우리말샘
+headwords (연습하다: 練習하다 and 沿襲하다). `pick_dominant`, run by the
+build once `words.json` has its frequency buckets, chooses one per key:
+the headword whose hanja stem (its 한자 segments joined, NFC) is a
+`words.json` key with the lowest `f` bucket, else the headword with the
+most kept senses, else the first in corpus order (SPEC "DOMINANT
+HOMOGRAPH"). That headword supplies the origin, the parts and the
+ko.json definition, so the mixed-script spelling and the definition
+agree. Measured 2026-09-05: 7,204 keys with several headwords, 1,537
+re-pointed away from the first (1,873 keys decided by the f bucket,
+1,424 by sense count, 3,907 kept the first). A Wiktionary lemma with
+several mixed forms (始作하다 and 詩作하다) takes them in the same order.
+
 **Origin.** Every row may carry `origin`: `native` (고유어), `loan`
-(외래어) or `hybrid` (혼종어); absent when neither source says. The first
-source is the 우리말샘 word_type of the headword behind the matched
-natives-lane key, which the preprocess now keeps in the intermediate
-(`native_types`, one tag per key from the surviving tier). The second is
-the extract's etymology templates: a borrowing template (`bor`, `bor+`,
-`lbor`, `slbor`, `ubor`, `borrowed`, `transliteration`) gives `loan`;
-`inh` or `der` from Middle or Old Korean (`okm`, `oko`) or Wiktionary's
-own `ko-etym-native` box gives `native`; a compound or affix template
-(`com`, `compound`, `af`, `affix`, `suffix`, `prefix`) whose parts mix a
-hanja-marked part and a hangul-only part (가공(加工) + -되다) gives
-`hybrid`. A borrowing wins over an inheritance, which wins over a
-compound. Measured 2026-09-05 over 16,405 rows: native 7,056, loan 3,753,
-hybrid 3,282, unmarked 2,314 (12,644 from 우리말샘, 1,447 from the
+(외래어) or `hybrid` (혼종어); absent when no source says. The first
+source is the 우리말샘 word_type of the dominant headword behind the
+matched natives-lane key. The second is a mixed form on the Wiktionary
+lemma, which gives `hybrid`. The third is the extract's etymology
+templates: a borrowing template (`bor`, `bor+`, `lbor`, `slbor`, `ubor`,
+`borrowed`, `transliteration`) gives `loan`; `inh` or `der` from Middle
+or Old Korean (`okm`, `oko`) or Wiktionary's own `ko-etym-native` box
+gives `native`; a compound or affix template (`com`, `compound`, `af`,
+`affix`, `suffix`, `prefix`) whose parts mix a hanja-marked part and a
+hangul-only part (가공(加工) + -되다) gives `hybrid`. A borrowing wins
+over an inheritance, which wins over a compound. Measured 2026-09-05
+over 16,951 rows: native 7,024, loan 3,762, hybrid 3,847, unmarked
+2,318 (13,116 from 우리말샘, 71 from a mixed form, 1,446 from the
 etymology templates).
+
+**Parts.** A hybrid row may carry `parts`, the segments of its headword in
+order: a 한자 segment as `{"hanja": "加工", "hangul": "가공"}`, a 고유어 or
+외래어 segment as `{"hangul": "되다"}`. The build walks the 우리말샘
+origin segments of the dominant headword (the first alternative of a
+병기 origin) against the headword: a 한자 segment consumes one syllable
+per character, a hangul segment must match the headword literally at
+that position, and the walk must consume the headword exactly. When
+that gives nothing and the Wiktionary lemma carries a mixed form, the
+form is walked the same way, its han runs as 한자 segments and its
+hangul runs as literal text (affix hyphens dropped; a form with any
+other character does not walk). Any other outcome leaves the row
+without parts, and so does a hybrid marked only by the etymology
+templates. A loan segment carries its source spelling ("guard" typed
+영어), never hangul, so a hybrid with a loan part has no parts. Parts
+never appear on a non-hybrid. Measured 2026-09-05: 3,117 of 3,847
+hybrid rows carry parts, 98 of them walked from a mixed form (27 where
+우리말샘 supplied the origin but no usable segments); the 730 without
+are 381 marked by the etymology templates only, 209 with an English
+segment, 111 with a segment of undeclared language (안 밝힘), 15 with
+non-hanja text inside a 한자 segment, 13 with a segment in another
+language, and 1 whose hangul segment does not match the headword.
 
 **ko.json.** The preprocess files a 명사 sense with cat 지명 under the
 pseudo-POS 지명 as well as under 명사, and `POS_MAP` maps 지명 to `name`,
 so a place row gets its Korean definition and 우리말샘 link
 (`서울|name`). The survival rule is unchanged on the noun key. The
-intermediate is version 2; an older cache aborts with a rerun message.
+natives-lane definitions come from the dominant headword only. The
+intermediate is version 4; an older cache aborts with a rerun message.
 
 The verify step anchors 서울 (native), 런던, 몽골 and 부탄 (loan) as place
 rows, 미국, 나라, 지난 and 가자 as absent from the lane, 가드 loan, 하늘
 native, 가공되다 hybrid, every `NOT_PLACE_OVERRIDES` entry absent, the
 lane count band, the origin vocabulary, and `서울|name` in ko.json with a
-sense code and a 수도 definition.
+sense code and a 수도 definition. For parts: 가공되다 is 加工/가공 + 되다,
+이해하다 is 理解/이해 + 하다, 공부하다 is 工夫/공부 + 하다, 전혀 is 全/전 +
+혀 and 선생님 is 先生/선생 + 님 (the last three admitted through the
+mixed-form rule, each marked hybrid), 연습하다 is 練習/연습 + 하다 and
+its ko.json definition is the practice sense, 상하다 is 傷/상 + 하다, no
+non-hybrid carries parts, every parts list reassembles its headword
+with one syllable per hanja character, and at least 1,000 hybrids carry
+parts.
 
 ## Canonical words keys, and how long a key can be
 

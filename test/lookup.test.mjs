@@ -3112,6 +3112,220 @@ test("flagged: distinct POS entries stay distinct matches; empty is omitted", ()
   assert.equal("nativeMatches" in lookup("먹었다", nativeData, { native: true }), false);
 });
 
+// ---------------------------------------------------------------------------
+// Whole-word precedence and hybrid parts ADDENDUM (2026-09-05).
+// ---------------------------------------------------------------------------
+
+/**
+ * The hybrid fixtures beside the base tables: 加工 as a hanja word (the
+ * prefix rule 3b would split off), 가공되다 and 공부하다 as hybrids carrying
+ * parts, 되다 as the native tail. A separate bundle, so the base fixtures
+ * keep the counts every other test pins.
+ */
+const hybridWords = {
+  ...words,
+  words: { ...words.words, 加工: [{ hangul: "가공", glosses: ["processing"] }] },
+  byHangul: { ...words.byHangul, 가공: ["加工"] },
+};
+const hybridNative = {
+  version: 1,
+  maxLen: 4,
+  words: {
+    ...native.words,
+    가공되다: [
+      {
+        pos: "verb",
+        glosses: ["to be processed"],
+        origin: "hybrid",
+        parts: [{ hanja: "加工", hangul: "가공" }, { hangul: "되다" }],
+      },
+    ],
+    // Segments the tables lack: 工夫 is no fixture word, 하다 no fixture
+    // entry, so the hangul part resolves to nothing (no `native` flag).
+    공부하다: [
+      {
+        pos: "verb",
+        glosses: ["to study"],
+        origin: "hybrid",
+        parts: [{ hanja: "工夫", hangul: "공부" }, { hangul: "하다" }],
+      },
+    ],
+    되다: [{ pos: "verb", glosses: ["to become"], origin: "native" }],
+  },
+};
+const hybridData = { hanja, words: hybridWords, variants, native: hybridNative };
+const hybridLead = {
+  kind: "native",
+  word: "가공되다",
+  pos: "verb",
+  glosses: ["to be processed"],
+  origin: "hybrid",
+  parts: [{ hanja: "加工", hangul: "가공" }, { hangul: "되다", native: true }],
+};
+
+test("whole-word precedence: the hybrid claims the run, no split survivors", () => {
+  // Flagged: the native table holds the entire candidate, so the Sino
+  // resolver never splits off 加工 and the native pass never sees 되다 alone.
+  assert.deepEqual(lookup("가공되다", hybridData, { native: true }), {
+    ok: true,
+    matches: [],
+    nativeMatches: [hybridLead],
+  });
+  // The trailing-josa fallthrough every pass shares: 가공되다가 claims 가공되다.
+  assert.deepEqual(lookup("가공되다가", hybridData, { native: true }), {
+    ok: true,
+    matches: [],
+    nativeMatches: [hybridLead],
+  });
+  // Unflagged: the split, byte-identical to a bundle with no native table.
+  const bare = { hanja, words: hybridWords, variants };
+  assert.equal(
+    JSON.stringify(lookup("가공되다", hybridData)),
+    JSON.stringify(lookup("가공되다", bare))
+  );
+  assert.deepEqual(
+    wordsOf(lookup("가공되다", hybridData).matches).map((m) => m.canonical),
+    ["加工"]
+  );
+  assert.equal("nativeMatches" in lookup("가공되다", hybridData), false);
+  // The claim is for the (josa-stripped) whole only: with a real word behind
+  // it, the run splits as today, 加工 and 國民 with the native 되다 between.
+  const longer = lookup("가공되다국민", hybridData, { native: true });
+  assert.deepEqual(wordsOf(longer.matches).map((m) => m.canonical), ["加工", "國民"]);
+  assert.deepEqual(longer.nativeMatches.map((m) => m.word), ["되다"]);
+  // The omnibox draws from the same result: one hybrid row, no 加工 row.
+  assert.deepEqual(
+    buildOmniboxSuggestions("가공되다", hybridData, { native: true }).map((r) => r.content),
+    ["가공되다"]
+  );
+  assert.deepEqual(
+    buildOmniboxSuggestions("가공되다", hybridData).map((r) => r.content),
+    ["加工"]
+  );
+});
+
+test("whole-word precedence: the interpreted path leads with the hybrid too", () => {
+  const rr = lookup("gagongdoeda", hybridData, { interpret: true, native: true });
+  assert.deepEqual(rr.interpretations, [
+    { kind: "rr", from: "gagongdoeda", to: "가공되다", start: 0 },
+  ]);
+  assert.deepEqual(rr.matches, []);
+  assert.deepEqual(rr.nativeMatches, [hybridLead]);
+  // Unflagged, the same query still reaches the split.
+  const off = lookup("gagongdoeda", hybridData, { interpret: true });
+  assert.deepEqual(wordsOf(off.matches).map((m) => m.canonical), ["加工"]);
+  assert.equal("nativeMatches" in off, false);
+});
+
+test("whole-word precedence: pure hanja words and non-splitting natives are byte-identical", () => {
+  // 국민: no native entry, so the flagged response IS the unflagged one.
+  assert.equal(
+    JSON.stringify(lookup("국민", hybridData, { native: true })),
+    JSON.stringify(lookup("국민", data))
+  );
+  assert.equal(
+    JSON.stringify(lookup("국민이", hybridData, { native: true })),
+    JSON.stringify(lookup("국민이", data))
+  );
+  // 하늘: native-only, the entry the greedy pass always found, no parts key.
+  for (const q of ["하늘", "하늘이"]) {
+    assert.equal(
+      JSON.stringify(lookup(q, hybridData, { native: true })),
+      JSON.stringify({
+        ok: true,
+        matches: [],
+        nativeMatches: [
+          { kind: "native", word: "하늘", pos: "noun", glosses: ["sky", "heaven"], origin: "native" },
+        ],
+      })
+    );
+  }
+  // 하늘국민: the claim needs the whole run; the stretches still split as
+  // before, and the pre-addendum fixture answers identically.
+  assert.equal(
+    JSON.stringify(lookup("하늘국민", hybridData, { native: true })),
+    JSON.stringify(lookup("하늘국민", nativeData, { native: true }))
+  );
+});
+
+test("whole-word precedence: a string that is both hanja word and native headword keeps the lead rule", () => {
+  // 사랑 (two rare spellings + native) and 가장 (家長 unflagged + native):
+  // the native entry joins on the Sino span exactly as before, and the
+  // renderer's lead rule decides. Pinned against the pre-addendum fixture.
+  for (const q of ["사랑", "가장", "우리", "가장이"]) {
+    assert.equal(
+      JSON.stringify(lookup(q, hybridData, { native: true })),
+      JSON.stringify(lookup(q, nativeData, { native: true })),
+      `query ${q}`
+    );
+  }
+  const love = lookup("사랑", hybridData, { native: true });
+  // Flag order as ever: the lessCommon 沙羅 ahead of the rare 舍廊.
+  assert.deepEqual(wordsOf(love.matches).map((m) => m.canonical), ["沙羅", "舍廊"]);
+  assert.deepEqual(love.nativeMatches.map((m) => m.word), ["사랑"]);
+  // A hanja word anchored at the same syllable and reaching further keeps
+  // its authority: 국민 beats a native 국 + nothing, and a native headword
+  // one syllable shorter than the Sino span never claims the run.
+  const shorter = {
+    ...hybridData,
+    native: { version: 1, maxLen: 4, words: { 국민이: [{ pos: "noun", glosses: ["x"] }] } },
+  };
+  assert.deepEqual(lookup("국민이라", shorter, { native: true }).nativeMatches.map((m) => m.word), ["국민이"]);
+  const longerSino = {
+    ...hybridData,
+    native: { version: 1, maxLen: 4, words: { 자본주: [{ pos: "noun", glosses: ["x"] }] } },
+  };
+  const jabon = lookup("자본주의", longerSino, { native: true });
+  assert.deepEqual(wordsOf(jabon.matches).map((m) => m.canonical), ["資本主義"]);
+  assert.equal("nativeMatches" in jabon, false);
+});
+
+test("hybrid parts: the match carries validated parts, hangul parts resolved against the table", () => {
+  const study = lookup("공부하다", hybridData, { native: true });
+  assert.deepEqual(study.matches, []);
+  assert.deepEqual(study.nativeMatches, [
+    {
+      kind: "native",
+      word: "공부하다",
+      pos: "verb",
+      glosses: ["to study"],
+      origin: "hybrid",
+      // 하다 is no fixture entry: no `native` flag, the chip renders inert.
+      parts: [{ hanja: "工夫", hangul: "공부" }, { hangul: "하다" }],
+    },
+  ]);
+  // Junk parts add no field at all; the card degrades to the marker alone.
+  const junk = (parts) => ({
+    ...hybridData,
+    native: {
+      version: 1,
+      maxLen: 4,
+      words: { 밥상: [{ pos: "noun", glosses: ["dining table"], origin: "hybrid", parts }] },
+    },
+  });
+  for (const parts of [undefined, null, "x", [], [{}], [{ hangul: "" }], [{ hanja: "", hangul: "밥" }],
+    [{ hanja: "床", hangul: 3 }], [{ hangul: "밥" }, null]]) {
+    const res = lookup("밥상", junk(parts), { native: true });
+    assert.equal("parts" in res.nativeMatches[0], false, JSON.stringify(parts));
+  }
+  // The match's parts are copies: mutating them never reaches the table.
+  const res = lookup("가공되다", hybridData, { native: true });
+  res.nativeMatches[0].parts[0].hanja = "X";
+  assert.equal(hybridNative.words.가공되다[0].parts[0].hanja, "加工");
+});
+
+await testAsync("hybrid parts: guardNative and attachKo spread parts through", async () => {
+  const { guardNative, attachKo } = await import("../extension/background.js");
+  const guarded = guardNative({ version: 1, maxLen: 4, words: hybridNative.words });
+  const res = lookup("가공되다", { ...hybridData, native: guarded }, { native: true });
+  assert.deepEqual(res.nativeMatches, [hybridLead]);
+  // The ko attach hangs its entry on the same match and leaves parts alone.
+  const ko = { version: 1, words: {}, natives: { "가공되다|verb": { d: ["가공이 되다."], s: 1 } }, chars: {} };
+  const attached = attachKo(res, ko);
+  assert.deepEqual(attached.nativeMatches[0].parts, hybridLead.parts);
+  assert.deepEqual(attached.nativeMatches[0].ko, ko.natives["가공되다|verb"]);
+});
+
 test("the native pass is bounded by native.json's declared maxLen", () => {
   const capped = { ...nativeData, native: { version: 1, maxLen: 2, words: native.words } };
   // 하늘색 exists in the table, but a maxLen of 2 keeps the pass from trying
@@ -4632,17 +4846,24 @@ await testAsync("smoke: real native.json resolves 하늘 / 사랑 / 무리 / tog
     "gksmf (the keyboard path) must still reach 하늘"
   );
   // The QA case that motivated v2, flagged, under the collapse policy.
-  // mushihada is class B (무시 word + native 하다 cover it end to end): `to`
-  // and the srcText root are 무시하다, the native suffix 하다 rides along,
-  // and the cross-candidate splinter junk (아다, from 뭇이하다) is shut out.
+  // Whole-word precedence ADDENDUM: 무시하다 is itself a hybrid headword in
+  // native.json, so mushihada is now class A (a whole native headword): `to`
+  // and the srcText root are 무시하다, the entry leads with its parts
+  // (無視 + 하다) and the split (a 無視 word card beside a 하다 native card)
+  // is not rendered at all. The cross-candidate splinter junk (아다, from
+  // 뭇이하다) stays shut out.
   const mushihada = sayAll("mushihada");
   assert.deepEqual(mushihada.interpretations, [
     { kind: "rr", from: "mushihada", to: "무시하다", start: 0 },
   ]);
-  assert.equal(mushihada.matches[0].kind, "word");
-  assert.equal(mushihada.matches[0].canonical, "無視", "flagged mushihada leads with 無視");
+  assert.deepEqual(mushihada.matches, [], "flagged mushihada renders no split");
   const mushihadaNative = (mushihada.nativeMatches || []).map((m) => m.word);
-  assert.ok(mushihadaNative.includes("하다"), "the native suffix 하다 must ride");
+  assert.deepEqual(mushihadaNative, ["무시하다"], "the hybrid headword leads alone");
+  assert.equal(mushihada.nativeMatches[0].origin, "hybrid");
+  assert.deepEqual(mushihada.nativeMatches[0].parts, [
+    { hanja: "無視", hangul: "무시" },
+    { hangul: "하다", native: true },
+  ]);
   assert.ok(!mushihadaNative.includes("아다"), "the splinter junk 아다 must not");
   // mushihaesseo stays class C (nothing covers 했어): it roots as the TYPED
   // text and carries no splinter native matches. The anchored-coverage key

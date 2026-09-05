@@ -33,6 +33,24 @@ current review clears.
   the card cannot otherwise show), and no marker when unknown (2,314
   rows). Follow-up recorded: show a hybrid's hanja part (加工 + 되다).
 
+- **Whole-word native precedence and hybrid parts.** Typing 가공되다
+  showed the 加工 card and a 되다 card and never the word itself: the
+  Sino resolver owned any span it resolved. A native headword matching
+  the whole input now leads and the split is not rendered; a hybrid
+  card shows its mixed-script spelling (加工되다) and component chips
+  that open the hanja word and the native part (mockup C, user-picked
+  over head-spelling-only and chips-only). Parts come from 우리말샘's
+  origin segments, or from Wiktionary's mixed form. Two gaps the work
+  exposed and closed: 528 everyday words tagged only with a mixed
+  hanja-hangul form (전혀, 별로, 특히, 선생님, 필요하다, 정말) had no card
+  in either file because the native gate read any hanja tag as
+  Sino-Korean; they now join native.json as hybrids. And a hangul key
+  with several 우리말샘 homographs took the first (연습하다 wore 沿襲);
+  it now takes the dominant one by words.json frequency for both the
+  parts and the Korean definition (1,537 keys re-pointed). Hybrids
+  with parts: 3,117 of 3,847. Suites: node 219, index.html 716,
+  embed.html 395, build verify 122.
+
 ## 1.3: shipped
 
 Everything since the v1.2.0 tag went out as one release, uploaded
