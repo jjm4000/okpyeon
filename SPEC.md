@@ -2929,6 +2929,61 @@ Same sound row, from data:
   origin card unmarked; Same sound rows carry the markers; the
   pre-feature native fixture (origin native) renders byte-identical.
 
+## Whole-word native precedence and hybrid parts (ADDENDUM 2026-09-05, design settled by mockups)
+
+Typing or selecting 가공되다 showed the 加工 card and a 되다 card and
+never the word itself: the Sino resolver is authoritative for a span
+it resolves, so the native pass only ever saw the tail. Once hybrid
+cards carry an origin marker and a 우리말샘 definition, that hides the
+very card the feature exists for. Two rules, user-picked as mockup C:
+
+### Whole-word precedence
+
+- The native whole-string check runs on every hangul candidate
+  REGARDLESS of whether the Sino resolver claimed a prefix: when
+  native.json holds the entire josa-stripped candidate as a headword,
+  that native match joins the candidate and classes it CLASS_WHOLE,
+  exactly as a whole hanja word does. The split (加工 + 되다) is then a
+  lower class and is not rendered. A string that is both a hanja
+  word's hangul and a native headword keeps today's identity-group
+  behaviour (the lead rule decides). Pure hanja words and native
+  words that never split are unchanged.
+
+### Hybrid parts
+
+- Data: a native.json entry with origin "hybrid" may carry
+  `"parts": [{"hanja": "加工", "hangul": "가공"}, {"hangul": "되다"}]`,
+  from 우리말샘's origin segments for the matched headword (each
+  original_language_info segment: a 한자 segment contributes its hanja
+  string and consumes one headword syllable per character; a 고유어 or
+  외래어 segment contributes its own hangul). The build emits parts
+  only when the segments reassemble the headword exactly; otherwise
+  the entry has no parts and the card degrades to the marker alone
+  (hybrids known only from Wiktionary's etymology likewise).
+- Card head: beside the hangul, the mixed-script spelling (加工되다:
+  hanja parts in the accent colour, hangul parts muted), the 한자 병기
+  form Koreans read. Below the gloss: component chips in the word-card
+  idiom (資本 + 主義): a hanja part's chip shows the hanja with its
+  hangul and opens the hanja word's card when words.json has it (else
+  the character cards); a native part's chip opens its native card
+  when native.json has it (되다), else is inert. Both languages; the
+  Korean chrome uses the same chips.
+- Messages: none new (chips carry data, not copy).
+
+### Tests
+
+- Build: 가공되다 parts [加工/가공, 되다]; 공부하다 [工夫/공부, 하다]; a
+  hybrid whose segments do not reassemble has no parts (reported
+  count); parts never on non-hybrids.
+- Node: whole-string native precedence (가공되다 leads, no split
+  survivors; 국민 unchanged; 하늘 unchanged; a string that is both a
+  hanja word and a native headword keeps the lead rule); guards spread
+  parts through.
+- Harness: the hybrid fixture card shows the mixed spelling and both
+  chips, the hanja chip navigates to the hanja word card and the
+  native chip to the native card; typing the fixture hybrid yields one
+  lead card and no split cards; English snapshots unchanged.
+
 ## Verification expectations
 
 - A: after build, spot-check in the output: 國 has eumhun 나라/국 and compounds;
