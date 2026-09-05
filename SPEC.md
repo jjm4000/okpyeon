@@ -2837,6 +2837,92 @@ spelling (入鄕循俗, 槪念, 英語圈, 藥甁 gained senses); sino.json lost
 the 54 twins and re-aligned three readings the bridge now sees through
 the alias. Everything outside the alias set is byte-identical.
 
+## Place names and origin markers (ADDENDUM 2026-09-05, design settled by mockups)
+
+Two changes to the non-hanja lane, user-directed after a spike:
+
+### Place-name lane
+
+native.json gains hangul-only place names with pos `name`. 서울 had
+no card in any language; foreign places written in hangul (런던, 뉴욕,
+러시아, 몽골, 뮌헨) likewise. Korean place names mostly have hanja and
+are already served by their hanja cards, which the rules preserve.
+- Source: the Korean Wiktionary extract's `name` entries, hangul only
+  (2 to 8 syllables), whose categories place them (Countries, Cities,
+  Towns, Villages, Capital cities, Provinces, States, Regions,
+  Districts, Counties, Municipalities, Prefectures, Political
+  subdivisions, Rivers, Mountains, Islands, Seas, Lakes, Oceans,
+  Deserts, Continents, Planets). Surnames, given names, transliterated
+  foreign given names, dynasties, and works are NOT places and stay
+  out (수 the Sui, 이 the surname, 누가 Luke, 애가 Lamentations were
+  the top of the raw list by frequency, all homographs of common
+  words).
+- Attestation: a 우리말샘 명사 sense for the headword (the natives
+  lane, cat 지명 surviving on an otherwise empty key), OR a subtitle
+  count of at least 20. Measured 2026-09-05: 88 by subtitles, 545 by
+  우리말샘 only (153 countries, 296 cities, 49 regions, 17 features;
+  the subtitle list never mentions 280 of them, which says more about
+  subtitles than about 네팔). User-decided: all ride along, 부탄
+  included despite its butane homograph.
+- Exclusions: a hangul that is a words.json key (433: 미국, 한국, the
+  hanja word IS the name); an existing native.json headword (16: 나라
+  would otherwise gain "Nara, Japan" beside the word for country;
+  파리 Paris is the accepted loss); a Wiktionary inflected form of a
+  non-name (지난, 기니); a subtitle count above 1,000 (가자 Gaza
+  3,852 is "let's go", not in the extract as a form); and
+  NOT_PLACE_OVERRIDES, a curated list in the NOT_RARE discipline,
+  empty at first, with the build printing every two-syllable admit
+  for review (암만 is the first candidate for the user's eye).
+- Entry shape: a native.json entry with pos "name", glosses from the
+  extract, and the origin field below. The 우리말샘 natives lane maps
+  a 명사 sense with cat 지명 onto "hangul|name" as well as
+  "hangul|noun", so Korean mode attaches the definition and the
+  우리말샘 link to the place card (서울 gets its definition at last).
+- UI: the POS chip reads "Place" / 지명 (keys pos.name). Place cards
+  render exactly like native cards otherwise (All words scope, Same
+  sound rows, saved, export). Expected size: about 630 entries.
+
+### Origin markers
+
+The NATIVE marker meant "not hanja" and so labelled 런던 and 가드 as
+native. It now states the word's origin, one marker per card and per
+Same sound row, from data:
+- `origin` on each native.json entry: "native" (고유어), "loan"
+  (외래어), "hybrid" (혼종어); absent when unknown. Source order: the
+  우리말샘 word_type of the matched headword (the preprocess keeps the
+  tag it used to drop; 12,071 rows), else the Wiktionary extract's
+  etymology templates (borrowing templates bor / lbor / slbor / ubor
+  and transliteration -> loan; inherited or derived from Middle or Old
+  Korean -> native; a compound of a hanja word and a native affix
+  where the extract says so -> hybrid), else absent.
+- Markers: NATIVE / 고유어, LOAN / 외래어, HYBRID / 혼종어 (message keys
+  marker.native, marker.loan, marker.hybrid; the existing marker.native
+  key keeps its values). No marker when origin is absent: never a
+  guessed one. HYBRID is deliberately marked (user-decided): a hybrid
+  like 가공되다 has a hanja root the card does not otherwise show, and
+  telling the reader so is the point of a hanja dictionary. Follow-up
+  recorded, not built: showing a hybrid's hanja part (加工 + 되다) from
+  the 우리말샘 origin field.
+- Applies wherever the native marker renders today: card heads, Same
+  sound rows, the omnibox native tail, reading-list rows if any.
+  English rendering of a fixture whose origin is "native" is
+  byte-identical to today; the build reports how many native.json
+  entries end up in each origin class and how many stay unmarked.
+
+### Tests
+
+- Build: 서울, 런던, 몽골, 부탄 present as name entries with origins
+  native / loan / loan / loan; 미국, 나라, 지난, 가자 absent from the
+  lane; 가드 origin loan, 하늘 native, 가공되다 hybrid; every override
+  fires; lane count reported; ko.json natives carries 서울|name with a
+  sense code.
+- Node: native matching admits name entries; guards spread `origin`
+  through; the ko attach reaches "hangul|name".
+- Harness: a place card (chip, marker, gloss, link) in both languages;
+  a loan card marked LOAN; a hybrid card marked HYBRID; an unknown-
+  origin card unmarked; Same sound rows carry the markers; the
+  pre-feature native fixture (origin native) renders byte-identical.
+
 ## Verification expectations
 
 - A: after build, spot-check in the output: 國 has eumhun 나라/국 and compounds;
