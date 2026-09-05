@@ -452,7 +452,30 @@ correctness" bullet of 1.1, the same way 1.1.1 folded into 1.2.
 - **Deconjugation for native words.** Native verbs and adjectives are
   reachable only by their dictionary form (typed search or exact-form
   selection); a selected 먹었어 finds nothing. Romanized v2's
-  segmentation machinery is the natural host if this is ever built.
+  segmentation machinery is the natural host, and the whole-word
+  native precedence rule (2026-09-05) is the prerequisite: once 가공됐어
+  resolves to 가공되다, that rule is what shows the word's card instead
+  of splitting it again. The irregular table is the hard part.
+- **Keyboard shortcut for the current selection** (Chrome's commands
+  API) and **per-site disable**: one settings row each plus a little
+  glue, and both come up in extension reviews constantly.
+- **Recent lookups** in the sidebar's empty search state, where today
+  there is only a hint sentence. Every dictionary app has it.
+- **Firefox.** The code is MV3 WebExtensions and the data is static;
+  the sidebar API is the one real difference. Distribution rather than
+  a feature, and it roughly doubles the audience for the same
+  dictionary.
+- **Hun synthesis from Korean glosses.** About 4,470 characters still
+  have neither a hun nor a Korean gloss after the Korean Wiktionary
+  fill, and many of the filled ones show a gloss ("눕다.") rather than a
+  proper hun ("누울 와"). Turning a dictionary-form gloss into an
+  adnominal hun needs the conjugation table with its irregulars (ㅂ,
+  ㄹ, ㅅ), so it waits on the same machinery as deconjugation.
+- **Two small open calls**, either way is fine: whether a populated
+  folder under its own filter shows its band (as now) or the old flat
+  list; and whether words on the not-rare override list should keep
+  leading over the native homograph now that lessCommon handles the
+  marker (today they do).
 - **Per-site disable**, and a hover mode with its own toggle (hover mode
   itself is further out). Each is one settings schema entry plus its
   feature code.
