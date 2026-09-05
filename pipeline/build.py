@@ -11,6 +11,8 @@ Sources
     * BabelStone IDS (character decomposition, ~3.3 MB)
     * Urimalsaem (NIKL open dictionary) via the spellcheck-ko mirror, through
       pipeline/urimalsaem.py's fetch + preprocess (1.73 GiB, once)
+    * kaikki.org raw Korean Wiktionary dump (JSONL gz, ~25 MB), the 한자
+      section only, for character glosses 우리말샘 lacks
 
 Outputs (UTF-8, no BOM, compact / no indentation)
     extension/data/hanja.json
@@ -105,6 +107,13 @@ JA_JOYO_URL = ("https://en.wikipedia.org/w/index.php?title="
 # ordering weight ONLY, never as an attestation gate. Nothing ships from it.
 JA_EXTFREQ_URL = ("https://raw.githubusercontent.com/hermitdave/"
                   "FrequencyWords/master/content/2018/ja/ja_full.txt")
+# Korean Wiktionary, kaikki's raw wiktextract dump (SPEC "SECOND CHAR
+# SOURCE"): the 한자 section's short Korean glosses fill character cards
+# that 우리말샘 leaves without a definition. kaikki regenerates the file
+# continuously, so its size never matches a cached copy for long; it is
+# fetched only when missing (or with --force-download), never size-checked,
+# because download()'s resume would splice two different gzip streams.
+KOWIKT_URL = "https://kaikki.org/kowiktionary/raw-wiktextract-data.jsonl.gz"
 
 KAIKKI_FILE = os.path.join(CACHE, "kaikki-Korean.jsonl")
 UNIHAN_FILE = os.path.join(CACHE, "Unihan.zip")
@@ -115,6 +124,7 @@ EDU_TIER_FILE = os.path.join(CACHE, "ko-wiki-edu-tier.wikitext")
 IDS_FILE = os.path.join(CACHE, "babelstone-ids.txt")
 JA_JOYO_FILE = os.path.join(CACHE, "ja-wiki-joyo-kanji.wikitext")
 JA_EXTFREQ_FILE = os.path.join(CACHE, "ja_full_opensubtitles.txt")
+KOWIKT_FILE = os.path.join(CACHE, "kowiktionary-raw-wiktextract-data.jsonl.gz")
 
 # ---------------------------------------------------------------- script ranges
 
@@ -1909,28 +1919,38 @@ def verify(hanja_obj, words_obj, variants_obj, decomp_obj=None,
 
         def ks(tbl, k):
             e = tbl.get(k)
-            return e["s"] if e else None
+            return e.get("s") if e else None
 
         # Schema: {version, words, natives, chars}; every entry is {d, s}
         # with 1-2 non-empty definitions and a positive integer sense code.
+        # A chars entry from ko-wiktionary (SPEC "SECOND CHAR SOURCE") has
+        # no sense code and so no "s"; words and natives always carry one.
         bad_schema = []
+        n_wikt_chars = 0
         for lane, tbl in (("words", kw), ("natives", kn), ("chars", kc)):
             for k, e in tbl.items():
                 d, s = e.get("d"), e.get("s")
-                if (set(e) != {"d", "s"} or not isinstance(d, list)
+                keys = set(e)
+                shapes = ({"d", "s"}, {"d"}) if lane == "chars" else ({"d", "s"},)
+                if (keys not in shapes or not isinstance(d, list)
                         or not 1 <= len(d) <= 2
                         or any(not (isinstance(x, str) and x.strip())
                                for x in d)
-                        or not isinstance(s, int) or isinstance(s, bool)
-                        or s <= 0):
+                        or ("s" in keys
+                            and (not isinstance(s, int) or isinstance(s, bool)
+                                 or s <= 0))):
                     bad_schema.append("%s:%s" % (lane, k))
-        add("ko: schema (version 1; d = 1-2 definitions; s = positive int)",
+                elif "s" not in keys:
+                    n_wikt_chars += 1
+        add("ko: schema (version 1; d = 1-2 definitions; s = positive int, "
+            "absent only on ko-wiktionary chars)",
             ko_obj.get("version") == 1
             and set(ko_obj) == {"version", "words", "natives", "chars"}
             and not bad_schema,
-            "words %s, natives %s, chars %s; %d offenders%s" % (
+            "words %s, natives %s, chars %s (%s without s); %d offenders%s" % (
                 format(len(kw), ","), format(len(kn), ","),
-                format(len(kc), ","), len(bad_schema),
+                format(len(kc), ","), format(n_wikt_chars, ","),
+                len(bad_schema),
                 "" if not bad_schema else " e.g. " + " ".join(bad_schema[:5])))
 
         # Key agreement: every key exists in the file it decorates, with
@@ -1973,10 +1993,31 @@ def verify(hanja_obj, words_obj, variants_obj, decomp_obj=None,
             kd(kw, "生日") == ["세상에 태어난 날. 또는 태어난 날을 기념하는 "
                               "해마다의 그날."],
             json.dumps(kw.get("生日"), ensure_ascii=False))
-        add("ko anchor: 學 char = 지식의 체계 / ‘학문’의 뜻을 더하는 접미사",
+        add("ko anchor: 學 char = 지식의 체계 / ‘학문’의 뜻을 더하는 접미사 "
+            "(우리말샘 senses lead, with s)",
             kd(kc, "學") == ["어떤 원리에 따라 조직된 지식의 체계.",
-                            "‘학문’의 뜻을 더하는 접미사."],
+                            "‘학문’의 뜻을 더하는 접미사."]
+            and isinstance(ks(kc, "學"), int),
             json.dumps(kc.get("學"), ensure_ascii=False))
+        # Second char source (SPEC "SECOND CHAR SOURCE"): ko-wiktionary
+        # glosses fill chars 우리말샘 leaves bare, without a sense code; a
+        # char whose only gloss is a pointer (遅 = "遲의 약자.") stays out.
+        seo, gong = kc.get("恕") or {}, kc.get("汞") or {}
+        add("ko anchor: 恕 glossed 용서하다 and 汞 glossed 수은 from "
+            "ko-wiktionary, no s",
+            any("용서하다" in d for d in seo.get("d", []))
+            and "s" not in seo
+            and any("수은" in d for d in gong.get("d", []))
+            and "s" not in gong,
+            "恕 %s | 汞 %s" % (json.dumps(seo, ensure_ascii=False),
+                              json.dumps(gong, ensure_ascii=False)))
+        add("ko anchor: 遅 absent from chars (its only gloss is a pointer)",
+            "遅" in chars_out and "遅" not in kc,
+            "遅 %s%s" % (json.dumps(kc.get("遅"), ensure_ascii=False),
+                        "" if "遅" in chars_out else " (not a hanja.json char)"))
+        add("ko: chars count reported; every entry 1-2 strings",
+            len(kc) > 0 and all(1 <= len(e["d"]) <= 2 for e in kc.values()),
+            "chars %s" % format(len(kc), ","))
         add("ko anchor: 江 char first def 넓고 길게 흐르는 큰 물줄기.",
             (kd(kc, "江") or [""])[0] == "넓고 길게 흐르는 큰 물줄기.",
             json.dumps(kc.get("江"), ensure_ascii=False))
@@ -2106,19 +2147,24 @@ def verify(hanja_obj, words_obj, variants_obj, decomp_obj=None,
     if ko_report is not None:
         # Coverage bands, derived from the first full build under the
         # survival rule and the widened natives lane: words 25,568 of
-        # 27,627, natives 12,278 of 15,797 rows, chars 1,818 (the corpus
-        # holds 1,885 distinct single-char hanja origins in total). Build
-        # data only, so --verify skips them.
+        # 27,627, natives 12,278 of 15,797 rows, chars 1,818 from 우리말샘
+        # (the corpus holds 1,885 distinct single-char hanja origins in
+        # total) plus 2,188 from ko-wiktionary (every char with a
+        # ko-wiktionary gloss and no 우리말샘 sense; 1,556 of them had no
+        # hun either). Build data only, so --verify skips them.
         add("ko: coverage sane (words >= 25,000; natives >= 11,500; "
-            "chars 1,700..2,100)",
+            "우리말샘 chars 1,700..2,100; ko-wiktionary chars 1,900..2,500)",
             ko_report["words"] >= 25000
             and ko_report["natives"] >= 11500
-            and 1700 <= ko_report["chars"] <= 2100,
-            "words %s of %s, natives %s rows, chars %s" % (
+            and 1700 <= ko_report["chars_urimalsaem"] <= 2100
+            and 1900 <= ko_report["chars_wikt"] <= 2500,
+            "words %s of %s, natives %s rows, chars %s = %s + %s" % (
                 format(ko_report["words"], ","),
                 format(ko_report["words_total"], ","),
                 format(ko_report["natives"], ","),
-                format(ko_report["chars"], ",")))
+                format(ko_report["chars"], ","),
+                format(ko_report["chars_urimalsaem"], ","),
+                format(ko_report["chars_wikt"], ",")))
 
     failed = 0
     log("=============== SPOT CHECKS ================")
@@ -2181,6 +2227,11 @@ def main(argv):
     download(IDS_URL, IDS_FILE, force)
     download_small(JA_JOYO_URL, JA_JOYO_FILE, force)
     download(JA_EXTFREQ_URL, JA_EXTFREQ_FILE, force)
+    if force or not os.path.exists(KOWIKT_FILE):
+        download(KOWIKT_URL, KOWIKT_FILE, force)
+    else:
+        log("  cached   %s (%s; refreshed only by --force-download)"
+            % (os.path.basename(KOWIKT_FILE), mb(os.path.getsize(KOWIKT_FILE))))
     # Urimalsaem: the build reads only the preprocessed intermediate; on a
     # cold cache the module fetches the 1.73 GiB corpus and preprocesses
     # it here. --force-download does not re-fetch it (run
@@ -2878,9 +2929,16 @@ def main(argv):
     # ---- ko.json (SPEC "Korean language mode" addendum) ---------------
     # Built last: its keys are the canonical keys of the three files it
     # decorates, and every one must exist there (build-anchored agreement).
+    t_kw = time.time()
+    kowikt, kw_lines, kw_entries = urimalsaem.parse_kowiktionary(
+        KOWIKT_FILE, chars_out)
+    log("  ko-wiktionary: %s lines, %s 한자 entries on hanja.json chars, "
+        "%s chars with glosses (%.1fs)"
+        % (format(kw_lines, ","), format(kw_entries, ","),
+           format(len(kowikt), ","), time.time() - t_kw))
     ko_obj, ko_report = urimalsaem.build(
         ko_inter, words_out, native_words, chars_out, variant_map,
-        unihan_text)
+        unihan_text, kowikt)
     kr = ko_report
     log("  ko: words %s of %s (%.1f%%; spike extrapolation ~25,500), "
         "%s via variants.json, %s via glyph-form equivalence (%s ambiguous), "
@@ -2906,9 +2964,18 @@ def main(argv):
            format(kr["natives_unmatched"], ","),
            " ".join("%s=%d" % (k, v) for k, v in
                     list(kr["natives_unmapped_pos"].items())[:8])))
-    log("  ko: chars %s glossed of %s (expect ~1,800), %s unmatched"
+    log("  ko: chars %s glossed of %s = %s from 우리말샘 (expect ~1,800; %s "
+        "unmatched) + %s from ko-wiktionary (expect ~2,200, of which ~1,575 "
+        "had no hun: here %s)"
         % (format(kr["chars"], ","), format(kr["chars_total"], ","),
-           kr["chars_unmatched"]))
+           format(kr["chars_urimalsaem"], ","), kr["chars_unmatched"],
+           format(kr["chars_wikt"], ","), format(kr["wikt_no_hun"], ",")))
+    log("  ko: ko-wiktionary candidates %s (chars glossed there, no 우리말샘 "
+        "sense), %s left bare (every gloss a pointer); pointer glosses "
+        "dropped: %s"
+        % (format(kr["wikt_candidates"], ","), kr["wikt_bare"],
+           " ".join("%s=%d" % kv for kv in kr["wikt_pointers"].items())
+           or "(none)"))
     rs = ko_inter["report"].get("root_stubs", {})
     log("  ko: root stubs %s matched, %s resolved, %s dropped "
         "(preprocess)" % (format(rs.get("matched", 0), ","),
@@ -2922,7 +2989,8 @@ def main(argv):
         "frequent: %s" % (format(kr["words_koless"], ","),
                           " ".join(kr["words_koless_top"])))
     log("  ko: chars with no hun %s = %s English-only + %s with no meaning "
-        "text; no hun and no ko gloss %s (English-only and no ko gloss %s)"
+        "text; residue with no hun and no ko gloss from either source %s "
+        "(English-only and no ko gloss %s; expect ~4,450)"
         % (format(kr["no_hun"], ","), format(kr["english_only"], ","),
            format(kr["no_text"], ","), format(kr["no_hun_no_ko"], ","),
            format(kr["english_only_no_ko"], ",")))
@@ -2950,7 +3018,7 @@ def main(argv):
            format(sino_report["ja_chars"], ","),
            format(sino_report["zh_chars"], ",")))
     log("ko         : words %s / natives %s / chars %s (expect ~ 25500 / "
-        "~ 12000 / ~ 1800)"
+        "~ 12000 / ~ 4000, of which ~ 1800 우리말샘)"
         % (format(ko_report["words"], ","), format(ko_report["natives"], ","),
            format(ko_report["chars"], ",")))
     log("  variant sources: " + ", ".join(

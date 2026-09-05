@@ -25,15 +25,20 @@ build       consumes only the intermediate and matches it onto the finished
             canonical char. A 지명 sense is dropped only beside an ordinary
             sense on the same key (中國, 美國 keep theirs; never on chars);
             surname senses sort last; every other proper-noun class and
-            every work/slang sense is dropped.
+            every work/slang sense is dropped. The chars lane has a second,
+            lower-priority source (SPEC "SECOND CHAR SOURCE"): the 한자
+            section of Korean Wiktionary, read from the cached kaikki dump
+            by parse_kowiktionary and used only where 우리말샘 has no sense
+            for the character. Such an entry carries no sense code.
 
 Usage
     python pipeline/urimalsaem.py fetch [--force]
     python pipeline/urimalsaem.py preprocess
     (build.py runs both automatically on a cold cache)
 
-Source: National Institute of Korean Language, 우리말샘, CC BY-SA 2.0 KR.
-See extension/data/DATA-LICENSE.md.
+Sources: National Institute of Korean Language, 우리말샘, CC BY-SA 2.0 KR;
+Korean Wiktionary (ko.wiktionary.org), CC BY-SA, via kaikki.org. See
+extension/data/DATA-LICENSE.md.
 """
 
 from __future__ import annotations
@@ -187,6 +192,87 @@ SIMPLIFIED_FIELD = "kSimplifiedVariant"
 NUMERAL_FORMS = frozenset("壹貳參肆伍陸柒捌玖拾")
 RE_UPLUS = re.compile(r"U\+([0-9A-F]{4,6})")
 GLYPH_COMBOS_CAP = 4096      # substitution combinations tried per origin
+
+# Korean Wiktionary 한자 glosses (SPEC "SECOND CHAR SOURCE"): a gloss that
+# only points at another character is dropped. Anchored at the gloss
+# start, an optional reading in parentheses after the character (步(보)의
+# 속자), so a real gloss with a trailing note ("둘째 지지. 丒의 이체자.")
+# is kept. The SPEC names 약자 / 속자 / 본자 / 고자 / 옛말 / 원말, …와 같다
+# and a bare "→" cross-reference; the dump also writes the same pointer
+# as 간체자, 동자 and 와자 (爾의 간체자, 傑의 동자, 同(동)의 와자), and
+# five entries carry a formation note instead of a meaning ("彳의 뜻과
+# 卸(사)의 소리를 따른 형성자이다."), which is not a definition either.
+KOWIKT_LANG = "한자"
+_HAN = r"[㐀-䶿一-鿿豈-﫿\U00020000-\U0003134f]"
+_HEAD = r"^" + _HAN + r"(?:\([가-힣]+\))?"
+KOWIKT_POINTERS = (
+    re.compile(_HEAD + r"(?:의|와|과)\s*"
+               r"(?P<kind>약자|속자|본자|고자|옛말|원말|간체자?|동자|와자)"),
+    re.compile(_HEAD + r"(?:와|과)\s*(?P<kind>같다)"),
+    re.compile(r"^(?P<kind>→)"),
+    re.compile(_HEAD + r".*(?P<kind>형성자)이다"),
+)
+
+
+def pointer_kind(gloss):
+    """The pointer class a ko-wiktionary gloss belongs to, or None."""
+    for rx in KOWIKT_POINTERS:
+        m = rx.match(gloss)
+        if m:
+            return m.group("kind")
+    return None
+
+
+def parse_kowiktionary(path, chars_out):
+    """kaikki ko-wiktionary dump -> {char: [gloss, ...]} in entry order.
+
+    One JSON object per line; only lang == 한자 entries whose word is a
+    single character with a hanja.json card are read. Glosses are trimmed
+    and deduplicated across the character's entries (a few characters
+    have one entry per part of speech). Pointer filtering happens in
+    wikt_defs, so the counts can be reported per class. -> (glosses,
+    lines, entries)
+    """
+    needle = KOWIKT_LANG.encode("utf-8")
+    glosses = collections.OrderedDict()
+    lines = entries = 0
+    with gzip.open(path, "rb") as fh:
+        for line in fh:
+            lines += 1
+            if needle not in line:
+                continue
+            try:
+                o = json.loads(line)
+            except ValueError:
+                continue
+            if o.get("lang") != KOWIKT_LANG:
+                continue
+            w = unicodedata.normalize("NFC", (o.get("word") or "").strip())
+            if len(w) != 1 or w not in chars_out:
+                continue
+            entries += 1
+            lst = glosses.setdefault(w, [])
+            for sense in o.get("senses") or []:
+                for g in sense.get("glosses") or []:
+                    g = RE_WS.sub(" ", g).strip()
+                    if g and g not in lst:
+                        lst.append(g)
+    return glosses, lines, entries
+
+
+def wikt_defs(glosses, hits):
+    """Pointer glosses dropped, the first CAP survivors; hits counts the
+    pointer classes that fired."""
+    out = []
+    for g in glosses:
+        kind = pointer_kind(g)
+        if kind is not None:
+            hits[kind] += 1
+            continue
+        out.append(g)
+        if len(out) == CAP:
+            break
+    return out
 
 
 def log(*a):
@@ -695,7 +781,7 @@ def parse_equivalence(text):
 
 
 def build(inter, words_out, native_words, chars_out, variant_map,
-          unihan_variants_text):
+          unihan_variants_text, kowikt=None):
     """-> (ko_obj, report).
 
     words_out: the finished words.json words dict (keys canonical, NFC).
@@ -703,8 +789,10 @@ def build(inter, words_out, native_words, chars_out, variant_map,
     glosses}]}. chars_out: the finished hanja.json chars dict. variant_map:
     variants.json's map, for routing a variant-form single char to its
     canonical card. unihan_variants_text: Unihan_Variants.txt, for the
-    glyph-form equivalence of the words lane.
+    glyph-form equivalence of the words lane. kowikt: parse_kowiktionary's
+    glosses, the chars lane's second source.
     """
+    kowikt = kowikt or {}
     equiv = parse_equivalence(unihan_variants_text)
 
     def glyph_hits(k):
@@ -897,6 +985,25 @@ def build(inter, words_out, native_words, chars_out, variant_map,
             tbl[key] = entry
             overrides_fired += 1
 
+    # Second char source (SPEC): a character with no 우리말샘 sense takes
+    # the ko-wiktionary glosses, entry order, pointer glosses dropped, cap
+    # CAP. No sense code exists, so the entry has no "s"; a character whose
+    # glosses were all pointers stays bare. Never a top-up: a character
+    # with one 우리말샘 sense keeps exactly that.
+    chars_urimalsaem = len(ko_chars)
+    wikt_hits = collections.Counter()
+    wikt_candidates = wikt_bare = 0
+    for c in sorted(kowikt):
+        if c in ko_chars:
+            continue
+        wikt_candidates += 1
+        d = wikt_defs(kowikt[c], wikt_hits)
+        if d:
+            ko_chars[c] = {"d": d}
+        else:
+            wikt_bare += 1
+    chars_wikt = len(ko_chars) - chars_urimalsaem
+
     # Build-anchored key agreement (SPEC): a key absent from the file it
     # decorates aborts the build rather than shipping.
     foreign = ([k for k in ko_words if k not in words_out]
@@ -917,6 +1024,11 @@ def build(inter, words_out, native_words, chars_out, variant_map,
     no_hun_no_ko = sum(1 for c in no_hun if c not in ko_chars)
     english_only_no_ko = sum(1 for c in no_hun
                              if chars_out[c]["glosses"] and c not in ko_chars)
+    # The ko-wiktionary fill splits into chars that had no hun at all (the
+    # SPEC's spike figure, about 1,576, formerly English under 한국어) and
+    # chars with a hun but no 우리말샘 sense.
+    wikt_no_hun = sum(1 for c in no_hun
+                      if c in ko_chars and "s" not in ko_chars[c])
 
     native_heads = {k.rsplit("|", 1)[0] for k in ko_natives}
     # The words.json keys left without a Korean definition, most frequent
@@ -950,8 +1062,15 @@ def build(inter, words_out, native_words, chars_out, variant_map,
         "natives_unmapped_pos": dict(unmapped.most_common()),
         "natives_rescued": natives_rescued,
         "chars": len(ko_chars), "chars_total": len(chars_out),
+        "chars_urimalsaem": chars_urimalsaem,
         "chars_unmatched": miss_chars,
         "chars_rescued": chars_rescued,
+        "chars_wikt": chars_wikt,
+        "wikt_chars": len(kowikt),
+        "wikt_candidates": wikt_candidates,
+        "wikt_bare": wikt_bare,
+        "wikt_no_hun": wikt_no_hun,
+        "wikt_pointers": dict(wikt_hits.most_common()),
         "no_hun": len(no_hun), "english_only": english_only,
         "no_text": no_text, "no_hun_no_ko": no_hun_no_ko,
         "english_only_no_ko": english_only_no_ko,

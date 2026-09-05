@@ -54,9 +54,9 @@ licensing.
 - **우리말샘 (Urimalsaem)** (https://opendict.korean.go.kr), the open Korean
   dictionary of the **National Institute of Korean Language** (국립국어원),
   used under the **Creative Commons Attribution-ShareAlike 2.0 Korea License**
-  (https://creativecommons.org/licenses/by-sa/2.0/kr/) as the only source of
-  `ko.json`: the Korean definitions shown for words, native words and single
-  characters when the extension's language is 한국어. The data was obtained
+  (https://creativecommons.org/licenses/by-sa/2.0/kr/) as the primary source
+  of `ko.json`: the Korean definitions shown for words, native words and
+  single characters when the extension's language is 한국어. The data was obtained
   through the spellcheck-ko/korean-dict-nikl mirror on GitHub
   (https://github.com/spellcheck-ko/korean-dict-nikl, `opendict/`), a
   redistribution of NIKL's bulk download; the mirror is provenance only, and
@@ -66,6 +66,13 @@ licensing.
   pipeline; nothing from them is in `ko.json`. Each entry keeps the
   Urimalsaem sense code (`s`) so the popup can link the exact sense at
   `https://opendict.korean.go.kr/dictionary/view?sense_no=<s>`.
+- **Korean Wiktionary** (https://ko.wiktionary.org), via the raw
+  machine-readable dump published by **kaikki.org**, under the same
+  **CC BY-SA** terms as the other Wiktionary editions above, as the second
+  source of character glosses in `ko.json`: where Urimalsaem has no sense
+  for a single character, its 한자 section supplies the short Korean gloss
+  (at most two per character). Such an entry carries no sense code, and the
+  popup keeps the Wiktionary link for it.
 
 Accordingly, the derived dictionary data in this directory is distributed
 under **CC BY-SA 4.0** (https://creativecommons.org/licenses/by-sa/4.0/).
@@ -74,4 +81,6 @@ see /LICENSE at the repository root).
 
 Per-entry attribution: every entry links back to its source page on
 en.wiktionary.org via the popup's "Wiktionary" link; a card showing a
-Korean definition links its Urimalsaem sense instead via the "우리말샘" link.
+Korean definition from Urimalsaem links its sense instead via the "우리말샘"
+link; a character whose Korean gloss comes from Korean Wiktionary keeps the
+"Wiktionary" link.

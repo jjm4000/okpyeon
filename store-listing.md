@@ -62,7 +62,7 @@ Two settings add each character's on'yomi and pinyin beside its Korean reading: 
 - 9,415 hanja characters with readings, eumhun, definitions, levels and compounds
 - 27,620 Sino-Korean words indexed by both hanja and hangul
 - 15,527 native Korean words, included when the option is on
-- Korean definitions for 25,508 Sino-Korean words, 12,071 native words, and 1,795 characters
+- Korean definitions for 25,508 Sino-Korean words, 12,071 native words, and 3,983 characters
 - Japanese readings for 3,513 characters and Mandarin readings for 9,195
 - 9,130 character decompositions, with the sound-giving part marked on 7,151
 - 3,791 variant mappings covering simplified Chinese and Japanese shinjitai
@@ -71,7 +71,7 @@ Two settings add each character's on'yomi and pinyin beside its Korean reading: 
 The whole dictionary ships inside the extension. It makes no network requests and collects no data, and saved words stay on your device.
 
 --  SOURCES  --
-Definitions and compounds: English Wiktionary via kaikki.org (CC BY-SA). Korean definitions: 우리말샘, National Institute of Korean Language (CC BY-SA 2.0 KR). Variant mappings, Chinese readings, and sound-giving parts: Wiktionary and Unicode Unihan. Japanese readings: the joyo kanji table via Wikipedia (CC BY-SA). Decompositions: BabelStone IDS (public domain). School tiers: the Korean Wikipedia article 대한민국 중고등학교 기초한자 목록 (CC BY-SA 4.0). The Advanced and Rare levels are Okpyeon's own classification.
+Definitions and compounds: English Wiktionary via kaikki.org (CC BY-SA). Korean definitions: 우리말샘, National Institute of Korean Language (CC BY-SA 2.0 KR), and Korean Wiktionary for characters (CC BY-SA). Variant mappings, Chinese readings, and sound-giving parts: Wiktionary and Unicode Unihan. Japanese readings: the joyo kanji table via Wikipedia (CC BY-SA). Decompositions: BabelStone IDS (public domain). School tiers: the Korean Wikipedia article 대한민국 중고등학교 기초한자 목록 (CC BY-SA 4.0). The Advanced and Rare levels are Okpyeon's own classification.
 
 Support the project: ko-fi.com/okpyeon
 
@@ -129,7 +129,7 @@ Detailed description:
 - 한자 9,415자의 음, 음훈, 뜻풀이, 등급, 단어
 - 한자어 27,620개, 한자와 한글 양쪽으로 찾기
 - 고유어 15,527개 (선택 사항을 켰을 때)
-- 한자어 25,508개, 고유어 12,071개, 한자 1,795자의 한국어 뜻풀이
+- 한자어 25,508개, 고유어 12,071개, 한자 3,983자의 한국어 뜻풀이
 - 일본어 읽기 3,513자, 중국어 읽기 9,195자
 - 한자 짜임 9,130자, 그중 7,151자에 소리 부분 표시
 - 간체와 일본 신자체를 포함한 이체자 대응 3,791개
@@ -138,7 +138,7 @@ Detailed description:
 사전 전체가 확장 프로그램 안에 들어 있습니다. 네트워크 요청을 하지 않고, 아무 정보도 수집하지 않으며, 저장한 단어는 기기 안에만 있습니다.
 
 --  출처  --
-뜻풀이와 단어: 영어 위키낱말사전 (kaikki.org 경유, CC BY-SA). 한국어 뜻풀이: 국립국어원 우리말샘 (CC BY-SA 2.0 KR). 이체자 대응, 중국어 읽기, 소리 부분: 위키낱말사전과 유니코드 Unihan. 일본어 읽기: 위키백과의 상용한자표 (CC BY-SA). 한자 짜임: BabelStone IDS (퍼블릭 도메인). 학교 등급: 한국어 위키백과 대한민국 중고등학교 기초한자 목록 (CC BY-SA 4.0). 고급과 희귀 등급은 옥편 자체 분류입니다.
+뜻풀이와 단어: 영어 위키낱말사전 (kaikki.org 경유, CC BY-SA). 한국어 뜻풀이: 국립국어원 우리말샘 (CC BY-SA 2.0 KR), 한자는 한국어 위키낱말사전도 참고 (CC BY-SA). 이체자 대응, 중국어 읽기, 소리 부분: 위키낱말사전과 유니코드 Unihan. 일본어 읽기: 위키백과의 상용한자표 (CC BY-SA). 한자 짜임: BabelStone IDS (퍼블릭 도메인). 학교 등급: 한국어 위키백과 대한민국 중고등학교 기초한자 목록 (CC BY-SA 4.0). 고급과 희귀 등급은 옥편 자체 분류입니다.
 
 프로젝트 후원: ko-fi.com/okpyeon
 

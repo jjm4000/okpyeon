@@ -2490,6 +2490,31 @@ korean-mode-kickoff.md; this section is the binding contract.
   only). Coverage report at build: words matched, natives matched
   (rows and headwords), chars glossed, and chars with neither hun nor
   Korean gloss.
+- SECOND CHAR SOURCE (ADDENDUM 2026-09-05, spike-measured): the chars
+  lane takes ko-wiktionary's 한자 section as a lower-priority source.
+  The cached kowiktionary dump carries a short Korean gloss ("눕다.",
+  "수은.", "용서하다.") for 3,231 of our characters; 1,576 of them had
+  neither a hun nor a 우리말샘 gloss and fell back to English under
+  한국어 (22 m, 106 h, 475 a, 973 r). Rule: 우리말샘 senses first where
+  they exist; otherwise the ko-wiktionary glosses, in entry order,
+  cap two, pointer glosses dropped (…의 약자 / 속자 / 본자 / 고자,
+  …와 같다, …의 옛말, and a bare cross-reference). A ko-wiktionary
+  gloss carries no sense code, so such a card keeps its Wiktionary
+  link (the definition did come from Wiktionary). No hun is
+  synthesized from a gloss: the adnominal conversion (눕다 to 누울)
+  with its irregulars is a separate risk and the definition slot
+  already replaces the English fallback. DATA-LICENSE and the listing
+  Sources name Korean Wiktionary (CC BY-SA). Anchors: 恕 glossed
+  용서하다, 汞 glossed 수은, 遅 (only "遲의 약자.") stays bare, 學 still
+  leads with its 우리말샘 senses. BUILT 2026-09-05: the rule fills
+  every char without a 우리말샘 sense, so 2,188 chars gained a gloss
+  (1,556 with no hun, 632 that had a hun and now show a gloss beside
+  it), chars glossed 1,795 to 3,983; 24 stayed bare because every
+  gloss was a pointer (the dump also writes 간체자, 동자, 와자, and
+  formation notes, all dropped); the no-hun, no-gloss residue is
+  4,471. The cached dump is used as is and refetched only on
+  --force-download, since the upstream file changes daily and a
+  resumed gzip download would corrupt it.
 - SOURCE LINK (user-settled 2026-09-01): a card's source link points
   at where the definition on screen came from. Word and native cards
   showing a Korean definition link "우리말샘 ↗" to

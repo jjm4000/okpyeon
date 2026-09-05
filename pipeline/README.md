@@ -512,6 +512,24 @@ chunks, 1.73 GiB, one `<item>` per sense. It runs in three steps:
   and the ko-less 生覺, and prints the coverage report with the glyph-form
   rescues and the ten most frequent keys still lacking a Korean definition.
 
+The chars lane has a second source. `parse_kowiktionary` reads the cached
+kaikki dump of Korean Wiktionary (`cache/kowiktionary-raw-wiktextract-data.jsonl.gz`,
+~25 MB, fetched only when missing or with `--force-download`, since kaikki
+regenerates it continuously and a size check would re-fetch every build)
+and keeps, for each `hanja.json` character with a `lang: 한자` entry, its
+glosses in entry order. A character with no Urimalsaem sense takes the first
+two of those glosses after the pointer glosses are dropped (`…의 약자`, `속자`,
+`본자`, `고자`, `옛말`, `원말`, the same pointer written as `간체자`, `동자` or
+`와자`, `…와 같다`, a bare `→` cross-reference, and the five formation notes
+ending in `형성자이다`, all anchored at the gloss start so a real gloss with a
+trailing note survives). Such an entry is `{"d": [...]}` with no `s`, because
+no Urimalsaem sense code exists, and the card keeps its Wiktionary link. A
+character with a Urimalsaem sense is never topped up. The verify step anchors
+恕 (용서하다), 汞 (수은), 遅 (only "遲의 약자.", so absent) and 學 (Urimalsaem
+senses lead), and the build log reports the split (about 1,800 from Urimalsaem,
+2,188 from Korean Wiktionary, 1,556 of which had no hun) and the residue of
+characters with neither a hun nor a Korean gloss (about 4,470).
+
 ## Canonical words keys, and how long a key can be
 
 The service worker NFC-normalizes a selection and maps every character through
