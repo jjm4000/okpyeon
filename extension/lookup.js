@@ -59,6 +59,19 @@ export const MAX_NATIVE_WORD_LEN = 5;
 export function nativeMaxLenOf(native) {
   return lenMeta(native && native.maxLen, MAX_NATIVE_WORD_LEN);
 }
+
+/**
+ * Origin markers ADDENDUM: the three origin classes a native.json entry may
+ * declare. Anything else reads as unknown, and an unknown origin is carried
+ * nowhere: no field on the match, no marker on any surface.
+ */
+export const NATIVE_ORIGINS = Object.freeze(["native", "loan", "hybrid"]);
+
+/** The entry's origin when it is one of the three classes, else null. */
+export function nativeOriginOf(entry) {
+  const origin = entry && typeof entry === "object" ? entry.origin : undefined;
+  return typeof origin === "string" && NATIVE_ORIGINS.includes(origin) ? origin : null;
+}
 /** Word-parts addendum: sub-word glosses are capped at 2 (first sense). */
 export const MAX_PART_GLOSSES = 2;
 /**
@@ -764,9 +777,14 @@ export function buildMatches(text, data) {
  * (word, pos) pair, spans in text order, native.json entry order within a
  * word. Empty when the native table has nothing to say.
  *
+ * Place names ADDENDUM: pos "name" is a POS like any other here; a place
+ * entry matches, dedupes, and orders exactly as a noun does. Origin markers
+ * ADDENDUM: `origin` rides on the match only when the entry declares one of
+ * the three classes (NATIVE_ORIGINS); an unknown origin adds no field.
+ *
  * @param {string} text raw query or selection
  * @param {{native?:object, words?:object, variants?:object}} data parsed data bundle
- * @returns {Array<{kind:"native", word:string, pos:string, glosses:string[]}>}
+ * @returns {Array<{kind:"native", word:string, pos:string, glosses:string[], origin?:string}>}
  */
 export function buildNativeMatches(text, data) {
   const bundle = data || {};
@@ -795,12 +813,15 @@ export function buildNativeMatches(text, data) {
       const key = `${word}|${entry.pos}`;
       if (seen.has(key)) continue;
       seen.add(key);
-      out.push({
+      const match = {
         kind: "native",
         word,
         pos: entry.pos,
         glosses: Array.isArray(entry.glosses) ? entry.glosses.slice() : [],
-      });
+      };
+      const origin = nativeOriginOf(entry);
+      if (origin !== null) match.origin = origin;
+      out.push(match);
     }
   };
 
@@ -1371,13 +1392,16 @@ function charSuggestion(char, hun, eum, gloss, lvl) {
  *
  * @param {string} text raw omnibox input
  * @param {{hanja?:object, words?:object, variants?:object, native?:object}} data parsed data files
- * @param {{interpret?:boolean, native?:boolean, labels?:{rare?:string, native?:string}}} [options]
+ * @param {{interpret?:boolean, native?:boolean, labels?:{rare?:string, native?:string, loan?:string, hybrid?:string}}} [options]
  *        same input-channel rule as lookup(); the omnibox IS a typed channel,
  *        so background.js passes `interpret`. `native: true` (native words
  *        ADDENDUM) draws the rows from the All-scope result set, native
  *        entries included. `labels` (Korean language mode ADDENDUM) are the
- *        two markers the dimmed tails carry, in the stored language;
+ *        markers the dimmed tails carry, in the stored language;
  *        background.js reads them from the message table. Absent, English.
+ *        Origin markers ADDENDUM: a native row's tail carries the label of
+ *        its `origin` (native, loan, hybrid); a row without an origin
+ *        carries no marker.
  * @returns {Array<{content:string, description:string}>}
  */
 export function buildOmniboxSuggestions(text, data, options) {
@@ -1393,6 +1417,8 @@ export function buildOmniboxSuggestions(text, data, options) {
     const labels = {
       rare: typeof given.rare === "string" ? given.rare : "rare",
       native: typeof given.native === "string" ? given.native : "native",
+      loan: typeof given.loan === "string" ? given.loan : "loan",
+      hybrid: typeof given.hybrid === "string" ? given.hybrid : "hybrid",
     };
     const interps = interpret ? buildInterpretations(text, data, { native }) : [];
     const groups =
@@ -1448,13 +1474,16 @@ export function buildOmniboxSuggestions(text, data, options) {
           ]),
         });
       } else if (match.kind === "native") {
-        // Native words ADDENDUM: "native" sits in the dim tail, where hanja
-        // rows carry the school level. Content is the hangul word itself, so
-        // activating the row deep-links to it literally.
+        // Native words ADDENDUM: the origin marker sits in the dim tail,
+        // where hanja rows carry the school level. Content is the hangul
+        // word itself, so activating the row deep-links to it literally.
+        // Origin markers ADDENDUM: the marker is the match's own origin
+        // class; no origin, no marker.
         const gloss = Array.isArray(match.glosses) ? match.glosses[0] : "";
+        const origin = nativeOriginOf(match);
         push({
           content: match.word,
-          description: describe(match.word, "", [gloss, labels.native]),
+          description: describe(match.word, "", [gloss, origin !== null ? labels[origin] : ""]),
         });
       } else if (match.kind === "char") {
         const pair = Array.isArray(match.eumhun) ? match.eumhun[0] : null;

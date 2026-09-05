@@ -380,6 +380,116 @@ NATIVE_POS = {"noun", "verb", "adj", "adv", "intj", "det", "pron", "num",
 NATIVE_SKIP_SENSE = {"alt-of", "form-of", "no-gloss",
                      "obsolete", "archaic", "dated"}
 
+# Place-name lane (SPEC "Place names and origin markers"): hangul-only
+# `name` entries whose categories place them. A category counts when the
+# head of its name (before " in " / " of ") carries one of these words:
+# "Cities in England", "Countries in Asia", "States of the United
+# States", "Prefecture-level cities", "National capitals". Surnames,
+# given names, dynasties and works never carry one.
+PLACE_CAT_WORDS = {
+    "countries", "cities", "towns", "villages", "capitals", "provinces",
+    "states", "regions", "districts", "counties", "municipalities",
+    "prefectures", "subdivisions", "rivers", "mountains", "islands",
+    "seas", "lakes", "oceans", "deserts", "continents", "planets"}
+PLACE_MIN_LEN, PLACE_MAX_LEN = 2, 8
+PLACE_MIN_SUBS = 20        # subtitle count that attests a place on its own
+PLACE_MAX_SUBS = 1000      # above this the hangul is a common word (가자)
+# hangul -> [glosses] of place entries; only entries with a place category
+# contribute, so 수 the Sui dynasty adds nothing to 수 the river if any.
+place_entries = {}
+# hangul headwords that are a Wiktionary inflected form of a non-name
+# (지난 of 지나다, 기니 of 길다): never a place.
+inflected_hangul = set()
+# (hangul, POS) -> origin read off the extract's etymology templates, the
+# source behind 우리말샘's word_type. None when the templates say nothing.
+etym_origins = {}
+ETYM_LOAN = {"bor", "bor+", "lbor", "lbor+", "slbor", "slbor+", "ubor",
+             "ubor+", "borrowed", "transliteration"}
+ETYM_INHERIT = {"inh", "inh+", "der", "der+", "inherited", "derived"}
+ETYM_OLD_KOREAN = {"okm", "oko"}
+ETYM_COMPOUND = {"com", "com+", "compound", "af", "affix", "suf", "suffix",
+                 "pre", "prefix"}
+# Places excluded by review, in the NOT_RARE discipline: every hangul here
+# must be a place the rules would otherwise admit, or the build aborts.
+NOT_PLACE_OVERRIDES = {
+    # User-reviewed 2026-09-05 from the two-syllable admit list: a nonstandard
+    # spelling of Paris, and three names every reader will misread (mirror,
+    # a girl's name, an apartment brand).
+    "빠리", "미러", "순이", "자이",
+}
+
+RE_HANGUL_ANY = re.compile(r"[가-힣]")
+
+
+def etym_origin_of(o):
+    """Origin of an entry from its etymology templates, else None. A
+    borrowing template wins over an inheritance from Middle or Old Korean,
+    which wins over a compound of a hanja part and a hangul-only part
+    (가공(加工) + -되다). ko-etym-native is Wiktionary's own native-word
+    box (a Middle Korean attestation), counted as native."""
+    seen_native = seen_hybrid = False
+    for t in o.get("etymology_templates") or []:
+        name = t.get("name") or ""
+        args = t.get("args") or {}
+        if name in ETYM_LOAN:
+            return "loan"
+        if name == "ko-etym-native" or (
+                name in ETYM_INHERIT
+                and str(args.get("2") or "") in ETYM_OLD_KOREAN):
+            seen_native = True
+        elif name in ETYM_COMPOUND:
+            parts = [re.sub(r"<[^>]*>|#.*$", "", str(args.get(str(i)) or ""))
+                     for i in range(2, 8)]
+            han = any(any(is_han(c) for c in x) for x in parts)
+            hangul = any(RE_HANGUL_ANY.search(x)
+                         and not any(is_han(c) for c in x) for x in parts)
+            if han and hangul:
+                seen_hybrid = True
+    if seen_native:
+        return "native"
+    if seen_hybrid:
+        return "hybrid"
+    return None
+
+
+def note_etym_origin(o, hangul, pos):
+    if etym_origins.get((hangul, pos)) is None:
+        etym_origins[(hangul, pos)] = etym_origin_of(o)
+
+
+def is_place_entry(o):
+    cats = list(o.get("categories") or [])
+    for s in o.get("senses") or []:
+        cats.extend(s.get("categories") or [])
+    for c in cats:
+        name = c.get("name") if isinstance(c, dict) else c
+        head = re.split(r" in | of ", str(name or ""), 1)[0]
+        words = set(re.split(r"[\s-]+", head.lower()))
+        if words & PLACE_CAT_WORDS:
+            return True
+    return False
+
+
+def collect_place(o, hangul):
+    """Place candidates from `name` entries (no hanja form, see
+    handle_word_entry). Filtering against words.json, native.json, the
+    inflected forms and the subtitle counts happens in main once those
+    exist; here only the entry's own shape is judged."""
+    if not (PLACE_MIN_LEN <= len(hangul) <= PLACE_MAX_LEN):
+        return
+    if not is_place_entry(o):
+        return
+    glosses = place_entries.setdefault(hangul, [])
+    for s in o.get("senses") or []:
+        tags = set(s.get("tags") or [])
+        if tags & NATIVE_SKIP_SENSE or s.get("alt_of") or s.get("form_of"):
+            continue
+        gl = s.get("glosses") or []
+        if not gl or RE_SKIP_GLOSS.match(gl[-1] or ""):
+            continue
+        push_gloss(glosses, clean_gloss(gl[-1]), 2)
+    note_etym_origin(o, hangul, "name")
+
 stats = {"lines": 0, "parsed": 0, "char_senses": 0, "alt_senses": 0,
          "examples": 0, "hanja_headwords": 0}
 
@@ -647,6 +757,11 @@ def handle_word_entry(o):
     hangul = o.get("word") or ""
     if not is_hangul(hangul):
         return
+    if o.get("pos") != "name":
+        for s in o.get("senses") or []:
+            if "form-of" in (s.get("tags") or []) or s.get("form_of"):
+                inflected_hangul.add(hangul)
+                break
 
     spellings = set()
     for f in o.get("forms") or []:
@@ -670,7 +785,10 @@ def handle_word_entry(o):
         # no hanja at all: a native word competing for this hangul reading
         if any(s.get("glosses") for s in (o.get("senses") or [])):
             native_hangul.add(hangul)
-        collect_native(o, hangul)
+        if o.get("pos") == "name":
+            collect_place(o, hangul)
+        else:
+            collect_native(o, hangul)
         return
 
     glosses = []
@@ -712,6 +830,7 @@ def collect_native(o, hangul):
     for h in o.get("head_templates") or []:
         if (h.get("args") or {}).get("hanja"):
             return
+    note_etym_origin(o, hangul, pos)
     # Entries whose senses all fail the bar leave an empty gloss list here;
     # the emit step drops those rather than shipping glossless rows.
     glosses = native_entries.setdefault(hangul, {}).setdefault(pos, [])
@@ -1805,8 +1924,57 @@ def verify(hanja_obj, words_obj, variants_obj, decomp_obj=None,
             json.dumps(nw.get("먹다"), ensure_ascii=False))
         add("native: 국민 absent (sino)", "국민" not in nw,
             json.dumps(nw.get("국민"), ensure_ascii=False))
-        add("native: 서울 absent (proper noun)", "서울" not in nw,
+        # Place lane (SPEC "Place names and origin markers"): 서울 has a
+        # dated common-noun sense that the skip list keeps out, so its
+        # only row is the place.
+        add("native: 서울 has only a place row (dated noun sense skipped)",
+            [e["pos"] for e in nw.get("서울") or []] == ["name"],
             json.dumps(nw.get("서울"), ensure_ascii=False))
+
+        def place(h):
+            return next((e for e in nw.get(h) or [] if e["pos"] == "name"),
+                        None)
+
+        def origin(h, pos):
+            e = next((e for e in nw.get(h) or [] if e["pos"] == pos), None)
+            return e.get("origin") if e else None
+
+        for h, want in (("서울", "native"), ("런던", "loan"),
+                        ("몽골", "loan"), ("부탄", "loan")):
+            add("native place: %s present, origin %s" % (h, want),
+                place(h) is not None and place(h).get("origin") == want,
+                json.dumps(place(h), ensure_ascii=False))
+        for h in ("미국", "나라", "지난", "가자"):
+            add("native place: %s absent from the lane" % h,
+                place(h) is None,
+                json.dumps(nw.get(h), ensure_ascii=False))
+        for h, pos, want in (("가드", "noun", "loan"),
+                             ("하늘", "noun", "native"),
+                             ("가공되다", "verb", "hybrid")):
+            add("native origin: %s %s" % (h, want),
+                origin(h, pos) == want,
+                json.dumps(nw.get(h), ensure_ascii=False))
+        add("native: every NOT_PLACE_OVERRIDES entry is out of the lane "
+            "(%d listed)" % len(NOT_PLACE_OVERRIDES),
+            all(place(h) is None for h in NOT_PLACE_OVERRIDES),
+            " ".join(sorted(h for h in NOT_PLACE_OVERRIDES if place(h))))
+        places = [h for h, rows in nw.items()
+                  if any(e["pos"] == "name" for e in rows)]
+        add("native: place lane count sane (about 630 expected)",
+            450 <= len(places) <= 900,
+            "%s place rows" % format(len(places), ","))
+        bad_origin = [h for h, rows in nw.items() for e in rows
+                      if "origin" in e
+                      and e["origin"] not in ("native", "loan", "hybrid")]
+        add("native: origin values in {native, loan, hybrid}",
+            not bad_origin, " ".join(bad_origin[:5]))
+        n_rows = sum(len(rows) for rows in nw.values())
+        n_marked = sum(1 for rows in nw.values() for e in rows
+                       if "origin" in e)
+        add("native: most rows carry an origin (measured 2026-09-05)",
+            n_marked >= 0.6 * n_rows,
+            "%s of %s rows marked" % (format(n_marked, ","),
+                                      format(n_rows, ",")))
         add("native: count sane (16,331 measured 2026-08-31)",
             12000 <= len(nw) <= 22000,
             "%s headwords" % format(len(nw), ","))
@@ -1968,6 +2136,11 @@ def verify(hanja_obj, words_obj, variants_obj, decomp_obj=None,
             not foreign,
             "%d foreign%s" % (len(foreign), "" if not foreign else
                               " e.g. " + " ".join(foreign[:5])))
+
+        seoul = kn.get("서울|name") or {}
+        add("ko anchor: 서울|name carries a sense code and a 수도 definition",
+            "s" in seoul and any("수도" in d for d in seoul.get("d") or []),
+            json.dumps(seoul, ensure_ascii=False)[:160])
 
         want = ["학예를 배우는 사람.", "학교에 다니면서 공부하는 사람."]
         add("ko anchor: 學生 = 학예를 배우는 사람 / 학교에 다니면서 공부하는 사람",
@@ -2920,6 +3093,88 @@ def main(argv):
                 for p, g in sorted(by_pos.items()) if g]
         if rows:
             native_words[hangul] = rows
+    # ---- place-name lane (SPEC "Place names and origin markers") ------
+    # Attested by a 우리말샘 명사 sense (the place key or the noun key of
+    # the natives lane) or by PLACE_MIN_SUBS subtitle hits; out when the
+    # hangul is a words.json reading (미국: the hanja word is the name),
+    # an existing native headword (나라), an inflected form (지난), a
+    # common word by subtitle count (가자), or reviewed out.
+    ko_natives_keys = ko_inter["natives"]
+    place_why = collections.Counter()
+    place_admit = {}
+    for hangul in sorted(place_entries):
+        glosses = place_entries[hangul]
+        subs = ext_freq.get(hangul, 0)
+        if not glosses:
+            place_why["no gloss"] += 1
+        elif hangul in by_hangul:
+            place_why["words.json reading"] += 1
+        elif hangul in native_words:
+            place_why["native headword"] += 1
+        elif hangul in inflected_hangul:
+            place_why["inflected form"] += 1
+        elif subs > PLACE_MAX_SUBS:
+            place_why["subtitles > %d" % PLACE_MAX_SUBS] += 1
+        elif not (hangul + "|" + urimalsaem.PLACE_POS in ko_natives_keys
+                  or hangul + "|명사" in ko_natives_keys
+                  or subs >= PLACE_MIN_SUBS):
+            place_why["unattested"] += 1
+        else:
+            place_admit[hangul] = glosses
+    dead = NOT_PLACE_OVERRIDES - set(place_admit)
+    if dead:
+        raise SystemExit("dead not-place override(s): "
+                         + " ".join(sorted(dead)))
+    for hangul in NOT_PLACE_OVERRIDES:
+        del place_admit[hangul]
+        place_why["NOT_PLACE_OVERRIDES"] += 1
+    for hangul, glosses in place_admit.items():
+        native_words[hangul] = [{"pos": "name", "glosses": glosses}]
+    by_source = collections.Counter(
+        "우리말샘" if (h + "|" + urimalsaem.PLACE_POS in ko_natives_keys
+                    or h + "|명사" in ko_natives_keys)
+        else "subtitles" for h in place_admit)
+    log("  places: %s of %s candidates admitted (%s); excluded: %s"
+        % (format(len(place_admit), ","), format(len(place_entries), ","),
+           " ".join("%s=%d" % kv for kv in sorted(by_source.items())),
+           " ".join("%s=%d" % kv for kv in sorted(place_why.items()))))
+    two_syllable = sorted(h for h in place_admit if len(h) == 2)
+    log("  places, two-syllable admits for review (%d): %s"
+        % (len(two_syllable), " ".join(two_syllable)))
+    # ---- origin on every row: 우리말샘 word_type of the matched headword
+    # (any corpus POS mapping onto the row's POS, table order), else the
+    # extract's etymology templates, else absent.
+    native_types = ko_inter.get("native_types", {})
+    origin_counts = collections.Counter()
+    for hangul, rows in native_words.items():
+        for r in rows:
+            origin = None
+            for upos, npos in urimalsaem.POS_MAP.items():
+                if npos != r["pos"]:
+                    continue
+                origin = urimalsaem.WORD_TYPE_ORIGIN.get(
+                    native_types.get(hangul + "|" + upos))
+                if origin:
+                    break
+            src = "우리말샘"
+            if not origin:
+                origin = etym_origins.get((hangul, r["pos"]))
+                src = "wiktionary"
+            if origin:
+                r["origin"] = origin
+                origin_counts[origin] += 1
+                origin_counts["via " + src] += 1
+            else:
+                origin_counts["unmarked"] += 1
+    log("  origin: native %s, loan %s, hybrid %s, unmarked %s "
+        "(%s rows; 우리말샘 %s, wiktionary etymology %s)"
+        % (format(origin_counts["native"], ","),
+           format(origin_counts["loan"], ","),
+           format(origin_counts["hybrid"], ","),
+           format(origin_counts["unmarked"], ","),
+           format(sum(len(v) for v in native_words.values()), ","),
+           format(origin_counts["via 우리말샘"], ","),
+           format(origin_counts["via wiktionary"], ",")))
     # Romanized search v2: no `rr` block. The runtime computes forms with
     # extension/rr.js, so native.json carries only the words themselves.
     native_obj = {"version": 1,
@@ -3011,8 +3266,9 @@ def main(argv):
     log("variants   : %-9s (expect >= 1000)" % format(len(variant_map), ","))
     log("aliases    : %-9s (glyph aliases folded out of chars)"
         % len(glyph_alias))
-    log("native     : %-9s (expect ~ 16000; maxLen %d)"
-        % (format(len(native_words), ","), native_obj["maxLen"]))
+    log("native     : %-9s (expect ~ 16600; %s places; maxLen %d)"
+        % (format(len(native_words), ","), format(len(place_admit), ","),
+           native_obj["maxLen"]))
     log("sino       : %-9s (ja %s / zh %s; expect ~ 3500 ja, ~ 10000 zh)"
         % (format(sino_report["chars"], ","),
            format(sino_report["ja_chars"], ","),

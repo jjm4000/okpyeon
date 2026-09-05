@@ -29,6 +29,12 @@
   "marker_native": {
     "message": "native"
   },
+  "marker_loan": {
+    "message": "loan"
+  },
+  "marker_hybrid": {
+    "message": "hybrid"
+  },
   "pos_noun": {
     "message": "Noun"
   },
@@ -52,6 +58,9 @@
   },
   "pos_det": {
     "message": "Det"
+  },
+  "pos_name": {
+    "message": "Place"
   },
   "marker_phonetic": {
     "message": "PHONETIC"

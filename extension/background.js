@@ -74,6 +74,9 @@ const KO_DATA_FILE = "data/ko.json";
  * through only as an integer; lookup.js falls back otherwise. Romanized
  * search v2: the file's `rr` map is dead weight (the generator replaced it;
  * wave 3 removes it from the emit), so the guard no longer carries it.
+ * The `words` table is the file's own object, entries untouched, so a
+ * field the guard was never taught about (pos "name", `origin`) reaches
+ * lookup.js as written.
  */
 export function guardNative(raw) {
   const n = raw !== null && typeof raw === "object" ? raw : {};
@@ -278,7 +281,8 @@ export function attachKoRows(rows, ko, kind) {
  * objects, in the attachSino idiom. Word matches key into `words` by their
  * canonical spelling, char matches into `chars` by the canonical glyph (the
  * same key a nested component card renders from), reading candidates into
- * `chars`, and native matches into `natives` by "hangul|pos". The rows a
+ * `chars`, and native matches into `natives` by "hangul|pos" (a place
+ * entry's pos is "name", so "서울|name" is a key like any other). The rows a
  * match carries (inline compounds, component-word parts, joined
  * decomposition parts) go through attachKoRows, so every gloss-bearing row
  * in a response has its Korean sense beside it.
@@ -1389,15 +1393,17 @@ async function readStoredLanguage() {
 
 /**
  * The omnibox's copy, in the stored language: the default suggestion's
- * description (%s and <match> are Chrome's omnibox markup) and the two
- * markers the row tails carry. The fallbacks are the English table's own
- * values (a Node test pins them equal), for when the packaged table cannot
- * be read.
+ * description (%s and <match> are Chrome's omnibox markup) and the markers
+ * the row tails carry (rare, and the three origin classes of the origin
+ * markers ADDENDUM). The fallbacks are the English table's own values (a
+ * Node test pins them equal), for when the packaged table cannot be read.
  */
 export const OMNIBOX_FALLBACK = Object.freeze({
   description: "Search Okpyeon for <match>%s</match>",
   rare: "rare",
   native: "native",
+  loan: "loan",
+  hybrid: "hybrid",
 });
 
 export async function omniboxCopy() {
@@ -1406,6 +1412,8 @@ export async function omniboxCopy() {
     description: await messageText(language, "omnibox_suggestion", OMNIBOX_FALLBACK.description),
     rare: await messageText(language, "marker_rare", OMNIBOX_FALLBACK.rare),
     native: await messageText(language, "marker_native", OMNIBOX_FALLBACK.native),
+    loan: await messageText(language, "marker_loan", OMNIBOX_FALLBACK.loan),
+    hybrid: await messageText(language, "marker_hybrid", OMNIBOX_FALLBACK.hybrid),
   };
 }
 
@@ -1422,7 +1430,7 @@ if (typeof chrome !== "undefined" && chrome.omnibox && chrome.omnibox.onInputCha
         omniboxNative = await readNativeToggle();
         const copy = await omniboxCopy();
         chrome.omnibox.setDefaultSuggestion({ description: copy.description });
-        const labels = { rare: copy.rare, native: copy.native };
+        const labels = { rare: copy.rare, native: copy.native, loan: copy.loan, hybrid: copy.hybrid };
         const data = await getData();
         if (!omniboxNative) {
           // The omnibox is a typed channel, so it always interprets. Toggle

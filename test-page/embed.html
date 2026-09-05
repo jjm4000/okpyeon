@@ -380,6 +380,9 @@
     // The native word 무리 also has this COMMON spelling, so the hanja card
     // keeps the lead and the native entry rides in its Same sound section.
     "無理": [{ hangul: "무리", glosses: ["unreasonableness; overexertion"] }],
+    // The loan word 사인 (signature) shares this hangul, so the hanja card
+    // leads and the loan entry rides in its Same sound section marked LOAN.
+    "死因": [{ hangul: "사인", glosses: ["cause of death"] }],
     "國民": [{ hangul: "국민", glosses: ["the people; citizens of a nation"] }],
     "學生": [{ hangul: "학생", glosses: ["student; pupil"] }],
     "韓國": [{ hangul: "한국", glosses: ["Korea; South Korea"] }],
@@ -625,16 +628,25 @@
   // in for the file being absent. 하늘 is native-only, 사랑 rides beside the
   // rare 舍廊, 무리 beside the common 無理, 간장 beside the lessCommon 肝臟,
   // 가장 beside the common 家長, and 처음 carries two POS entries.
+  // Place names and origin markers (SPEC ADDENDUM 2026-09-05): every entry
+  // above declares origin "native", the pre-feature fixture; 서울 and 런던
+  // are places (pos "name"), 밥상 a hybrid (밥 + 床), 사인 a loan beside the
+  // common 死因, and 담배 declares no origin at all (unknown: no marker).
   var NATIVE = {
-    "하늘": [{ pos: "noun", glosses: ["sky", "heaven"] }],
-    "사랑": [{ pos: "noun", glosses: ["love; affection"] }],
-    "무리": [{ pos: "noun", glosses: ["group; crowd; flock"] }],
-    "간장": [{ pos: "noun", glosses: ["soy sauce"] }],
-    "가장": [{ pos: "adverb", glosses: ["most; extremely"] }],
+    "하늘": [{ pos: "noun", glosses: ["sky", "heaven"], origin: "native" }],
+    "사랑": [{ pos: "noun", glosses: ["love; affection"], origin: "native" }],
+    "무리": [{ pos: "noun", glosses: ["group; crowd; flock"], origin: "native" }],
+    "간장": [{ pos: "noun", glosses: ["soy sauce"], origin: "native" }],
+    "가장": [{ pos: "adverb", glosses: ["most; extremely"], origin: "native" }],
     "처음": [
-      { pos: "noun", glosses: ["beginning; first time"] },
-      { pos: "adverb", glosses: ["for the first time"] }
-    ]
+      { pos: "noun", glosses: ["beginning; first time"], origin: "native" },
+      { pos: "adverb", glosses: ["for the first time"], origin: "native" }
+    ],
+    "서울": [{ pos: "name", glosses: ["Seoul"], origin: "native" }],
+    "런던": [{ pos: "name", glosses: ["London"], origin: "loan" }],
+    "밥상": [{ pos: "noun", glosses: ["dining table"], origin: "hybrid" }],
+    "사인": [{ pos: "noun", glosses: ["signature; autograph"], origin: "loan" }],
+    "담배": [{ pos: "noun", glosses: ["tobacco"] }]
   };
   var nativeReads = 0;
 
@@ -665,10 +677,14 @@
     var out = [];
     found.forEach(function (word) {
       NATIVE[word].forEach(function (entry) {
-        out.push({
+        var m = {
           kind: "native", word: word,
           pos: entry.pos, glosses: entry.glosses.slice()
-        });
+        };
+        // Origin markers ADDENDUM: the field rides through as written, and
+        // an entry without one carries none.
+        if (entry.origin) m.origin = entry.origin;
+        out.push(m);
       });
     });
     return out;
@@ -714,7 +730,8 @@
   // used-in rows); 資本 one (a component-word row); 國民 has NONE (the
   // ko-less word card). Chars: 學 and 國 carry a gloss, 革 one for the Made
   // of row; 生 and 民 have only their hun, 法 neither hun nor gloss.
-  // Natives: 하늘 has an entry, 무리 none.
+  // Natives: 하늘 has an entry, 무리 none; 서울 has its 지명 sense on the
+  // "hangul|name" key (place names ADDENDUM).
   var KO = {
     words: {
       "學生": { d: ["학예를 배우는 사람.", "학교에 다니면서 공부하는 사람."], s: 27143 },
@@ -724,7 +741,8 @@
       "資本": { d: ["장사나 사업 따위의 기본이 되는 돈."], s: 20004 }
     },
     natives: {
-      "하늘|noun": { d: ["지평선 위로 보이는 무한한 공간."], s: 30001 }
+      "하늘|noun": { d: ["지평선 위로 보이는 무한한 공간."], s: 30001 },
+      "서울|name": { d: ["한반도의 중심부에 있는 도시. 대한민국의 수도이다."], s: 30002 }
     },
     chars: {
       "學": { d: ["어떤 원리에 따라 조직된 지식의 체계.", "‘학문’의 뜻을 더하는 접미사."], s: 67890 },
@@ -2237,6 +2255,42 @@
       ntvAllSky.ok === true && ntvAllSky.count === 1 &&
       api.query(".card.native .surface").textContent === "하늘",
       JSON.stringify(ntvAllSky));
+
+
+    // Place names and origin markers (SPEC ADDENDUM 2026-09-05): the sidebar
+    // renders the same cards through the same content.js, All scope only.
+    var ntvAllSeoul = await embed.searchFor("서울", { native: true, scope: "all" });
+    await wait(TAIL);
+    check("a place name is a result in All scope: Place chip and NATIVE marker",
+      ntvAllSeoul.ok === true && ntvAllSeoul.count === 1 &&
+      api.query(".card.native .surface").textContent === "서울" &&
+      api.query(".card.native .pos-chip").textContent === "Place" &&
+      api.query(".card.native .native-tag").textContent === "native",
+      JSON.stringify(ntvAllSeoul) + " " + api.panelText());
+    await embed.searchFor("런던", { native: true, scope: "all" });
+    await wait(TAIL);
+    var ntvAllLoanTag = (api.query(".card.native .native-tag") || {}).textContent;
+    await embed.searchFor("밥상", { native: true, scope: "all" });
+    await wait(TAIL);
+    var ntvAllHybridTag = (api.query(".card.native .native-tag") || {}).textContent;
+    await embed.searchFor("담배", { native: true, scope: "all" });
+    await wait(TAIL);
+    check("LOAN, HYBRID, and no marker for an unknown origin, per entry",
+      ntvAllLoanTag === "loan" && ntvAllHybridTag === "hybrid" &&
+      api.query(".card.native .surface").textContent === "담배" && !api.query(".native-tag"),
+      ntvAllLoanTag + "|" + ntvAllHybridTag + "|" + !!api.query(".native-tag"));
+    await embed.searchFor("사인", { native: true, scope: "all" });
+    await wait(TAIL);
+    check("a Same sound row carries its own origin marker in the sidebar too",
+      api.query(".word-body .surface").textContent === "死因" &&
+      api.queryAll(".samesound-row").length === 1 &&
+      api.query(".samesound-row .native-tag").textContent === "loan",
+      (api.query(".samesound-row") || {}).textContent);
+    var ntvAllSignHanja = await embed.searchFor("사인", { native: true, scope: "hanja" });
+    await wait(TAIL);
+    check("Hanja scope: the loan entry is a hint, never a row or a marker",
+      ntvAllSignHanja.ok === true && !api.query(".native-tag") && !!api.query(".native-hint"),
+      api.panelText());
 
     embed.clear();
     check("clear() drops the native session state with the panel",

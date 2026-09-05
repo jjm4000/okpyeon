@@ -2871,8 +2871,14 @@ are already served by their hanja cards, which the rules preserve.
   non-name (지난, 기니); a subtitle count above 1,000 (가자 Gaza
   3,852 is "let's go", not in the extract as a form); and
   NOT_PLACE_OVERRIDES, a curated list in the NOT_RARE discipline,
-  empty at first, with the build printing every two-syllable admit
-  for review (암만 is the first candidate for the user's eye).
+  with the build printing every two-syllable admit for review. Seeded
+  2026-09-05 from that list, user-delegated: 빠리 (a nonstandard
+  spelling of Paris, whose standard form 파리 is a native headword),
+  미러, 순이, 자이 (a Yunnan city, a Beijing district, and Chiayi,
+  which every reader will take for mirror, a girl's name, and the
+  apartment brand). Built: 604 place rows (580 by 우리말샘, 24 by
+  subtitles), 573 with Korean definitions; origins on 14,091 of
+  16,405 native rows (7,056 native, 3,753 loan, 3,282 hybrid).
 - Entry shape: a native.json entry with pos "name", glosses from the
   extract, and the origin field below. The 우리말샘 natives lane maps
   a 명사 sense with cat 지명 onto "hangul|name" as well as

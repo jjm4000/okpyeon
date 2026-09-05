@@ -24,8 +24,12 @@ build       consumes only the intermediate and matches it onto the finished
             single-syllable headwords with a one-char hanja origin -> the
             canonical char. A 지명 sense is dropped only beside an ordinary
             sense on the same key (中國, 美國 keep theirs; never on chars);
-            surname senses sort last; every other proper-noun class and
-            every work/slang sense is dropped. The chars lane has a second,
+            a 명사 지명 sense also lands on the "hangul|지명" key, which
+            maps to native.json's place rows ("hangul|name"); surname
+            senses sort last; every other proper-noun class and every
+            work/slang sense is dropped. The intermediate also keeps the
+            word_type behind each natives key ("native_types"), which the
+            build turns into native.json's origin field. The chars lane has a second,
             lower-priority source (SPEC "SECOND CHAR SOURCE"): the 한자
             section of Korean Wiktionary, read from the cached kaikki dump
             by parse_kowiktionary and used only where 우리말샘 has no sense
@@ -68,7 +72,7 @@ RAW_URL = ("https://raw.githubusercontent.com/spellcheck-ko/korean-dict-nikl/"
            "master/opendict/%s")
 
 CAP = 2                       # definitions per entry (SPEC: numbered, cap two)
-INTERMEDIATE_VERSION = 1
+INTERMEDIATE_VERSION = 2
 
 # Sense selection (SPEC, user-approved). Senses of any type but 일반어 are
 # dropped (방언, 옛말, 북한어). PROPER_NOUN_CATS drops the encyclopedic
@@ -153,8 +157,16 @@ POS_MAP = collections.OrderedDict([
     ("형용사", "adj"), ("보조 형용사", "adj"),
     ("부사", "adv"), ("감탄사", "intj"), ("대명사", "pron"),
     ("수사", "num"), ("관형사", "det"),
+    # Not a corpus POS: the preprocess files a 명사 sense with cat 지명 under
+    # this pseudo-POS as well (SPEC "Place names and origin markers"), so a
+    # native.json place row ("hangul|name") gets its definition.
+    ("지명", "name"),
 ])
 POS_RANK = {p: i for i, p in enumerate(POS_MAP)}
+# 우리말샘 word_type -> native.json origin (SPEC "Origin markers"). 한자어
+# never reaches the natives lane; anything else unlisted stays unmarked.
+WORD_TYPE_ORIGIN = {"고유어": "native", "외래어": "loan", "혼종어": "hybrid"}
+PLACE_POS = "지명"
 # Word types routed to the natives lane (integrator rule): everything that
 # is not a pure hanja-origin word, so loanwords (가드) and mixed words
 # (가공되다) reach their native.json rows too. An item with an all-한자
@@ -459,6 +471,10 @@ def preprocess(chunks=None):
             "natives": collections.OrderedDict(),
             "chars": collections.OrderedDict()}
     per_head = collections.Counter()     # (tier, lane, headword, key) -> kept
+    # word_type of the headword behind each natives key, per tier, so the
+    # build can mark origin from the tier that survives (first headword
+    # on a key wins; the tag is per headword, not per sense).
+    ntype = {}
     # Definitions of the KO_OVERRIDES codes, collected before any filter.
     override_rows = {lane: {} for lane in KO_OVERRIDES}
 
@@ -490,8 +506,9 @@ def preprocess(chunks=None):
                 alts = split_origins(pairs)
                 hkeys = hanja_keys(alts)
                 pos = (si.findtext("pos") or "").strip()
+                wtype = wi.findtext("word_type") or ""
                 native_key = None
-                if (wi.findtext("word_type") in NATIVE_TYPES and word and pos
+                if (wtype in NATIVE_TYPES and word and pos
                         and not hkeys):
                     pos_native[pos] += 1
                     native_key = word + "|" + pos
@@ -585,9 +602,19 @@ def preprocess(chunks=None):
                                (tier, "w", word, k)):
                         capped += 1
                 if native_key:
+                    ntype.setdefault((tier, native_key), wtype)
                     if not put(n_tbl, native_key, [code, d],
                                (tier, "n", word, pos)):
                         capped += 1
+                    # A 명사 place sense also lands on the name key, as
+                    # ordinary content there (tier 0): the survival rule
+                    # governs the noun key only.
+                    if tier == 1 and pos == "명사":
+                        pkey = word + "|" + PLACE_POS
+                        ntype.setdefault((0, pkey), wtype)
+                        if not put(natives, pkey, [code, d],
+                                   (0, "n", word, PLACE_POS)):
+                            capped += 1
                 for c in char_keys:
                     if not put(c_tbl, c, [code, d], (tier, "c", word, c)):
                         capped += 1
@@ -626,6 +653,15 @@ def preprocess(chunks=None):
                 tbl[k] = rows
                 keys.append(k)
         rescued[lane] = keys
+    # The word_type behind each surviving natives key: the ordinary tier
+    # (surname senses included) for keys that kept one, the held tier for
+    # keys rescued by 지명 senses.
+    native_types = {}
+    for k in natives:
+        t = (ntype.get((1, k)) if k in rescued["natives"]
+             else ntype.get((0, k)) or ntype.get((2, k)))
+        if t:
+            native_types[k] = t
 
     report = {
         "chunks": [os.path.basename(p) for p in chunks],
@@ -637,6 +673,9 @@ def preprocess(chunks=None):
         "capped": capped,
         "words": len(words),
         "natives": len(natives),
+        "native_types": len(native_types),
+        "native_places": sum(1 for k in natives
+                             if k.endswith("|" + PLACE_POS)),
         "chars": len(chars),
         "rescued": {k: len(v) for k, v in rescued.items()},
         "root_stubs": {"targets": len(targets), "matched": len(pending),
@@ -649,6 +688,7 @@ def preprocess(chunks=None):
     seconds = time.time() - t0
     obj = {"version": INTERMEDIATE_VERSION, "report": report,
            "words": words, "natives": natives, "chars": chars,
+           "native_types": native_types,
            "rescued": rescued, "overrides": override_rows}
     tmp = INTERMEDIATE + ".part"
     # Key order is corpus order and order-bearing (first survivor first),
@@ -674,9 +714,12 @@ def preprocess(chunks=None):
                         format(root_dropped, ",")))
     log("    work or slang by pattern: " + " ".join(
         "%s=%d" % kv for kv in pattern_hits.most_common()))
-    log("  urimalsaem: lanes words %s, natives %s, chars %s (keys kept only "
-        "by 지명 senses: %s / %s) -> %s (%s)" % (
+    log("  urimalsaem: lanes words %s, natives %s (%s place keys, %s with "
+        "a word_type), chars %s (keys kept only by 지명 senses: %s / %s) "
+        "-> %s (%s)" % (
             format(len(words), ","), format(len(natives), ","),
+            format(report["native_places"], ","),
+            format(len(native_types), ","),
             format(len(chars), ","), format(len(rescued["words"]), ","),
             format(len(rescued["natives"]), ","),
             os.path.basename(INTERMEDIATE),

@@ -18,6 +18,8 @@ import {
   buildFullCompounds,
   buildMatches,
   buildNativeMatches,
+  nativeOriginOf,
+  NATIVE_ORIGINS,
   buildOmniboxSuggestions,
   buildUsedIn,
   buildInterpretations,
@@ -3001,8 +3003,10 @@ const native = {
   version: 1,
   maxLen: 3,
   words: {
-    하늘: [{ pos: "noun", glosses: ["sky", "heaven"] }],
-    사랑: [{ pos: "noun", glosses: ["love"] }],
+    // Origin markers ADDENDUM: 하늘 and 사랑 declare origin "native"; the
+    // entries below without one are unknown (no field on the match).
+    하늘: [{ pos: "noun", glosses: ["sky", "heaven"], origin: "native" }],
+    사랑: [{ pos: "noun", glosses: ["love"], origin: "native" }],
     우리: [{ pos: "pron", glosses: ["we; us"] }],
     가장: [{ pos: "adv", glosses: ["most"] }],
     먹다: [{ pos: "verb", glosses: ["to eat"] }],
@@ -3013,6 +3017,12 @@ const native = {
     ],
     // 3-syllable key: the longest the declared maxLen allows.
     하늘색: [{ pos: "noun", glosses: ["sky blue"] }],
+    // Place names ADDENDUM: pos "name" entries, one per origin class; a
+    // hybrid noun (밥 + 床); a junk origin that must read as unknown.
+    서울: [{ pos: "name", glosses: ["Seoul"], origin: "native" }],
+    런던: [{ pos: "name", glosses: ["London"], origin: "loan" }],
+    밥상: [{ pos: "noun", glosses: ["dining table"], origin: "hybrid" }],
+    담배: [{ pos: "noun", glosses: ["tobacco"], origin: "unknown" }],
   },
   // Romanized search v2: no `rr` map. The generator reaches native headwords
   // by construction; wave 3 removes the map from the emit too.
@@ -3044,7 +3054,7 @@ test("unflagged responses are byte-identical with a native table present", () =>
 test("flagged: native joins on the Sino-resolved span, rare flags intact", () => {
   const res = lookup("사랑", nativeData, { native: true });
   assert.deepEqual(res.nativeMatches, [
-    { kind: "native", word: "사랑", pos: "noun", glosses: ["love"] },
+    { kind: "native", word: "사랑", pos: "noun", glosses: ["love"], origin: "native" },
   ]);
   // The Sino side is exactly today's: lead-rule inputs (rare flags, order)
   // ride the response untouched. The renderer decides the lead.
@@ -3060,7 +3070,7 @@ test("flagged: a Han-run selection joins native on the word's hangul", () => {
   // can render its Same sound row.
   const res = lookup("舍廊", nativeData, { native: true });
   assert.deepEqual(res.nativeMatches, [
-    { kind: "native", word: "사랑", pos: "noun", glosses: ["love"] },
+    { kind: "native", word: "사랑", pos: "noun", glosses: ["love"], origin: "native" },
   ]);
 });
 
@@ -3070,7 +3080,7 @@ test("flagged: native-only spans run their own pass, josa fallthrough included",
   const res = lookup("하늘이", nativeData, { native: true });
   assert.deepEqual(res.matches, []);
   assert.deepEqual(res.nativeMatches, [
-    { kind: "native", word: "하늘", pos: "noun", glosses: ["sky", "heaven"] },
+    { kind: "native", word: "하늘", pos: "noun", glosses: ["sky", "heaven"], origin: "native" },
   ]);
   // Longest match first: 하늘색이 finds 하늘색, not 하늘.
   assert.deepEqual(
@@ -3148,7 +3158,7 @@ test("flagged interpretations consult both tables; native-only survives", () => 
   ]);
   assert.deepEqual(rrRes.matches, []);
   assert.deepEqual(rrRes.nativeMatches, [
-    { kind: "native", word: "하늘", pos: "noun", glosses: ["sky", "heaven"] },
+    { kind: "native", word: "하늘", pos: "noun", glosses: ["sky", "heaven"], origin: "native" },
   ]);
   // Dubeolsik: gksmf is 하늘 typed in the wrong mode.
   const typed = lookup("gksmf", nativeData, { interpret: true, native: true });
@@ -3173,7 +3183,7 @@ test("flagged: one rr interpretation carries Sino and native hits together", () 
   ]);
   assert.deepEqual(res.matches, lookup("사랑", data).matches);
   assert.deepEqual(res.nativeMatches, [
-    { kind: "native", word: "사랑", pos: "noun", glosses: ["love"] },
+    { kind: "native", word: "사랑", pos: "noun", glosses: ["love"], origin: "native" },
   ]);
 });
 
@@ -3302,6 +3312,88 @@ test("omnibox: unflagged hanja, native, lessCommon hanja, rare hanja, in that or
     "假裝",
     "假葬",
     "牛李",
+  ]);
+});
+
+test("place names: pos name matches, dedupes, and orders like a noun", () => {
+  const seoul = buildNativeMatches("서울", nativeData);
+  assert.deepEqual(seoul, [
+    { kind: "native", word: "서울", pos: "name", glosses: ["Seoul"], origin: "native" },
+  ]);
+  // Spans in text order, one match per (word, pos), josa fallthrough intact.
+  assert.deepEqual(
+    lookup("런던과 서울은", nativeData, { native: true }).nativeMatches.map((m) => [m.word, m.pos, m.origin]),
+    [["런던", "name", "loan"], ["서울", "name", "native"]]
+  );
+  // The omnibox lead rule places a name row where a noun row goes: after
+  // the unflagged hanja, before the flagged ones.
+  const rows = buildOmniboxSuggestions("서울 사랑", nativeData, { native: true });
+  assert.deepEqual(contentsOf(rows).slice(0, 4), ["沙羅", "서울", "사랑", "舍廊"]);
+  // Unflagged, a place name is invisible, exactly like any native entry.
+  assert.deepEqual(lookup("서울", nativeData), { ok: true, matches: [] });
+});
+
+test("origin markers: origin rides the match only as one of the three classes", () => {
+  assert.deepEqual([...NATIVE_ORIGINS], ["native", "loan", "hybrid"]);
+  assert.equal(nativeOriginOf({ origin: "loan" }), "loan");
+  for (const junk of [undefined, null, "", "unknown", "NATIVE", 7, ["native"], {}]) {
+    assert.equal(nativeOriginOf({ origin: junk }), null, JSON.stringify(junk));
+  }
+  assert.equal(nativeOriginOf(null), null);
+  const byWord = (text) =>
+    Object.fromEntries(
+      lookup(text, nativeData, { native: true }).nativeMatches.map((m) => [m.word, m])
+    );
+  const literal = byWord("하늘 런던 밥상 담배 우리");
+  assert.equal(literal.하늘.origin, "native");
+  assert.equal(literal.런던.origin, "loan");
+  assert.equal(literal.밥상.origin, "hybrid");
+  assert.equal("origin" in literal.담배, false, "a junk origin is unknown: no field");
+  assert.equal("origin" in literal.우리, false, "an absent origin is unknown: no field");
+  // The interpreted joins (dubeolsik and rr, deduped per candidate and then
+  // across interpretations) rebuild nothing: the same field survives.
+  for (const typed of ["fjsejs", "reondeon"]) {
+    const res = lookup(typed, nativeData, { interpret: true, native: true });
+    assert.equal(res.nativeMatches.find((m) => m.word === "런던").origin, "loan", typed);
+  }
+  const both = lookup("qkqtkd", nativeData, { interpret: true, native: true });
+  assert.equal(both.nativeMatches.find((m) => m.word === "밥상").origin, "hybrid");
+});
+
+test("origin markers: omnibox tails carry the origin's label, none when unknown", () => {
+  const rows = buildOmniboxSuggestions("하늘 런던 밥상 담배 우리", nativeData, { native: true });
+  const tail = (word) => rows.find((r) => r.content === word).description;
+  assert.equal(tail("하늘"), "<match>하늘</match> <dim>sky · native</dim>");
+  assert.equal(tail("런던"), "<match>런던</match> <dim>London · loan</dim>");
+  assert.equal(tail("밥상"), "<match>밥상</match> <dim>dining table · hybrid</dim>");
+  assert.equal(tail("담배"), "<match>담배</match> <dim>tobacco</dim>");
+  assert.equal(tail("우리"), "<match>우리</match> <dim>we; us</dim>");
+  // Korean labels, one per class; a label not given falls back to English.
+  const ko = buildOmniboxSuggestions("하늘 런던 밥상", nativeData, {
+    native: true,
+    labels: { native: "고유어", loan: "외래어", hybrid: "혼종어" },
+  });
+  assert.deepEqual(
+    ko.map((r) => r.description.replace(/^.*· /, "").replace("</dim>", "")),
+    ["고유어", "외래어", "혼종어"]
+  );
+  const partial = buildOmniboxSuggestions("런던 밥상", nativeData, {
+    native: true,
+    labels: { loan: "외래어" },
+  });
+  assert.match(partial[0].description, /· 외래어<\/dim>$/);
+  assert.match(partial[1].description, /· hybrid<\/dim>$/);
+});
+
+await testAsync("origin markers: guardNative spreads origin and pos name through", async () => {
+  const { guardNative } = await import("../extension/background.js");
+  const guarded = guardNative({ version: 1, maxLen: 3, words: native.words });
+  assert.equal(guarded.words, native.words, "the table is the file's own object");
+  assert.equal(guarded.words.서울[0].pos, "name");
+  assert.equal(guarded.words.런던[0].origin, "loan");
+  const res = lookup("런던", { ...data, native: guarded }, { native: true });
+  assert.deepEqual(res.nativeMatches, [
+    { kind: "native", word: "런던", pos: "name", glosses: ["London"], origin: "loan" },
   ]);
 });
 
@@ -3616,6 +3708,8 @@ const ko = {
   natives: {
     "하늘|noun": { d: ["지평선 위로 보이는 무한한 공간."], s: 55555 },
     "우리|pron": { d: ["말하는 이가 자기와 듣는 이를 함께 이르는 말."], s: 66666 },
+    // Place names ADDENDUM: the natives lane maps a 지명 sense onto "hangul|name".
+    "서울|name": { d: ["한반도의 중심부에 있는 도시. 대한민국의 수도이다."], s: 88888 },
   },
   chars: {
     學: { d: ["어떤 원리에 따라 조직된 지식의 체계.", "‘학문’의 뜻을 더하는 접미사."], s: 67890 },
@@ -3705,6 +3799,13 @@ await testAsync("ko: entries ride whole onto every match kind, lookup driven thr
   assert.deepEqual(sky.ko, ko.natives["하늘|noun"]);
   assert.equal("ko" in natives.nativeMatches.find((m) => m.word === "사랑"), false);
   assert.deepEqual(natives.nativeMatches.find((m) => m.word === "우리").ko, ko.natives["우리|pron"]);
+  // Place names ADDENDUM: a place entry keys by "hangul|name", origin intact.
+  const places = attachKo(lookup("서울 런던", nativeData, { native: true }), guarded);
+  const seoul = places.nativeMatches.find((m) => m.word === "서울");
+  assert.equal(seoul.pos, "name");
+  assert.equal(seoul.origin, "native");
+  assert.deepEqual(seoul.ko, ko.natives["서울|name"]);
+  assert.equal("ko" in places.nativeMatches.find((m) => m.word === "런던"), false);
 
   // Junk tolerance: error results and non-results pass through untouched,
   // and an empty guarded table attaches nothing anywhere.
@@ -4595,12 +4696,17 @@ await testAsync("smoke: real native.json resolves 하늘 / 사랑 / 무리 / tog
   const soupMs = performance.now() - soupStart;
   assert.ok(soupMs < 75, `20-vowel garbage lookup took ${soupMs.toFixed(1)}ms`);
 
-  // Flagged omnibox rows carry the native marker.
+  // Flagged omnibox rows carry the marker of the entry's origin (origin
+  // markers ADDENDUM), and no marker while the file declares none.
   const rows = buildOmniboxSuggestions("하늘", all, { interpret: true, native: true });
-  assert.ok(
-    rows.some((r) => r.content === "하늘" && r.description.includes("native")),
-    "omnibox should offer 하늘 as a native row"
-  );
+  const skyRow = rows.find((r) => r.content === "하늘");
+  assert.ok(skyRow, "omnibox should offer 하늘 as a native row");
+  const skyOrigin = nativeOriginOf(realNative.words["하늘"][0]);
+  if (skyOrigin === null) {
+    assert.doesNotMatch(skyRow.description, /native|loan|hybrid/);
+  } else {
+    assert.match(skyRow.description, new RegExp(`· ${skyOrigin}</dim>$`));
+  }
 
   // The declared cap is the real longest key.
   const nativeKeys = Object.keys(realNative.words);
@@ -5222,6 +5328,7 @@ await testAsync("every message key the surfaces read exists in the English table
     "about", "about.noVersion",
     // Read by the worker (background.js), which is not scanned.
     "folder.default", "omnibox.suggestion", "marker.rare", "marker.native",
+    "marker.loan", "marker.hybrid",
   ]);
   // A key ends in a word character: `t("level." + zone)` is composed above.
   const KEY = "([A-Za-z][A-Za-z0-9.]*[A-Za-z0-9])";
@@ -5452,6 +5559,8 @@ await testAsync("omnibox copy follows the stored language; the English fallbacks
     description: EN_FILE.omnibox_suggestion.message,
     rare: EN_FILE.marker_rare.message,
     native: EN_FILE.marker_native.message,
+    loan: EN_FILE.marker_loan.message,
+    hybrid: EN_FILE.marker_hybrid.message,
   });
   // No chrome at all: English.
   assert.deepEqual(await omniboxCopy(), { ...OMNIBOX_FALLBACK });
@@ -5472,6 +5581,8 @@ await testAsync("omnibox copy follows the stored language; the English fallbacks
       description: KO_FILE.omnibox_suggestion.message,
       rare: "희귀",
       native: "고유어",
+      loan: "외래어",
+      hybrid: "혼종어",
     });
     assert.equal(KO_FILE.omnibox_suggestion.message, "옥편에서 <match>%s</match> 검색");
     stub({ v: 1, language: "en" });

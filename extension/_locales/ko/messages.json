@@ -29,6 +29,12 @@
   "marker_native": {
     "message": "고유어"
   },
+  "marker_loan": {
+    "message": "외래어"
+  },
+  "marker_hybrid": {
+    "message": "혼종어"
+  },
   "pos_noun": {
     "message": "명사"
   },
@@ -52,6 +58,9 @@
   },
   "pos_det": {
     "message": "관형사"
+  },
+  "pos_name": {
+    "message": "지명"
   },
   "marker_phonetic": {
     "message": "소리"

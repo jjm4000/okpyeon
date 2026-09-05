@@ -517,8 +517,9 @@
     ".usedin-row b { font-weight: 600; color: var(--fg-soft); }",
     ".card.component .usedin-row { font-size: 11px; }",
     /* ---- native words: card marker, Same sound rows, the scope hint ---- */
-    // The NATIVE marker is a bordered sentence-height pill like the level
-    // chips, but in the jade family: a statement of register, not a warning.
+    // The origin marker (NATIVE / LOAN / HYBRID) is a bordered sentence-height
+    // pill like the level chips, but in the jade family: a statement of
+    // register, not a warning.
     ".native-tag {",
     "  display: inline-block; padding: 0 5px; border-radius: 4px;",
     "  font-size: 9px; font-weight: 700; letter-spacing: 0.05em;",
@@ -1421,6 +1422,14 @@
 
   // Ingestion: raw nativeMatches -> clean {word, pos, glosses} entries.
   // Everything downstream (views, cards, rows) sees only this shape.
+  // Origin markers ADDENDUM: `origin` rides through only as one of the three
+  // classes; anything else is unknown, and an unknown origin has no field.
+  var NATIVE_ORIGINS = ["native", "loan", "hybrid"];
+  function nativeOriginOf(entry) {
+    var origin = entry && typeof entry === "object" ? entry.origin : undefined;
+    return typeof origin === "string" && NATIVE_ORIGINS.indexOf(origin) >= 0 ? origin : null;
+  }
+
   function normalizeNativeMatches(rawList) {
     var out = [];
     asArray(rawList).forEach(function (e) {
@@ -1432,6 +1441,8 @@
         pos: nonEmptyString(e.pos),
         glosses: asArray(e.glosses).map(nonEmptyString).filter(Boolean)
       };
+      var origin = nativeOriginOf(e);
+      if (origin !== null) entry.origin = origin;
       // The Korean entry rides through as the worker attached it.
       if (e.ko && typeof e.ko === "object") entry.ko = e.ko;
       out.push(entry);
@@ -2396,7 +2407,7 @@
       var row = el("div", "entry-row samesound-row nav");
       var text = el("span", "compound");
       text.appendChild(el("span", "cpd-hangul", word));
-      text.appendChild(el("span", "native-tag", t("marker.native")));
+      appendOriginTag(text, entry);
       var gloss = rowGloss(entry, asArray(entry.glosses).map(nonEmptyString).filter(Boolean)[0] || "");
       if (gloss) text.appendChild(el("span", "cpd-gloss", ": " + gloss));
       row.appendChild(clampWrap(text, 1));
@@ -2691,21 +2702,37 @@
   }
 
   /* ---- The native word card --------------------------------------------- *
-   * Headword, POS chip, NATIVE marker, glosses, Same sound, Wiktionary link.
+   * Headword, POS chip, origin marker, glosses, Same sound, Wiktionary link.
    * NO save star in v1: saved words have no native key namespace yet, so
    * appendCardActions is simply not called and the action is absent rather
    * than disabled. Sections that would be empty do not render.
    * -------------------------------------------------------------------- */
 
-  // A single POS rides in the head beside the NATIVE marker. Several POS
+  // A single POS rides in the head beside the origin marker. Several POS
   // entries for one headword render as one POS-chipped gloss block each, so
   // the noun senses and the verb senses never share a numbering.
   // native.json's POS codes render through the message table (the ko
   // sweep missed them: capitalized codes are not table values); an unknown
-  // code falls back to the capitalized code, as before.
-  var POS_CODES = ["noun", "verb", "adj", "adv", "intj", "pron", "num", "det"];
+  // code falls back to the capitalized code, as before. "name" (place names
+  // ADDENDUM) is a place: the chip reads Place / 지명.
+  var POS_CODES = ["noun", "verb", "adj", "adv", "intj", "pron", "num", "det", "name"];
   function posLabel(code) {
     return POS_CODES.indexOf(code) >= 0 ? t("pos." + code) : capitalizeSense(code);
+  }
+
+  // Origin markers ADDENDUM: the one marker a native entry carries, named by
+  // its origin class from data (NATIVE / LOAN / HYBRID), in the jade pill
+  // that used to say NATIVE for the whole lane. No origin, no element: a
+  // marker is never guessed. Every native marker site goes through here.
+  var ORIGIN_MARKER_KEYS = {
+    native: "marker.native",
+    loan: "marker.loan",
+    hybrid: "marker.hybrid"
+  };
+  function appendOriginTag(parent, entry) {
+    var origin = nativeOriginOf(entry);
+    if (origin === null) return;
+    parent.appendChild(el("span", "native-tag", t(ORIGIN_MARKER_KEYS[origin])));
   }
 
   function buildNativeCard(word, entries, spellings) {
@@ -2718,7 +2745,9 @@
     if (entries.length === 1 && entries[0].pos) {
       line.appendChild(el("span", "pos-chip", posLabel(entries[0].pos)));
     }
-    line.appendChild(el("span", "native-tag", t("marker.native")));
+    // One marker per card: the first entry that declares an origin names it
+    // (the class belongs to the headword, so the entries agree when set).
+    appendOriginTag(line, entries.filter(nativeOriginOf)[0]);
     meta.appendChild(line);
     head.appendChild(meta);
     // Korean native entries live at the hangul title, which is exactly what

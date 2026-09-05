@@ -18,6 +18,21 @@ current review clears.
   Needs a 1.3.1 package to reach users; the listing counts in
   store-listing.md already describe this build.
 
+- **Place names and origin markers.** 서울 had no card in any
+  language; foreign places in hangul likewise. native.json gains 604
+  hangul-only place names (pos name, chip Place / 지명) from the
+  Wiktionary extract, attested by a 우리말샘 지명 sense or the subtitle
+  list, with hanja-spelled places, native homographs (나라, 파리),
+  inflected forms (지난), and a subtitle-count cap (가자) keeping the
+  lane clean, plus a four-word exclusion list (빠리 미러 순이 자이).
+  573 of them get Korean definitions and the 우리말샘 link. The NATIVE
+  marker used to mean "not hanja" and labelled 런던 and 가드 native;
+  every non-hanja card now carries its actual origin from 우리말샘's
+  word type or Wiktionary's etymology: NATIVE / 고유어, LOAN / 외래어,
+  HYBRID / 혼종어 (user-decided: a hybrid like 가공되다 has a hanja root
+  the card cannot otherwise show), and no marker when unknown (2,314
+  rows). Follow-up recorded: show a hybrid's hanja part (加工 + 되다).
+
 ## 1.3: shipped
 
 Everything since the v1.2.0 tag went out as one release, uploaded

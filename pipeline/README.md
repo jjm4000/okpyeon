@@ -481,7 +481,9 @@ chunks, 1.73 GiB, one `<item>` per sense. It runs in three steps:
   with three lanes: hanja-origin senses keyed by the NFC hanja string,
   senses of every word that is not a pure hanja-origin word (word types
   고유어, 외래어, 혼종어) keyed by `hangul|pos` in Urimalsaem's own POS
-  terms, and single-character senses keyed by the character. It also
+  terms (a 명사 sense with cat 지명 also lands on `hangul|지명`, and each
+  key's word_type is kept for native.json's origin field), and
+  single-character senses keyed by the character. It also
   collects the definitions named by `KO_OVERRIDES`. Rerun it only when the
   mirror updates or the override table changes.
 * **build** (inside `build.py`): reads only the intermediate. On a cold cache
@@ -529,6 +531,64 @@ character with a Urimalsaem sense is never topped up. The verify step anchors
 senses lead), and the build log reports the split (about 1,800 from Urimalsaem,
 2,188 from Korean Wiktionary, 1,556 of which had no hun) and the residue of
 characters with neither a hun nor a Korean gloss (about 4,470).
+
+## Native words (`native.json`): the place lane and origin markers
+
+`native.json` holds the hangul words with no hanja spelling (SPEC "Native
+Korean words"), one row per (headword, POS) with English glosses. Two
+additions from the SPEC "Place names and origin markers" addendum:
+
+**Place lane.** Rows with pos `name` are place names written in hangul.
+The candidates are the Korean Wiktionary extract's `name` entries with no
+hanja form, hangul only, 2 to 8 syllables, whose categories place them: a
+category counts when the head of its name, before " in " or " of ",
+carries one of the words in `PLACE_CAT_WORDS` (countries, cities, towns,
+villages, capitals, provinces, states, regions, districts, counties,
+municipalities, prefectures, subdivisions, rivers, mountains, islands,
+seas, lakes, oceans, deserts, continents, planets), so "Cities in
+England", "Countries in Asia", "National capitals" and "States of the
+United States" qualify and surnames, given names, dynasties and works do
+not. A candidate is admitted when a 우리말샘 명사 sense attests it (the
+`hangul|지명` or `hangul|명사` key of the intermediate's natives lane) or
+its subtitle count is at least 20. It is excluded when the hangul is a
+`words.json` reading (미국: the hanja word is the name), an existing
+`native.json` headword (나라 keeps its one card; 파리 the city is the
+accepted loss), a Wiktionary inflected form of a non-name (지난, 기니), a
+common word by subtitle count above 1,000 (가자), or listed in
+`NOT_PLACE_OVERRIDES`, which is empty until review and follows the
+`NOT_RARE_OVERRIDES` discipline: an entry the rules would not have
+admitted anyway aborts the build. The build prints every two-syllable
+admit for review. Glosses are the entry's first two, cleaned the same way
+as the other native rows. Measured 2026-09-05: 608 places of 903
+candidates (584 attested by 우리말샘, 24 by subtitles alone).
+
+**Origin.** Every row may carry `origin`: `native` (고유어), `loan`
+(외래어) or `hybrid` (혼종어); absent when neither source says. The first
+source is the 우리말샘 word_type of the headword behind the matched
+natives-lane key, which the preprocess now keeps in the intermediate
+(`native_types`, one tag per key from the surviving tier). The second is
+the extract's etymology templates: a borrowing template (`bor`, `bor+`,
+`lbor`, `slbor`, `ubor`, `borrowed`, `transliteration`) gives `loan`;
+`inh` or `der` from Middle or Old Korean (`okm`, `oko`) or Wiktionary's
+own `ko-etym-native` box gives `native`; a compound or affix template
+(`com`, `compound`, `af`, `affix`, `suffix`, `prefix`) whose parts mix a
+hanja-marked part and a hangul-only part (가공(加工) + -되다) gives
+`hybrid`. A borrowing wins over an inheritance, which wins over a
+compound. Measured 2026-09-05 over 16,405 rows: native 7,056, loan 3,753,
+hybrid 3,282, unmarked 2,314 (12,644 from 우리말샘, 1,447 from the
+etymology templates).
+
+**ko.json.** The preprocess files a 명사 sense with cat 지명 under the
+pseudo-POS 지명 as well as under 명사, and `POS_MAP` maps 지명 to `name`,
+so a place row gets its Korean definition and 우리말샘 link
+(`서울|name`). The survival rule is unchanged on the noun key. The
+intermediate is version 2; an older cache aborts with a rerun message.
+
+The verify step anchors 서울 (native), 런던, 몽골 and 부탄 (loan) as place
+rows, 미국, 나라, 지난 and 가자 as absent from the lane, 가드 loan, 하늘
+native, 가공되다 hybrid, every `NOT_PLACE_OVERRIDES` entry absent, the
+lane count band, the origin vocabulary, and `서울|name` in ko.json with a
+sense code and a 수도 definition.
 
 ## Canonical words keys, and how long a key can be
 
