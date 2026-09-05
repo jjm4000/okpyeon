@@ -4,6 +4,20 @@ Working list of planned changes. Ordering within a release is not priority
 order. The next store upload ships whatever is merged and verified when the
 current review clears.
 
+## Since 1.3: merged on main, not yet released
+
+- **Korean Wiktionary glosses for characters.** Spike 2026-09-05: the
+  cached ko-wiktionary dump is not a 훈음 table, but its 한자 section
+  glosses 3,231 of our characters in Korean ("눕다.", "수은."). Where
+  우리말샘 has no sense, ko.json's chars lane now takes those glosses
+  (cap two, pointer glosses dropped): glossed characters 1,795 to
+  3,983, and 1,556 characters that fell back to English under 한국어
+  now read Korean. No hun is synthesized from a gloss (the adnominal
+  conversion and its irregulars are a separate risk the card does not
+  need). Residue with neither hun nor gloss: 4,471, nearly all rare.
+  Needs a 1.3.1 package to reach users; the listing counts in
+  store-listing.md already describe this build.
+
 ## 1.3: shipped
 
 Everything since the v1.2.0 tag went out as one release, uploaded
