@@ -2968,13 +2968,31 @@ very card the feature exists for. Two rules, user-picked as mockup C:
   the character cards); a native part's chip opens its native card
   when native.json has it (되다), else is inert. Both languages; the
   Korean chrome uses the same chips.
+- MIXED-FORM ADMISSION (build-time correction, 2026-09-05): the native
+  admission gate treated any hanja tag on a Wiktionary lemma as "this
+  is Sino-Korean", which excluded lemmas whose only tag is a MIXED
+  hanja+hangul form (工夫하다, 全혀, 別로, 先生님, 必要하다, 虎狼이,
+  色깔): 544 everyday words in neither file, so 전혀 and 선생님 had no
+  card at all. A mixed form now means HYBRID: such lemmas join
+  native.json with origin "hybrid" and parts walked from the mixed
+  form; 우리말샘's word type and segments take precedence where the
+  headword is matched. A pure-hanja tag still means Sino-Korean.
+- DOMINANT HOMOGRAPH: a natives-lane key with several 우리말샘
+  headwords (연습하다: 練習하다 beside 沿襲하다) takes the headword whose
+  hanja stem is the words.json key with the lowest f bucket, else the
+  most senses, else the first, and uses that ONE headword for both the
+  parts and the Korean definition, so the mixed-script spelling and
+  the definition agree. Before this rule, first-wins gave 연습하다 the
+  rare 沿襲.
 - Messages: none new (chips carry data, not copy).
 
 ### Tests
 
-- Build: 가공되다 parts [加工/가공, 되다]; 공부하다 [工夫/공부, 하다]; a
-  hybrid whose segments do not reassemble has no parts (reported
-  count); parts never on non-hybrids.
+- Build: 가공되다 parts [加工/가공, 되다]; 공부하다 [工夫/공부, 하다]
+  (admitted through the mixed-form rule); 전혀 [全/전, 혀]; 선생님
+  [先生/선생, 님]; 연습하다 uses 練習; a hybrid whose segments do not
+  reassemble has no parts (reported count); parts never on
+  non-hybrids; 국민 still absent from native.json.
 - Node: whole-string native precedence (가공되다 leads, no split
   survivors; 국민 unchanged; 하늘 unchanged; a string that is both a
   hanja word and a native headword keeps the lead rule); guards spread
