@@ -3165,7 +3165,12 @@ const hybridLead = {
   pos: "verb",
   glosses: ["to be processed"],
   origin: "hybrid",
-  parts: [{ hanja: "加工", hangul: "가공" }, { hangul: "되다", native: true }],
+  // Row glosses: each part the tables know carries the glosses its row shows,
+  // the native part with the `pos` the worker keys ko.json natives by.
+  parts: [
+    { hanja: "加工", hangul: "가공", glosses: ["processing"] },
+    { hangul: "되다", native: true, glosses: ["to become"], pos: "verb" },
+  ],
 };
 
 test("whole-word precedence: the hybrid claims the run, no split survivors", () => {
@@ -3296,9 +3301,34 @@ test("hybrid parts: the match carries validated parts, hangul parts resolved aga
       glosses: ["to study"],
       origin: "hybrid",
       // 하다 is no fixture entry: no `native` flag, the chip renders inert.
+      // Neither part is in the tables, so neither carries glosses or pos:
+      // the rows stay bare, exactly as the inert chip does.
       parts: [{ hanja: "工夫", hangul: "공부" }, { hangul: "하다" }],
     },
   ]);
+  for (const part of study.nativeMatches[0].parts) {
+    assert.equal("glosses" in part, false, part.hangul);
+    assert.equal("pos" in part, false, part.hangul);
+  }
+  // A hanja part's glosses come from the words.json entry read as the part
+  // is (加工 read 가공), else the first glossed entry; a hangul-only entry
+  // list or one with no glosses at all leaves the row bare.
+  const readAs = (entries) => ({
+    ...hybridData,
+    words: { ...hybridWords, words: { ...hybridWords.words, 加工: entries } },
+  });
+  const jaPart = (bundle) => lookup("가공되다", bundle, { native: true }).nativeMatches[0].parts[0];
+  assert.deepEqual(
+    jaPart(readAs([{ hangul: "가곤", glosses: ["other"] }, { hangul: "가공", glosses: ["processing"] }])).glosses,
+    ["processing"]
+  );
+  assert.deepEqual(
+    jaPart(readAs([{ hangul: "가곤", glosses: ["other"] }, { hangul: "가강", glosses: ["another"] }])).glosses,
+    ["other"]
+  );
+  assert.deepEqual(jaPart(readAs({ hangul: "가공", glosses: ["single"] })).glosses, ["single"]);
+  assert.equal("glosses" in jaPart(readAs([{ hangul: "가공" }])), false);
+  assert.equal("glosses" in jaPart(readAs([])), false);
   // Junk parts add no field at all; the card degrades to the marker alone.
   const junk = (parts) => ({
     ...hybridData,
@@ -3313,10 +3343,15 @@ test("hybrid parts: the match carries validated parts, hangul parts resolved aga
     const res = lookup("밥상", junk(parts), { native: true });
     assert.equal("parts" in res.nativeMatches[0], false, JSON.stringify(parts));
   }
-  // The match's parts are copies: mutating them never reaches the table.
+  // The match's parts are copies: mutating them never reaches the table,
+  // and neither does mutating a row's glosses.
   const res = lookup("가공되다", hybridData, { native: true });
   res.nativeMatches[0].parts[0].hanja = "X";
   assert.equal(hybridNative.words.가공되다[0].parts[0].hanja, "加工");
+  res.nativeMatches[0].parts[0].glosses.push("junk");
+  res.nativeMatches[0].parts[1].glosses.push("junk");
+  assert.deepEqual(hybridWords.words.加工[0].glosses, ["processing"]);
+  assert.deepEqual(hybridNative.words.되다[0].glosses, ["to become"]);
 });
 
 await testAsync("hybrid parts: guardNative and attachKo spread parts through", async () => {
@@ -3324,11 +3359,37 @@ await testAsync("hybrid parts: guardNative and attachKo spread parts through", a
   const guarded = guardNative({ version: 1, maxLen: 4, words: hybridNative.words });
   const res = lookup("가공되다", { ...hybridData, native: guarded }, { native: true });
   assert.deepEqual(res.nativeMatches, [hybridLead]);
-  // The ko attach hangs its entry on the same match and leaves parts alone.
-  const ko = { version: 1, words: {}, natives: { "가공되다|verb": { d: ["가공이 되다."], s: 1 } }, chars: {} };
+  // The ko attach hangs its entry on the same match, and on the part rows:
+  // the hanja part by its hanja in `words`, the native part by "hangul|pos"
+  // in `natives`. The rows' other fields are left alone.
+  const ko = {
+    version: 1,
+    words: { 加工: { d: ["원자재나 반제품을 손질하다."], s: 2 } },
+    natives: {
+      "가공되다|verb": { d: ["가공이 되다."], s: 1 },
+      "되다|verb": { d: ["새로운 신분이나 지위를 가지다."], s: 3 },
+    },
+    chars: {},
+  };
   const attached = attachKo(res, ko);
-  assert.deepEqual(attached.nativeMatches[0].parts, hybridLead.parts);
+  assert.deepEqual(attached.nativeMatches[0].parts, [
+    { ...hybridLead.parts[0], ko: ko.words.加工 },
+    { ...hybridLead.parts[1], ko: ko.natives["되다|verb"] },
+  ]);
   assert.deepEqual(attached.nativeMatches[0].ko, ko.natives["가공되다|verb"]);
+  // Rows the tables lack stay bare: neither 공부하다 part has a ko entry, and
+  // a native part keys by ITS pos, so a noun entry for 되다 never rides the
+  // verb part.
+  const study = attachKo(lookup("공부하다", { ...hybridData, native: guarded }, { native: true }), {
+    ...ko,
+    natives: { "되다|noun": { d: ["junk"], s: 4 } },
+  });
+  assert.ok(study.nativeMatches[0].parts.every((p) => !("ko" in p)));
+  const nounOnly = attachKo(lookup("가공되다", { ...hybridData, native: guarded }, { native: true }), {
+    ...ko,
+    natives: { "되다|noun": { d: ["junk"], s: 4 } },
+  });
+  assert.equal("ko" in nounOnly.nativeMatches[0].parts[1], false);
 });
 
 // ---------------------------------------------------------------------------
@@ -3407,14 +3468,19 @@ test("deconjugation: a conjugated form resolves to its lemma, marked with the fo
 
 test("deconjugation: the hybrid lemma claims the run and the Sino split is not rendered", () => {
   // 공부했어 is 공부하 + 였 + 어. The hybrid entry rides with its parts (하다
-  // is a fixture entry in this bundle, so its chip is live).
+  // is a fixture entry in this bundle, so its chip is live and its row
+  // carries the entry's glosses and pos; 工夫 is still no fixture word, so
+  // that row stays bare).
   assert.deepEqual(lookup("공부했어", deconjData, { native: true }), {
     ok: true,
     matches: [],
     nativeMatches: [
       formMatch("공부하다", "verb", ["to study"], "공부했어", {
         origin: "hybrid",
-        parts: [{ hanja: "工夫", hangul: "공부" }, { hangul: "하다", native: true }],
+        parts: [
+          { hanja: "工夫", hangul: "공부" },
+          { hangul: "하다", native: true, glosses: ["to do"], pos: "verb" },
+        ],
       }),
     ],
   });
@@ -4198,10 +4264,14 @@ const ko = {
     資本: { d: ["장사나 사업 따위의 기본이 되는 돈."], s: 22222 },
     學生會: { d: ["학생들의 자치 단체."], s: 33333 },
     國家: { d: ["일정한 영토와 주권을 가진 집단."], s: 44444 },
+    // Hybrid parts ADDENDUM: the hanja part of 가공되다's card.
+    加工: { d: ["원자재나 반제품을 손질하다."], s: 99991 },
   },
   natives: {
     "하늘|noun": { d: ["지평선 위로 보이는 무한한 공간."], s: 55555 },
     "우리|pron": { d: ["말하는 이가 자기와 듣는 이를 함께 이르는 말."], s: 66666 },
+    // Hybrid parts ADDENDUM: the native part of 가공되다's card.
+    "되다|verb": { d: ["새로운 신분이나 지위를 가지다."], s: 99992 },
     // Place names ADDENDUM: the natives lane maps a 지명 sense onto "hangul|name".
     "서울|name": { d: ["한반도의 중심부에 있는 도시. 대한민국의 수도이다."], s: 88888 },
   },
@@ -4300,6 +4370,15 @@ await testAsync("ko: entries ride whole onto every match kind, lookup driven thr
   assert.equal(seoul.origin, "native");
   assert.deepEqual(seoul.ko, ko.natives["서울|name"]);
   assert.equal("ko" in places.nativeMatches.find((m) => m.word === "런던"), false);
+  // Hybrid parts ADDENDUM: the part rows, the hanja part by its hanja in
+  // `words`, the native part by "hangul|pos" in `natives`.
+  const hybrid = attachKo(lookup("가공되다", hybridData, { native: true }), guarded);
+  const [gagong, doeda] = hybrid.nativeMatches[0].parts;
+  assert.deepEqual(gagong.ko, ko.words.加工);
+  assert.deepEqual(doeda.ko, ko.natives["되다|verb"]);
+  // A hybrid whose parts the tables lack keeps bare rows.
+  const bareParts = attachKo(lookup("공부하다", hybridData, { native: true }), guarded);
+  assert.ok(bareParts.nativeMatches[0].parts.every((p) => !("ko" in p)));
 
   // Junk tolerance: error results and non-results pass through untouched,
   // and an empty guarded table attaches nothing anywhere.
@@ -5140,10 +5219,26 @@ await testAsync("smoke: real native.json resolves 하늘 / 사랑 / 무리 / tog
   const mushihadaNative = (mushihada.nativeMatches || []).map((m) => m.word);
   assert.deepEqual(mushihadaNative, ["무시하다"], "the hybrid headword leads alone");
   assert.equal(mushihada.nativeMatches[0].origin, "hybrid");
-  assert.deepEqual(mushihada.nativeMatches[0].parts, [
+  // Row glosses ADDENDUM: the parts also carry what their rows show (the
+  // 하다 entry's glosses and pos; 無視's words.json sense set when the corpus
+  // has the word), so the shape is pinned with those stripped and the
+  // gloss fields checked beside it.
+  const partShape = ({ glosses, pos, ...rest }) => rest;
+  const partGlossesOk = (parts) => {
+    const [ja, hada] = parts;
+    assert.ok(Array.isArray(hada.glosses) && hada.glosses.length > 0, "하다 row carries glosses");
+    assert.equal(hada.pos, "verb");
+    if (Object.prototype.hasOwnProperty.call(all.words.words, "無視")) {
+      assert.ok(Array.isArray(ja.glosses) && ja.glosses.length > 0, "無視 row carries glosses");
+    } else {
+      assert.equal("glosses" in ja, false);
+    }
+  };
+  assert.deepEqual(mushihada.nativeMatches[0].parts.map(partShape), [
     { hanja: "無視", hangul: "무시" },
     { hangul: "하다", native: true },
   ]);
+  partGlossesOk(mushihada.nativeMatches[0].parts);
   assert.ok(!mushihadaNative.includes("아다"), "the splinter junk 아다 must not");
   // mushihaesseo, flagged. The class-C pin that stood here (root as typed,
   // 無視 leading a partial parse) was superseded on 2026-09-05 by the
@@ -5163,10 +5258,11 @@ await testAsync("smoke: real native.json resolves 하늘 / 사랑 / 무리 / tog
   assert.equal(mushihaesseoNative[0].form, "무시했어", "the match carries the claimed form");
   assert.equal(mushihaesseoNative[0].pos, "verb");
   assert.equal(mushihaesseoNative[0].origin, "hybrid");
-  assert.deepEqual(mushihaesseoNative[0].parts, [
+  assert.deepEqual(mushihaesseoNative[0].parts.map(partShape), [
     { hanja: "無視", hangul: "무시" },
     { hangul: "하다", native: true },
   ]);
+  partGlossesOk(mushihaesseoNative[0].parts);
   assert.ok(
     mushihaesseoNative.every((m) => m.form === "무시했어" && m.word !== "아다"),
     "every native match on mushihaesseo is a lemma of the form; no splinter junk"

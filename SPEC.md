@@ -2968,6 +2968,30 @@ very card the feature exists for. Two rules, user-picked as mockup C:
   the character cards); a native part's chip opens its native card
   when native.json has it (되다), else is inert. Both languages; the
   Korean chrome uses the same chips.
+- HEAD SPELLING AND ROW GLOSSES (user-raised 2026-09-05 on the 전쟁하다
+  card in real Chrome: "blue without being clickable is a no go", and
+  the rows "look weirdly bare compared to other menus"). The house rule
+  the hanja word card already follows: accent-coloured text in a head is
+  a nav chip (the hangul beside 國民 opens its lookup). So the hanja part
+  of the mixed spelling (戰爭 in 戰爭하다) is a navChip that opens the
+  hanja word's card, with the same tooltip the head hangul uses; the
+  hangul part stays muted and inert. And the part rows render in the
+  component-word row idiom in full: hanja, hangul, first gloss (戰爭 전쟁
+  war; 하다 to do), Korean definition under 한국어. Wire: each hybrid
+  part carries `glosses` (a hanja part: the words.json sense set for
+  that hanja whose hangul is the part's hangul, else the first sense
+  set; a native part: the native.json entry's glosses, first entry) and
+  the worker attaches `ko` on the rows as it does on component-word
+  rows (hanja parts key into ko.json words by hanja; native parts key
+  into natives by "hangul|pos" of the entry the glosses came from). A
+  part with nothing to say (no words.json entry, no native entry) keeps
+  its bare row, exactly as an inert chip does today.
+- Tests for the above: node (parts carry glosses for 加工 and 되다 on
+  the fixture; a part the tables lack has no glosses; ko rides the rows
+  through attachKo); harness (the hybrid head's hanja is a nav chip that
+  opens the hanja word card, its hangul is not; each part row shows a
+  gloss; Korean mode shows the definitions; English snapshots for
+  non-hybrid cards unchanged).
 - MIXED-FORM ADMISSION (build-time correction, 2026-09-05): the native
   admission gate treated any hanja tag on a Wiktionary lemma as "this
   is Sino-Korean", which excluded lemmas whose only tag is a MIXED

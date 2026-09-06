@@ -776,12 +776,25 @@
   }
 
   // Hybrid parts on the wire: {hanja?, hangul}, plus native:true on a hangul
-  // part the table holds (the chip that opens a native card).
+  // part the table holds (the row that opens a native card). Row glosses
+  // (SPEC ADDENDUM 2026-09-05): a hanja part carries the glosses of the
+  // WORDS entry whose hangul is the part's own (加工 read 가공), else the
+  // first entry's; a native part carries the first NATIVE entry's glosses
+  // and its pos (the half of the "hangul|pos" key the Korean definition
+  // hangs on). A part the tables lack (工夫, 하다) gets neither field.
   function nativePartsFor(entry) {
     if (!entry.parts) return null;
     return entry.parts.map(function (p) {
       var out = p.hanja ? { hanja: p.hanja, hangul: p.hangul } : { hangul: p.hangul };
-      if (!p.hanja && NATIVE[p.hangul]) out.native = true;
+      if (p.hanja) {
+        var senses = WORDS[p.hanja] || [];
+        var sense = senses.filter(function (s) { return s.hangul === p.hangul; })[0] || senses[0];
+        if (sense) out.glosses = sense.glosses.slice();
+      } else if (NATIVE[p.hangul]) {
+        out.native = true;
+        out.glosses = NATIVE[p.hangul][0].glosses.slice();
+        out.pos = NATIVE[p.hangul][0].pos;
+      }
       return out;
     });
   }
@@ -902,18 +915,22 @@
   // ko-less word card). Chars: 學 and 國 carry a gloss, 革 one for the Made
   // of row; 生 and 民 have only their hun, 法 neither hun nor gloss.
   // Natives: 하늘 has an entry, 무리 none; 서울 has its 지명 sense on the
-  // "hangul|name" key (place names ADDENDUM).
+  // "hangul|name" key (place names ADDENDUM). Hybrid part rows (2026-09-05):
+  // 加工 (words) and 되다|verb (natives) are the two parts of 가공되다, so
+  // both of its rows show a Korean definition under 한국어.
   var KO = {
     words: {
       "學生": { d: ["학예를 배우는 사람.", "학교에 다니면서 공부하는 사람."], s: 27143 },
       "大學": { d: ["고등 교육을 베푸는 교육 기관."], s: 20001 },
       "學校": { d: ["일정한 목적 아래 교사가 학생을 가르치는 기관."], s: 20002 },
       "大學生": { d: ["대학에 다니는 학생."], s: 20003 },
-      "資本": { d: ["장사나 사업 따위의 기본이 되는 돈."], s: 20004 }
+      "資本": { d: ["장사나 사업 따위의 기본이 되는 돈."], s: 20004 },
+      "加工": { d: ["원자재나 반제품을 인공적으로 처리하여 새로운 제품을 만듦."], s: 20005 }
     },
     natives: {
       "하늘|noun": { d: ["지평선 위로 보이는 무한한 공간."], s: 30001 },
-      "서울|name": { d: ["한반도의 중심부에 있는 도시. 대한민국의 수도이다."], s: 30002 }
+      "서울|name": { d: ["한반도의 중심부에 있는 도시. 대한민국의 수도이다."], s: 30002 },
+      "되다|verb": { d: ["새로운 신분이나 지위를 가지다."], s: 30003 }
     },
     chars: {
       "學": { d: ["어떤 원리에 따라 조직된 지식의 체계.", "‘학문’의 뜻을 더하는 접미사."], s: 67890 },
@@ -972,6 +989,15 @@
     (resp.nativeMatches || []).forEach(function (m) {
       var n = m && m.kind === "native" ? koFor(KO.natives, m.word + "|" + m.pos) : null;
       if (n) m.ko = n;
+      // Hybrid part rows: a hanja part keys into words by its hanja, a
+      // native part into natives by "hangul|pos"; a part the tables lack
+      // (工夫, 하다) stays bare, as the worker's attachKo leaves it.
+      attachKoRows(m && m.parts, "word");
+      (m && m.parts || []).forEach(function (p) {
+        if (!p || p.native !== true || typeof p.pos !== "string") return;
+        var e = koFor(KO.natives, p.hangul + "|" + p.pos);
+        if (e) p.ko = e;
+      });
     });
     return resp;
   }
@@ -2494,9 +2520,29 @@
       api.query(".hybrid-spelling").textContent === "加工되다" &&
       api.queryAll(".hybrid-parts .part-row").length === 2,
       JSON.stringify(ntvAllProc) + " " + JSON.stringify(api.viewKeys()) + " " + api.panelText());
+    // Head spelling and row glosses (SPEC ADDENDUM 2026-09-05), on this
+    // surface: the hanja segment is a nav chip, the hangul segment is not,
+    // and each row carries its part's first gloss.
+    var embHanjaSeg = api.query(".hybrid-spelling .hybrid-hanja");
+    var embHangulSeg = api.query(".hybrid-spelling .hybrid-hangul");
+    check("the head's hanja segment is a nav chip with the lookup tooltip; the hangul segment is inert; the rows carry glosses",
+      !!embHanjaSeg && embHanjaSeg.classList.contains("rnav") &&
+      embHanjaSeg.getAttribute("role") === "button" && embHanjaSeg.title === "Look up 加工" &&
+      !!embHangulSeg && !embHangulSeg.hasAttribute("role") && !embHangulSeg.hasAttribute("tabindex") &&
+      api.queryAll(".hybrid-parts .p-gloss").map(function (n) { return n.textContent; }).join("|") ===
+        "  processing; manufacturing|to become",
+      api.query(".card.native .headmeta").outerHTML + " " + api.query(".hybrid-parts").outerHTML);
+    embHanjaSeg.click();
+    await wait(TAIL);
+    check("the head's hanja chip drills into the 加工 word card in the sidebar",
+      api.viewKeys().join(",") === "native:가공되다,word:加工" &&
+      api.query(".word-body .surface").textContent === "加工",
+      JSON.stringify(api.viewKeys()));
+    api.queryAll(".crumb")[0].click();
+    await wait(TAIL);
     api.queryAll(".hybrid-parts .part-row")[0].click();
     await wait(TAIL);
-    check("the hanja chip drills into the 加工 word card in the sidebar",
+    check("the hanja row drills into the 加工 word card in the sidebar",
       api.viewKeys().join(",") === "native:가공되다,word:加工" &&
       api.query(".word-body .surface").textContent === "加工",
       JSON.stringify(api.viewKeys()));

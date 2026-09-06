@@ -294,6 +294,11 @@ export function attachKoRows(rows, ko, kind) {
  * match reached through a conjugated form still keys by its lemma ("먹다|verb"
  * for the 먹었어 match), so the lemma's definition rides the form-derived
  * match; the surface has no definition of its own and `form` is left as is.
+ * Hybrid parts ADDENDUM (row glosses): a hybrid match's part rows are rows
+ * like any other. A hanja part (加工 in 가공되다) keys into `words` by its
+ * hanja through attachKoRows; a native part (되다) keys into `natives` by the
+ * "hangul|pos" of the entry its glosses came from, the `pos` the lookup put
+ * on the row. A part the tables lack stays bare.
  */
 export function attachKo(result, ko) {
   if (!result || result.ok !== true) return result;
@@ -327,6 +332,13 @@ export function attachKo(result, ko) {
     if (typeof match.word !== "string" || typeof match.pos !== "string") continue;
     const entry = koEntry(guarded.natives, `${match.word}|${match.pos}`);
     if (entry !== null) match.ko = entry;
+    attachKoRows(match.parts, guarded, "word");
+    for (const part of Array.isArray(match.parts) ? match.parts : []) {
+      if (!part || typeof part !== "object" || part.native !== true) continue;
+      if (typeof part.pos !== "string") continue;
+      const partEntry = koEntry(guarded.natives, `${part.hangul}|${part.pos}`);
+      if (partEntry !== null) part.ko = partEntry;
+    }
   }
   return result;
 }

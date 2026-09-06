@@ -967,14 +967,39 @@ function isHangulString(text) {
 }
 
 /**
+ * Hybrid parts ADDENDUM (row glosses): the words.json sense set a hanja part
+ * shows on its row. The entry whose `hangul` is the part's own (加工 read
+ * 가공, not some homograph reading) wins; failing that, the first entry with
+ * glosses; a hanja the table lacks, or one with no glossed entry, yields
+ * null and the row stays bare.
+ */
+function hanjaPartGlosses(wordTable, part) {
+  if (!hasOwn(wordTable, part.hanja)) return null;
+  const raw = wordTable[part.hanja];
+  const entries = (Array.isArray(raw) ? raw : [raw]).filter(
+    (e) => e && typeof e === "object" && Array.isArray(e.glosses)
+  );
+  const chosen = entries.find((e) => e.hangul === part.hangul) || entries[0];
+  return chosen === undefined ? null : chosen.glosses.slice();
+}
+
+/**
  * Hybrid parts ADDENDUM: the entry's `parts`, validated, for the wire. Each
  * part keeps its `hangul` and, for a hanja segment, its `hanja`; a hangul-only
  * part additionally carries `native: true` when the native table holds that
  * hangul as a headword, which is what tells the renderer the part's chip
  * opens a native card rather than sitting inert. Anything malformed means no
  * parts at all: the card degrades to the marker alone.
+ *
+ * Row glosses (2026-09-05): a part the tables know also carries `glosses`,
+ * so its row renders in the component-word idiom (加工 가공 processing; 되다
+ * to become). A hanja part's come from words.json (hanjaPartGlosses); a
+ * native part's from the first usable native.json entry of its hangul,
+ * together with that entry's `pos`, the half of the "hangul|pos" key the
+ * worker needs to hang the Korean definition on the row. A part with
+ * nothing to say (no words.json entry, no native entry) gets neither field.
  */
-function nativePartsOf(entry, nativeWords) {
+function nativePartsOf(entry, nativeWords, wordTable) {
   if (!Array.isArray(entry.parts) || entry.parts.length === 0) return null;
   const parts = [];
   for (const part of entry.parts) {
@@ -983,7 +1008,17 @@ function nativePartsOf(entry, nativeWords) {
     const hasHanja = part.hanja !== undefined;
     if (hasHanja && (typeof part.hanja !== "string" || part.hanja === "")) return null;
     const out = hasHanja ? { hanja: part.hanja, hangul: part.hangul } : { hangul: part.hangul };
-    if (!hasHanja && usableNativeEntries(nativeWords, part.hangul).length > 0) out.native = true;
+    if (hasHanja) {
+      const glosses = hanjaPartGlosses(wordTable, part);
+      if (glosses !== null) out.glosses = glosses;
+    } else {
+      const [native] = usableNativeEntries(nativeWords, part.hangul);
+      if (native !== undefined) {
+        out.native = true;
+        out.glosses = Array.isArray(native.glosses) ? native.glosses.slice() : [];
+        out.pos = native.pos;
+      }
+    }
     parts.push(out);
   }
   return parts;
@@ -1044,7 +1079,7 @@ export function buildNativeMatches(text, data) {
       if (origin !== null) match.origin = origin;
       // Hybrid parts ADDENDUM: the field rides only when the entry's parts
       // validate; absent parts (or junk) add no field.
-      const parts = nativePartsOf(entry, nativeWords);
+      const parts = nativePartsOf(entry, nativeWords, wordTable);
       if (parts !== null) match.parts = parts;
       // The form is minted from the run's own syllables, so the check is
       // the wire rule stated once: a non-empty hangul string, or no field.

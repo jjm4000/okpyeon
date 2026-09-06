@@ -540,13 +540,14 @@
     "}",
     ".native-meta { display: flex; align-items: center; gap: 6px; margin-top: 3px; }",
     // Hybrid parts ADDENDUM: the mixed-script spelling beside the hangul head
-    // (加工되다), the 한자 병기 form: hanja parts in the accent colour, hangul
-    // parts muted. Display only; the accent marks script here, per the
-    // settled mockup, and the chips below carry the navigation.
+    // (加工되다), the 한자 병기 form. The hanja part is a nav chip (.rnav
+    // carries the accent, as on every head: accent-coloured text navigates),
+    // the hangul part is muted and inert. The chip is inline with no padding
+    // of its own, so 加工되다 reads as one word.
     ".hybrid-spelling { font-size: 15px; font-weight: 600; overflow-wrap: anywhere; }",
-    ".hybrid-hanja { color: var(--accent); }",
+    ".hybrid-spelling .hybrid-hanja { padding: 0; }",
     ".hybrid-hangul { color: var(--muted); }",
-    // The part chips reuse the component-word row. A hangul part the native
+    // The part rows reuse the component-word row. A hangul part the native
     // table lacks has nowhere to go: it recedes and loses the affordance.
     ".hybrid-parts .part-row.inert { cursor: default; }",
     ".hybrid-parts .part-row.inert:hover { background: transparent; }",
@@ -1489,10 +1490,14 @@
     return first ? nonEmptyString(first.form) || null : null;
   }
 
-  // One part is {hanja?, hangul, native?}: `hanja` on a Sino segment, and
-  // `native: true` on a hangul segment the worker resolved to a native
-  // headword (the chip that opens a native card; without it the chip is
-  // inert). Returns the cleaned list, or null when absent or malformed.
+  // One part is {hanja?, hangul, native?, glosses?, ko?}: `hanja` on a Sino
+  // segment, and `native: true` on a hangul segment the worker resolved to a
+  // native headword (the row that opens a native card; without it the row is
+  // inert). Row glosses ADDENDUM: `glosses` (the part's own sense set) and
+  // `ko` (its Korean entry) ride through as written, so the row renders them
+  // exactly as a component-word row does; either may be absent (a part the
+  // tables lack keeps its bare row). Returns the cleaned list, or null when
+  // absent or malformed.
   function hybridPartsOf(e) {
     var raw = e && e.parts;
     if (!Array.isArray(raw) || !raw.length) return null;
@@ -1510,6 +1515,9 @@
       } else if (p.native === true) {
         part.native = true;
       }
+      var glosses = asArray(p.glosses).map(nonEmptyString).filter(Boolean);
+      if (glosses.length) part.glosses = glosses;
+      if (p.ko && typeof p.ko === "object") part.ko = p.ko;
       out.push(part);
     }
     return out;
@@ -2874,17 +2882,23 @@
     card.setAttribute("aria-label", t("aria.formOf", { FORM: form, LEMMA: word }));
   }
 
-  /* ---- Hybrid parts: the mixed spelling and the part chips --------------- *
+  /* ---- Hybrid parts: the mixed spelling and the part rows ---------------- *
    * A hybrid entry (가공되다) may carry its segments from data: a hanja part
-   * ({hanja: 加工, hangul: 가공}) and hangul parts ({hangul: 되다}). The head
-   * shows the 한자 병기 spelling built from them (加工되다), and after the
-   * gloss block a chip per part in the component-word row idiom. A hanja
-   * chip navigates exactly as a component-word row does (navigateTo with the
-   * hanja: the word card when the lookup has the word, else the character
-   * cards); a hangul chip opens its native card when the worker resolved it
-   * (`native: true`), else renders inert. No parts, no element of either.
-   * Self-contained per the section convention: the two predicates here,
-   * these two functions, one call site each in buildNativeCard.
+   * ({hanja: 加工, hangul: 가공, glosses}) and hangul parts ({hangul: 되다,
+   * glosses, pos}). The head shows the 한자 병기 spelling built from them
+   * (加工되다): the hanja part is a nav chip that opens the hanja word's card
+   * with the tooltip the head hangul uses, the hangul part is muted and
+   * inert. After the gloss block, one row per part in the component-word
+   * row idiom in full: hanja, hangul, first gloss (加工 가공 processing;
+   * 되다 to become), the Korean definition under 한국어 through the row's
+   * `ko` as a component-word row shows it. A hanja row navigates exactly as
+   * a component-word row does (navigateTo with the hanja: the word card when
+   * the lookup has the word, else the character cards); a hangul row opens
+   * its native card when the worker resolved it (`native: true`), else
+   * renders inert. A part without glosses keeps its bare row. No parts, no
+   * element of either. Self-contained per the section convention: the two
+   * predicates here, these two functions, one call site each in
+   * buildNativeCard.
    * -------------------------------------------------------------------- */
 
   function appendHybridSpelling(meta, entry) {
@@ -2892,8 +2906,13 @@
     if (!parts) return;
     var spelling = el("div", "hybrid-spelling");
     parts.forEach(function (p) {
-      if (p.hanja) spelling.appendChild(el("span", "hybrid-hanja", p.hanja));
-      else spelling.appendChild(el("span", "hybrid-hangul", p.hangul));
+      if (p.hanja) {
+        var chip = navChip(p.hanja, t("tooltip.lookup", { WORD: p.hanja }), p.hanja);
+        chip.classList.add("hybrid-hanja");
+        spelling.appendChild(chip);
+      } else {
+        spelling.appendChild(el("span", "hybrid-hangul", p.hangul));
+      }
     });
     meta.appendChild(spelling);
   }
@@ -2905,16 +2924,23 @@
     var list = el("div", "part-list");
     parts.forEach(function (p) {
       var row = el("div", "part-row hybrid-part");
+      var gloss = rowGloss(p, asArray(p.glosses).map(nonEmptyString).filter(Boolean)[0] || "");
       if (p.hanja) {
         row.appendChild(el("span", "p-hanja", p.hanja));
         var text = el("span", "p-text");
         text.appendChild(el("span", "p-hangul", p.hangul));
+        if (gloss) text.appendChild(el("span", "p-gloss", "  " + gloss));
         row.appendChild(clampWrap(text, 1));
-        row.setAttribute("aria-label", p.hanja + " " + p.hangul);
+        row.setAttribute("aria-label", p.hanja + " " + p.hangul + (gloss ? " " + gloss : ""));
         makeNavRow(row, p.hanja);
       } else {
         row.appendChild(el("span", "p-hanja", p.hangul));
-        row.setAttribute("aria-label", p.hangul);
+        if (gloss) {
+          var native = el("span", "p-text");
+          native.appendChild(el("span", "p-gloss", gloss));
+          row.appendChild(clampWrap(native, 1));
+        }
+        row.setAttribute("aria-label", p.hangul + (gloss ? " " + gloss : ""));
         if (p.native === true) {
           // A push, never an in-place swap: the native card is its own view.
           makeNavRow(row, (function (hangul) {
