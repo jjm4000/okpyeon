@@ -3280,6 +3280,100 @@ Non-verb entries never carry `f` (the guard strips it).
 - Build verify: `f` present on 하다 and 살다, absent on 하늘, 살다 below
   사다.
 
+## Hybrid card depth (ADDENDUM 2026-09-05, design settled by mockups)
+
+The hybrid card (전쟁하다) stopped at its head, gloss and two part rows,
+while the hanja word card beside it in the panel (工夫) carried
+character chips, a Used-in row and nested component hanja cards with
+their compounds. Jesse: "it still looks sparse compared to the other
+cards". Three mockups were drawn: A nests the hanja word's own card;
+B gives the hybrid the hanja word card's shape (character chips, a row
+for the hanja word, its Used-in row, the component hanja cards); C
+keeps the part rows and adds the root's body under them. A was
+user-picked, 2026-09-05, as "the most consistent with design": a
+hybrid is made of a word and a native part, and the card nests them
+exactly as a word card nests its characters.
+
+Supersedes, in the hybrid parts addendum: the "Below the gloss:
+component chips" clause and the part-row half of HEAD SPELLING AND ROW
+GLOSSES. The head chip (戰爭 in 戰爭하다 opens the hanja word card)
+stays. The `glosses` and `pos` the parts carry on the wire stay too:
+they feed the fallback row below.
+
+### Rendering (extension/content/content.js)
+
+- Hybrid card body: head unchanged; gloss block unchanged; then a
+  COMPONENT WORDS section (the existing section.componentWords key) on
+  the nested rail, one nested card per part, in the parts' order:
+  - A hanja part words.json knows (戰爭): that hanja word's FULL card,
+    rendered by the same builder a lead word card uses: head (hanja,
+    hangul chip, save star, source link), gloss, component hanja chips,
+    Used-in row, and its COMPONENT HANJA cards with their full bodies
+    (readings line, Made of, Part of, Compounds with the show-more
+    buttons). The part's hanja is the one spelling; no spelling
+    selector, no hedge box.
+  - A hanja part words.json lacks (工夫 on the fixture): its character
+    cards nested directly on the rail, the way an unmatched hanja
+    segment shows its characters; with no character either, the bare
+    row of today (hanja, hangul, gloss when carried).
+  - A native part native.json knows (하다, 되다): the native card
+    (head with POS chip, origin marker and source link; definitions;
+    no star, natives have no save namespace). A native part that is
+    itself a hybrid with parts does NOT nest its parts (depth bound).
+  - A native part native.json lacks: the bare inert row of today.
+- Depth: hybrid, then word, then character is the maximum. Nested
+  cards never nest a hybrid.
+- A deconjugated hybrid (공부했어): the form note above, the same body.
+- Korean mode: every nested card carries its 우리말샘 definition, as
+  the same card does when it leads.
+- Export (embed) follows the rendered card, as nested component cards
+  export today. Saved words: the nested word card's star saves that
+  hanja word, as it does anywhere.
+
+### Wire (extension/background.js, extension/lookup.js)
+
+- Each hybrid part may carry `lookup`, a sub-response the worker builds
+  on the flagged path for native matches that carry parts:
+  - hanja part: the UNFLAGGED literal lookup of the part's hanja
+    string (`lookup(hanja, bundle, { interpret: false, native: false })`)
+    put through the same attach pipeline as the outer response
+    (decomp, foundIn, sino when the request is flagged for it, ko when
+    the request is flagged for it), so `lookup.matches` holds the word
+    match and the character matches exactly as a direct lookup of 戰爭
+    would. Unflagged means natives never join, so a sub-lookup never
+    contains a hybrid and depth is bounded by construction.
+  - native part native.json knows: `lookup.nativeMatches`, the entries
+    of that hangul (every POS, in table order) shaped as native matches
+    (word, pos, glosses, origin; `parts` deliberately omitted), with ko
+    attached when flagged.
+  - A part the tables lack has no `lookup`.
+- Cost: one extra Sino lookup per hanja part of each hybrid match in a
+  response, at most a handful; nothing on unflagged requests, which stay
+  byte-identical.
+- Guards: a `lookup` sub-response that is not an object with an array
+  `matches` or `nativeMatches` is dropped; the existing per-match guards
+  apply inside it. The test pages' miniature worker builds the same
+  payload from its fixtures.
+
+### Tests
+
+- Node: on the fixture, 가공되다's 加工 part carries `lookup.matches`
+  with the 加工 word match (usedInCount, parts, chars) and the 加 and 工
+  character matches; 공부하다's 工夫 part carries no `lookup`; the 되다
+  part carries `lookup.nativeMatches` with the verb entry and no
+  `parts`; a hybrid native part's own parts never appear; unflagged
+  responses byte-identical; attachKo reaches inside `lookup` (word,
+  char and native keys); a junk `lookup` is dropped by the guard.
+- Harness (both pages): the 가공되다 card shows COMPONENT WORDS with a
+  nested 加工 word card (its head, hangul chip, star, chips, Used-in
+  row, nested 加 and 工 cards with compounds) and a nested 되다 native
+  card; the nested star saves 加工; the 공부하다 card shows the fallback
+  rows (or nested character cards where the fixture has the
+  characters) and its head chip still navigates; 공부했어 shows the
+  form note over the same body; Korean-mode definitions on the nested
+  cards; embed export of the hybrid includes the nested cards; English
+  snapshots for non-hybrid cards unchanged.
+
 ## Verification expectations
 
 - A: after build, spot-check in the output: 國 has eumhun 나라/국 and compounds;
