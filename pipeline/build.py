@@ -379,6 +379,56 @@ NATIVE_POS = {"noun", "verb", "adj", "adv", "intj", "det", "pron", "num",
 # without this skip the proper-noun exclusion would not keep 서울 out.
 NATIVE_SKIP_SENSE = {"alt-of", "form-of", "no-gloss",
                      "obsolete", "archaic", "dated"}
+# Inflected stubs (SPEC "INFLECTED STUBS LEAVE native.json"): Wiktionary
+# carries some conjugated and josa-marked forms as their own entries,
+# untagged, whose only gloss points at the lemma: 있어 "해체 present
+# tense form of 있다", 사는 "topic-marked form of 사". As headwords they
+# block deconjugation (사는 never reaches 살다) and render a stub instead
+# of the lemma's card. A sense is a stub when its gloss says "form of"
+# (or "forms of") together with a grammatical term, both matched as
+# whole words. Wiktionary also words the same stubs without "form":
+# "realis adnominal of 빨갛다", "formal indicative assertive of 감사하다",
+# "hortative of 팔다", so the phrase is any of those grammatical nouns
+# followed by "of" and a hangul lemma. Regional forms ("Pyongan form of
+# 좋다") name no term and stay; so do "contraction of", "short for" and
+# "alternative form of"; 까짓 "a determiner adding a meaning of pettiness"
+# has no hangul after its "of".
+RE_STUB_FORM_OF = re.compile(
+    r"\b(?:forms?|assertive|adnominal|determinative|indicative|interrogative|"
+    r"hortative|imperative|exclamatory|declarative|non-past|past|infinitive|"
+    r"conjunctive)\s+of\s+[\uac00-\ud7a3]", re.I)
+RE_STUB_TERM = re.compile(
+    r"\b(?:topic-marked|nominative|possessed|infinitive|conjunctive|"
+    r"conjugated|present|non-past|past|imperative|hortative|determiner|"
+    r"determinative|declarative|exclamatory|sequential|retrospective|"
+    r"assertive|adnominal|realis|irrealis|indicative|interrogative|plain|"
+    r"polite|non-polite|informal|formal|cause/reason|adverbial)\b", re.I)
+# hangul -> {pos: [stub glosses dropped]}, so the emit step can count the
+# rows and headwords the rule removed outright.
+stub_senses = {}
+stub_sense_count = 0
+
+
+def is_inflected_stub(gloss) -> bool:
+    """True for "informal polite present exclamatory form of 하다" and
+    "topic-marked form of 나"; False for "Pyongan form of 좋다", "contraction
+    of 그러하나" and "alternative form of 국민"."""
+    g = str(gloss or "")
+    return bool(RE_STUB_FORM_OF.search(g) and RE_STUB_TERM.search(g))
+# Lemma frequency for deconjugation (SPEC "Lemma frequency (build)"): a
+# verb or adjective lemma is as common as the sum of its conjugation
+# forms in the subtitle list, since the dictionary form itself is rare in
+# speech (먹다 barely appears; 먹어, 먹었어, 먹는 do). During the kaikki
+# stream, lemma -> the hangul-only forms of its verb and adj entries
+# that the subtitle list counts at all, so the set stays small (the
+# extract carries about 89 forms per lemma, most of them formal endings
+# no subtitle ever uses). Right after the stream, sum_lemma_forms()
+# turns it into lemma -> summed count and drops the forms.
+lemma_forms = {}
+lemma_form_counts = {}
+# The subtitle counts the stream filters against: main() parses them
+# before the stream and points this at the result.
+subtitle_counts = {}
 
 # Place-name lane (SPEC "Place names and origin markers"): hangul-only
 # `name` entries whose categories place them. A category counts when the
@@ -938,16 +988,64 @@ def collect_native(o, hangul):
     # Entries whose senses all fail the bar leave an empty gloss list here;
     # the emit step drops those rather than shipping glossless rows.
     glosses = native_entries.setdefault(hangul, {}).setdefault(pos, [])
+    # The inflected-stub rule runs before the other sense filters, so the
+    # stub counts logged at emit time are not muddied by senses the
+    # quality bar would have skipped anyway.
+    global stub_sense_count
+    survivors = 0
     for s in o.get("senses") or []:
-        tags = set(s.get("tags") or [])
-        if tags & NATIVE_SKIP_SENSE or s.get("alt_of") or s.get("form_of"):
-            continue
         gl = s.get("glosses") or []
+        tags = set(s.get("tags") or [])
         # gl[-1] is the most specific level of a nested gloss, as in
         # handle_word_entry above.
-        if not gl or RE_SKIP_GLOSS.match(gl[-1] or ""):
+        below_bar = (not gl or tags & NATIVE_SKIP_SENSE or s.get("alt_of")
+                     or s.get("form_of") or RE_SKIP_GLOSS.match(gl[-1] or ""))
+        if gl and is_inflected_stub(gl[-1]):
+            stub_sense_count += 1
+            # Only a sense the quality bar would have admitted is the
+            # rule's own removal; one tagged form-of was never emitted.
+            if not below_bar:
+                push_gloss(stub_senses.setdefault(hangul, {})
+                           .setdefault(pos, []), clean_gloss(gl[-1]), 3)
+            continue
+        survivors += 1
+        if below_bar:
             continue
         push_gloss(glosses, clean_gloss(gl[-1]), 3)
+    # A stub entry is not a lemma: its forms (있어's own conjugations) must
+    # not feed the lemma frequency, so the pass is reached only when at
+    # least one sense got past the stub rule.
+    if pos in ("verb", "adj") and survivors:
+        collect_lemma_forms(o, hangul)
+
+
+def collect_lemma_forms(o, hangul):
+    """Keep the counted hangul-only conjugation forms of a verb or adj
+    entry for the lemma frequency (SPEC "Lemma frequency (build)"). The
+    lemma counts as one of its own forms. Forms are pooled per lemma
+    across its entries, so 묻다 (ask, ㄷ-irregular: 물어) and 묻다 (bury,
+    regular: 묻어) contribute the union of both tables once each."""
+    seen = lemma_forms.setdefault(hangul, set())
+    if subtitle_counts.get(hangul):
+        seen.add(hangul)
+    for f in o.get("forms") or []:
+        form = str(f.get("form") or "")
+        if is_hangul(form) and subtitle_counts.get(form):
+            seen.add(form)
+
+
+def sum_lemma_forms():
+    """lemma_forms -> lemma_form_counts (lemma -> summed subtitle count of
+    its distinct counted forms), then the forms are dropped. A lemma whose
+    forms are all uncounted gets no entry, so it will carry no `f`."""
+    n_forms = 0
+    for lemma, forms in lemma_forms.items():
+        total = sum(subtitle_counts[f] for f in forms)
+        n_forms += len(forms)
+        if total:
+            lemma_form_counts[lemma] = total
+    lemma_forms.clear()
+    return n_forms
 
 
 def add_word(sp, hangul, glosses, score, hanja_page=False):
@@ -1244,6 +1342,27 @@ def freq_ranks(ext_freq):
 def freq_bucket(rank):
     """floor(log4(rank)), clamped to 0-9."""
     return min(FREQ_BUCKETS - 1, (rank.bit_length() - 1) // 2)
+
+
+def attach_lemma_freq(native_words):
+    """Set `f` on the verb and adj rows of native.json (SPEC "Lemma
+    frequency (build)"): the bucket above of the lemma's rank among the
+    emitted verb/adj lemmas by lemma_form_counts, ties broken by the lemma
+    string, so 하다 (rank 1) gets 0 and a lemma at rank 300 gets 4. Rows of
+    any other POS and lemmas without a count are left alone. Returns
+    (lemmas ranked, rows given `f`)."""
+    lemmas = sorted(
+        (h for h, rows in native_words.items()
+         if h in lemma_form_counts
+         and any(r["pos"] in ("verb", "adj") for r in rows)),
+        key=lambda h: (-lemma_form_counts[h], h))
+    n_rows = 0
+    for i, h in enumerate(lemmas):
+        for r in native_words[h]:
+            if r["pos"] in ("verb", "adj"):
+                r["f"] = freq_bucket(i + 1)
+                n_rows += 1
+    return len(lemmas), n_rows
 
 
 def parse_japanese(path):
@@ -2028,6 +2147,23 @@ def verify(hanja_obj, words_obj, variants_obj, decomp_obj=None,
             json.dumps(nw.get("먹다"), ensure_ascii=False))
         add("native: 국민 absent (sino)", "국민" not in nw,
             json.dumps(nw.get("국민"), ensure_ascii=False))
+        # Inflected stubs (SPEC "INFLECTED STUBS LEAVE native.json"): the
+        # SPEC's anchors, 어떻게 keeping its senses beyond the dropped
+        # "adverbial form of 어떻다", and a scan of every emitted gloss
+        # against the rule itself.
+        for h in ("있어", "해요", "사는", "나는", "저는", "우린", "빨간", "강한"):
+            add("native stubs: %s absent (inflected form)" % h,
+                h not in nw, json.dumps(nw.get(h), ensure_ascii=False))
+        for h in ("돟다", "어떻게", "그러나", "감사합니다"):
+            add("native stubs: %s present" % h,
+                h in nw, json.dumps(nw.get(h), ensure_ascii=False))
+        add("native stubs: 어떻게 keeps more than one gloss",
+            len(ngloss("어떻게")) > 1,
+            json.dumps(nw.get("어떻게"), ensure_ascii=False))
+        stubs = [h for h, rows in nw.items() for e in rows
+                 for g in e["glosses"] if is_inflected_stub(g)]
+        add("native stubs: no emitted gloss matches the rule (full scan)",
+            not stubs, "%d e.g. %s" % (len(stubs), " ".join(stubs[:5])))
         # Place lane (SPEC "Place names and origin markers"): 서울 has a
         # dated common-noun sense that the skip list keeps out, so its
         # only row is the place.
@@ -2154,6 +2290,38 @@ def verify(hanja_obj, words_obj, variants_obj, decomp_obj=None,
         add("native: no `rr` block (romanized search v2)",
             "rr" not in native_obj,
             "keys: %s" % sorted(native_obj.keys()))
+        # Lemma frequency (SPEC "Lemma frequency (build)"): `f` on verb
+        # and adj rows only, the SPEC's anchors, and the bucket range.
+        def lemma_f(h):
+            vals = [e["f"] for e in nw.get(h) or []
+                    if e["pos"] in ("verb", "adj") and "f" in e]
+            return min(vals) if vals else None
+
+        for h in ("하다", "살다"):
+            add("native lemma freq: %s carries `f`" % h,
+                lemma_f(h) is not None, "f %s" % lemma_f(h))
+        add("native lemma freq: 하늘 (noun) carries no `f`",
+            not any("f" in e for e in nw.get("하늘") or []),
+            json.dumps(nw.get("하늘"), ensure_ascii=False))
+        add("native lemma freq: 하다 in bucket 0 or 1",
+            lemma_f("하다") in (0, 1), "f %s" % lemma_f("하다"))
+        add("native lemma freq: 살다 no higher than 사다",
+            lemma_f("살다") is not None and lemma_f("사다") is not None
+            and lemma_f("살다") <= lemma_f("사다"),
+            "살다 f %s, 사다 f %s" % (lemma_f("살다"), lemma_f("사다")))
+        stray_f = [h for h, rows in nw.items() for e in rows
+                   if "f" in e and e["pos"] not in ("verb", "adj")]
+        add("native lemma freq: `f` never on a non-verb/adj row",
+            not stray_f, " ".join(stray_f[:5]))
+        all_f = [e["f"] for rows in nw.values() for e in rows if "f" in e]
+        bad_f = [v for v in all_f
+                 if not isinstance(v, int) or isinstance(v, bool)
+                 or v < 0 or v > 9]
+        add("native lemma freq: every `f` is an integer 0-9",
+            all_f and not bad_f,
+            "%s rows with `f`; distribution %s"
+            % (format(len(all_f), ","),
+               " ".join("f%d=%d" % (b, all_f.count(b)) for b in range(10))))
 
     # --- sino.json (SPEC "Sibling Sino readings" addendum) -------------
     if sino_obj is not None:
@@ -2583,10 +2751,22 @@ def main(argv):
     # `python pipeline/urimalsaem.py fetch --force` when the mirror moves).
     ko_inter = urimalsaem.ensure_intermediate()
 
+    # The subtitle counts are parsed before the stream so that the lemma
+    # frequency pass (collect_lemma_forms) can keep only counted forms.
+    global subtitle_counts
+    ext_freq = parse_ext_freq(EXTFREQ_FILE)
+    subtitle_counts = ext_freq
+
     log("[2/5] streaming kaikki Korean JSONL (line by line)")
     parse_kaikki(KAIKKI_FILE)
     log("  %s lines read, %s Korean entries parsed" % (
         format(stats["lines"], ","), format(stats["parsed"], ",")))
+    n_lemmas = len(lemma_forms)
+    n_forms = sum_lemma_forms()
+    log("  lemma forms: %s counted conjugation forms kept for %s verb/adj "
+        "lemmas, %s lemmas with a nonzero sum" % (
+            format(n_forms, ","), format(n_lemmas, ","),
+            format(len(lemma_form_counts), ",")))
     log("  %s hanja chars (%s senses), %s alt-form senses" % (
         format(len(chars), ","), format(stats["char_senses"], ","),
         format(stats["alt_senses"], ",")))
@@ -2781,7 +2961,6 @@ def main(argv):
     log("[4/5] building words.json")
     log("  frequency signal: %s example sentences, %s distinct hangul n-grams"
         % (format(stats["examples"], ","), format(len(ngram_freq), ",")))
-    ext_freq = parse_ext_freq(EXTFREQ_FILE)
 
     def final_score(sp, hangul, base):
         """Entry richness + corpus frequency + inbound links.
@@ -3265,6 +3444,23 @@ def main(argv):
                 for p, g in sorted(by_pos.items()) if g]
         if rows:
             native_words[hangul] = rows
+    # Inflected stubs (SPEC "INFLECTED STUBS LEAVE native.json"): the
+    # senses collect_native dropped that the quality bar would have
+    # admitted (stub_senses; the matched total also counts senses a
+    # form-of tag already kept out), and the rows and headwords with
+    # nothing else left, counted against the emitted rows.
+    n_stub_admissible = sum(len(g) for by_pos in stub_senses.values()
+                            for g in by_pos.values())
+    stub_rows = [(h, p) for h, by_pos in stub_senses.items() for p in by_pos
+                 if not any(r["pos"] == p for r in native_words.get(h, ()))]
+    stub_keys = sorted((h for h in stub_senses if h not in native_words),
+                       key=lambda h: (-ext_freq.get(h, 0), h))
+    log("  inflected stubs: %s senses matched, %s of them otherwise "
+        "admissible; %s rows and %s headwords with nothing else left; "
+        "most frequent headwords dropped: %s"
+        % (format(stub_sense_count, ","), format(n_stub_admissible, ","),
+           format(len(stub_rows), ","), format(len(stub_keys), ","),
+           " ".join(stub_keys[:20])))
     # ---- place-name lane (SPEC "Place names and origin markers") ------
     # Attested by a 우리말샘 명사 sense (the place key or the noun key of
     # the natives lane) or by PLACE_MIN_SUBS subtitle hits; out when the
@@ -3415,6 +3611,23 @@ def main(argv):
            format(parts_counts["via mixed form"], ","),
            format(parts_counts["mixed form behind 우리말샘"], ","),
            " ".join("%s=%d" % kv for kv in parts_why.most_common())))
+    # ---- lemma frequency (SPEC "Lemma frequency (build)") -------------
+    # `f` on verb and adj rows: the words.json bucket of the lemma's rank
+    # among the verb/adj lemmas emitted here, by the summed subtitle
+    # count of its conjugation forms (lemma_form_counts, gathered on the
+    # stream), ties broken by the lemma string. The runtime orders
+    # deconjugation survivors by it (사는: 살다 before 사다). A lemma with
+    # no counted form, or absent from the extract, carries none.
+    n_f_lemmas, n_f_rows = attach_lemma_freq(native_words)
+    top = sorted(
+        (h for h in native_words if h in lemma_form_counts
+         and any(r["pos"] in ("verb", "adj") for r in native_words[h])),
+        key=lambda h: (-lemma_form_counts[h], h))[:10]
+    log("  lemma freq: %s verb/adj lemmas ranked (%s rows carry `f`); "
+        "top ten: %s"
+        % (format(n_f_lemmas, ","), format(n_f_rows, ","),
+           " ".join("%s(%s)" % (h, format(lemma_form_counts[h], ","))
+                    for h in top)))
     # Romanized search v2: no `rr` block. The runtime computes forms with
     # extension/rr.js, so native.json carries only the words themselves.
     native_obj = {"version": 1,

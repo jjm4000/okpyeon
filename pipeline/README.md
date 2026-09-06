@@ -602,8 +602,8 @@ gives `native`; a compound or affix template (`com`, `compound`, `af`,
 `affix`, `suffix`, `prefix`) whose parts mix a hanja-marked part and a
 hangul-only part (가공(加工) + -되다) gives `hybrid`. A borrowing wins
 over an inheritance, which wins over a compound. Measured 2026-09-05
-over 16,951 rows: native 7,024, loan 3,762, hybrid 3,847, unmarked
-2,318 (13,116 from 우리말샘, 71 from a mixed form, 1,446 from the
+over 16,915 rows: native 7,023, loan 3,762, hybrid 3,847, unmarked
+2,283 (13,115 from 우리말샘, 71 from a mixed form, 1,446 from the
 etymology templates).
 
 **Parts.** A hybrid row may carry `parts`, the segments of its headword in
@@ -628,6 +628,38 @@ segment, 111 with a segment of undeclared language (안 밝힘), 15 with
 non-hanja text inside a 한자 segment, 13 with a segment in another
 language, and 1 whose hangul segment does not match the headword.
 
+**Inflected stubs.** Wiktionary carries some conjugated and josa-marked
+forms as their own untagged entries whose only gloss points at the lemma
+(있어 "해체 present tense form of 있다", 해요, 대한 "formal non-polite form
+of 대하다", 사는 and 나는 "topic-marked form of 사 / 나"). As headwords
+they would block deconjugation and show a stub instead of the lemma's
+card, so `is_inflected_stub` drops a sense whose gloss says "form of"
+(or "forms of") together with a grammatical term (topic-marked,
+nominative, possessed, infinitive, conjunctive, conjugated, present,
+past, imperative, hortative, determiner, declarative, exclamatory,
+sequential, retrospective, polite, non-polite, informal, formal,
+cause/reason, adverbial), both matched as whole words, before the other
+sense filters; a row with no sense left is not emitted, and neither is
+a headword with no row left. A stub entry's forms never reach the lemma
+frequency pass. Regional forms (돟다 "Pyongan form of 좋다") name no term
+and stay, as do "contraction of" (그러나) and "alternative form of"; 어떻게
+loses "adverbial form of 어떻다" and keeps its other senses.
+
+**Lemma frequency.** Every verb and adjective row may carry `f`, the
+`words.json` bucket (min(9, floor(log4(rank)))) of the lemma's rank among
+the verb and adjective lemmas in the file, ranked by the summed subtitle
+count of its Wiktionary conjugation forms (the hangul-only strings in
+the extract's `forms` array plus the lemma itself, each distinct form
+counted once), ties broken by the lemma string (SPEC "Lemma frequency
+(build)"). The dictionary form alone would mislead: 먹다 is rare in
+subtitles while 먹어, 먹었어 and 먹는 are not. The runtime orders
+deconjugation survivors by it, so 사는 shows 살다 before 사다. A lemma
+whose forms are all uncounted, or that is absent from the extract, has no
+`f`; no other POS ever carries one. Measured 2026-09-05, after the
+inflected-stub rule: 3,649 lemmas ranked (3,735 rows), the top ten by
+summed count 있다, 그렇다, 그러다, 하다, 알다, 없다, 좋다, 아니다, 않다 and
+같다; 하다 is bucket 1, 있다 0, 살다 and 사다 both 2, 공부하다 4.
+
 **ko.json.** The preprocess files a 명사 sense with cat 지명 under the
 pseudo-POS 지명 as well as under 명사, and `POS_MAP` maps 지명 to `name`,
 so a place row gets its Korean definition and 우리말샘 link
@@ -646,7 +678,9 @@ mixed-form rule, each marked hybrid), 연습하다 is 練習/연습 + 하다 and
 its ko.json definition is the practice sense, 상하다 is 傷/상 + 하다, no
 non-hybrid carries parts, every parts list reassembles its headword
 with one syllable per hanja character, and at least 1,000 hybrids carry
-parts.
+parts. For the lemma frequency: 하다 and 살다 carry `f` and 하늘 does not,
+하다 is bucket 0 or 1, 살다's bucket is no higher than 사다's, no row of
+another POS carries `f`, and every `f` is an integer 0 to 9.
 
 ## Canonical words keys, and how long a key can be
 

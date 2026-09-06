@@ -3051,6 +3051,28 @@ as typed hangul does (mushihaesseo becomes 무시했어, which resolves to
   conjugated surface has no definition of its own.
 - LENGTH FLOOR: two syllables. Single syllables stay the reading-browse
   channel.
+- INFLECTED STUBS LEAVE native.json (build rule, found 2026-09-05 when
+  있어 turned up as its own lemma): Wiktionary carries some inflected
+  forms as entries whose only gloss is "form of" something (있어 "해체
+  present tense form of 있다", 해요, 하세요, 와서, 대한 "formal non-polite
+  form of 대하다", and the josa-marked 사는, 나는, 저는, 우린 "topic-marked
+  form of 사"). As headwords they block deconjugation (사는 would never
+  reach 살다) and render a stub instead of the lemma's card. The native
+  admission drops a SENSE whose gloss names a grammatical form "of" a
+  hangul lemma ("form of", and Wiktionary's wordings without "form":
+  "realis adnominal of 빨갛다", "formal indicative assertive of 감사하다",
+  "hortative of 팔다") together with a grammatical term (topic-marked,
+  nominative, possessed, infinitive, conjunctive, conjugated, present,
+  non-past, past, imperative, hortative, determiner, determinative,
+  declarative, exclamatory, sequential, retrospective, assertive,
+  adnominal, realis, irrealis, indicative, interrogative, plain, polite,
+  non-polite, informal, formal, cause/reason, adverbial), and an entry
+  with no sense left is not emitted. Regional forms ("Pyongan form of
+  넣다") are real dialect headwords and stay; 어떻게 keeps its other
+  senses; 그러나 ("contraction of 그러하나") stays; 감사합니다 keeps its
+  interjection row "thank you" and loses the verb rows. Anchors: 있어,
+  해요, 사는, 나는, 빨간, 강한 absent; 돟다, 어떻게, 그러나, 감사합니다
+  (intj only) present.
 
 ### The generator: extension/deconjugate.js
 

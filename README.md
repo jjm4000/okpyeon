@@ -118,6 +118,7 @@ Tests:
 
 ```
 node test/lookup.test.mjs
+node test/deconjugate.test.mjs
 ```
 
 UI self-checks, headless:
