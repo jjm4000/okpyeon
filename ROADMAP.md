@@ -429,8 +429,8 @@ correctness" bullet of 1.1, the same way 1.1.1 folded into 1.2.
 
 ## Later / unscheduled
 
-- **Korean language mode: design record.** BUILT the same day (see the
-  since-1.2 block above); this entry keeps the decision trail. Settled
+- **Korean language mode: design record.** SHIPPED in 1.3 (see the
+  1.3 section); this entry keeps the decision trail only. Settled
   by mockups: one Language control (English / 한국어) that switches the whole
   chrome AND the definitions, defaulting to the browser language on
   first run; Korean definitions replace English on word cards; char
@@ -462,16 +462,11 @@ correctness" bullet of 1.1, the same way 1.1.1 folded into 1.2.
   backfill or an English fallback. Remaining design (mockups first):
   replace or accompany English, char-card treatment, UI chrome
   language, settings shape, sense selection, coverage fallback.
-- **Korean-language store listing**, the distribution companion of the
-  feature above. Not dashboard-only: the store offers a listing
-  language only for locales the package declares, so it needs
-  `_locales/en` and `_locales/ko` message files, `default_locale` in
-  the manifest, the manifest name and description moved to `__MSG_`
-  keys, and a re-upload; the Korean detailed description and optional
-  Korean screenshots then go in through the dashboard's language
-  dropdown. Korean-browser visitors get the Korean listing, everyone
-  else the English one. Natural to ship in the same release as the
-  Korean descriptions.
+- **Korean-language store listing.** SHIPPED with 1.3: `_locales/en`
+  and `_locales/ko`, `default_locale`, the manifest name and description
+  as `__MSG_` keys, the Korean description and a Korean screenshot set
+  uploaded through the dashboard's language dropdown (which only
+  appears once the package declares the locale). Kept as a pointer.
 - **Word-level sibling pronunciations** (음악 -> おんがく / yīnyuè), a
   follow-up to the char-level sino line, analysis recorded 2026-08-31:
   the two languages are asymmetric in opposite directions. Mandarin is
@@ -485,12 +480,11 @@ correctness" bullet of 1.1, the same way 1.1.1 folded into 1.2.
   shared-spelling words the bridge corpus already parses, partial
   coverage with no honest synthesis fallback. Ship shape when
   designed: zh broadly via alignment, ja attested-only.
-- **Proper-noun hangul words** (서울, 부산, 한강). native.json is
-  built from Wiktionary's common nouns, so these have no card at all
-  in any language; the Korean-mode build found 서울's Urimalsaem
-  sense with nothing to attach it to. A small proper-noun lane in
-  the native build (Wiktionary tags them) would give them cards and
-  Korean definitions in one step.
+- **Proper-noun hangul words** (서울, 부산, 한강). DONE on main as the
+  place-name lane with origin markers (see Since 1.3): 604 places with
+  Korean definitions and the 우리말샘 link. Other proper-noun classes
+  (people, organisations) are not admitted and there is no plan for
+  them.
 - **Grammar labels on the form note.** Deconjugation itself is done
   (Since 1.3). Mockup C from that round: "먹었어 → form of 먹다 ·
   past, casual" (한국어 "과거, 해체").
