@@ -197,6 +197,25 @@
     "大": { eumhun: [{ hun: "큰", eum: "대" }], readings: ["대"],
             glosses: ["big; great"],
             compounds: [{ hangul: "대한", hanja: "大韓", gloss: "Great Han (Korea)" }] },
+    // Hybrid card depth (SPEC ADDENDUM 2026-09-05): the characters of 加工,
+    // the hanja part of 가공되다, so its nested word card carries chips and
+    // two nested character cards with compounds. 工 alone also stands in for
+    // 工夫 (no fixture word): the 공부하다 card nests the 工 card and nothing
+    // for 夫, the characters-only fallback.
+    "加": { eumhun: [{ hun: "더할", eum: "가" }], readings: ["가"],
+            glosses: ["to add; to increase"],
+            compounds: [
+              { hangul: "가공", hanja: "加工", gloss: "processing" },
+              { hangul: "추가", hanja: "追加", gloss: "addition" },
+              { hangul: "증가", hanja: "增加", gloss: "increase" }
+            ] },
+    "工": { eumhun: [{ hun: "장인", eum: "공" }], readings: ["공"],
+            glosses: ["craft; work; craftsman"],
+            compounds: [
+              { hangul: "공부", hanja: "工夫", gloss: "study" },
+              { hangul: "가공", hanja: "加工", gloss: "processing" },
+              { hangul: "공장", hanja: "工場", gloss: "factory" }
+            ] },
     // eumhun deliberately missing → exercises the readings fallback path
     "法": { eumhun: [], readings: ["법"], glosses: ["law; rule; method"], compounds: [] },
 
@@ -345,7 +364,7 @@
     "活": "m", "會": "m", "者": "m", "海": "m", "水": "m", "手": "m",
     "女": "m", "數": "m", "首": "m", "樹": "h", "修": "h", "秀": "h",
     "法": "h", "局": "h", "詐": "h", "資": "h", "義": "h", "寺": "h",
-    "沙": "h", "舍": "h",
+    "沙": "h", "舍": "h", "加": "m", "工": "m",
     "菊": "a", "欺": "a", "衝": "a", "人": "a",
     "鞠": "r", "麴": "r", "廊": "r", "革": "r", "靴": "r"
     // 朞: intentionally absent — see above.
@@ -384,6 +403,9 @@
     // hybrid 가공되다. Rule 3b would split the hybrid into this word plus the
     // native 되다; the native whole-string check must claim the run first.
     "加工": [{ hangul: "가공", glosses: ["processing; manufacturing"] }],
+    // Hybrid card depth (SPEC ADDENDUM 2026-09-05): a larger word holding
+    // 加工, so the nested 加工 card under 가공되다 carries a Used-in row.
+    "再加工": [{ hangul: "재가공", glosses: ["reprocessing"] }],
     // Deconjugation (SPEC ADDENDUM 2026-09-05): a hangul that is also a
     // form (남자 would be 남 + 자 of the fixture verb 남다). A run this word
     // explains whole is this word and never deconjugates. 男 and 子 are
@@ -657,8 +679,11 @@
     // (加工 is a fixture word, 되다 a fixture native entry, so both chips
     // navigate); 공부하다 carries segments the tables lack (工夫 is no
     // fixture word, 하다 no fixture entry: the hanja chip still issues its
-    // lookup, the hangul chip renders inert). 밥상 above stays a hybrid
-    // WITHOUT parts: the marker alone.
+    // lookup, the hangul part renders its bare inert row). 밥상 above stays
+    // a hybrid WITHOUT parts: the marker alone. Hybrid card depth (SPEC
+    // ADDENDUM 2026-09-05): 가공되다 nests the full 加工 word card and the
+    // 되다 native card; 공부하다 nests the 工 character card for 工夫 (the
+    // fixture has 工 and not 夫) and the bare 하다 row.
     "가공되다": [{
       pos: "verb", glosses: ["to be processed"], origin: "hybrid",
       parts: [{ hanja: "加工", hangul: "가공" }, { hangul: "되다" }]
@@ -668,6 +693,17 @@
       parts: [{ hanja: "工夫", hangul: "공부" }, { hangul: "하다" }]
     }],
     "되다": [{ pos: "verb", glosses: ["to become"], origin: "native" }],
+    // Hybrid card depth (SPEC ADDENDUM 2026-09-05): a hybrid whose native
+    // part is itself the hybrid 가공되다, parts and all, pinning the depth
+    // bound: the nested 가공되다 card nests nothing and, its parts omitted
+    // on the wire, draws no mixed spelling. Its hanja part 再 has no fixture
+    // data at all (no word, no character), so it keeps the bare navigating
+    // row. The segments are the fixture's own choice, made to pin those two
+    // branches.
+    "재가공되다": [{
+      pos: "verb", glosses: ["to be reprocessed"], origin: "hybrid",
+      parts: [{ hanja: "再", hangul: "재" }, { hangul: "가공되다" }]
+    }],
     // Deconjugation (SPEC ADDENDUM 2026-09-05): the lemmas the checks reach
     // through a form (먹었어 is 먹 + 었 + 어, 좋은 is 좋 + 은). 사는 resolves to
     // both 살다 (ㄹ-drop before 는) and 사다 (bare stem), and the `f` buckets
@@ -779,6 +815,15 @@
   // first entry's; a native part carries the first NATIVE entry's glosses
   // and its pos (the half of the "hangul|pos" key the Korean definition
   // hangs on). A part the tables lack (工夫, 하다) gets neither field.
+  // Hybrid card depth (SPEC ADDENDUM 2026-09-05): `lookup`, the part's
+  // sub-response. A hanja part carries the UNFLAGGED literal lookup of its
+  // hanja (the word match and the character matches exactly as typing 加工
+  // yields them; natives never join, so a sub-lookup never holds a hybrid),
+  // hung as {matches} when it found anything (工夫 finds the 工 character,
+  // 再 nothing at all). A hangul part the table holds carries its entries,
+  // every POS in table order, shaped as native matches WITHOUT parts (a
+  // native part that is itself a hybrid nests no further). The sino and
+  // ko attaches walk into these after the join, as the worker's do.
   function nativePartsFor(entry) {
     if (!entry.parts) return null;
     return entry.parts.map(function (p) {
@@ -787,12 +832,31 @@
         var senses = WORDS[p.hanja] || [];
         var sense = senses.filter(function (s) { return s.hangul === p.hangul; })[0] || senses[0];
         if (sense) out.glosses = sense.glosses.slice();
+        var sub = lookup(p.hanja, { interpret: false, native: false });
+        if (sub && sub.ok === true && sub.matches.length) out.lookup = { matches: sub.matches };
       } else if (NATIVE[p.hangul]) {
         out.native = true;
         out.glosses = NATIVE[p.hangul][0].glosses.slice();
         out.pos = NATIVE[p.hangul][0].pos;
+        out.lookup = {
+          nativeMatches: NATIVE[p.hangul].map(function (e) {
+            var m = { kind: "native", word: p.hangul, pos: e.pos, glosses: e.glosses.slice() };
+            if (e.origin) m.origin = e.origin;
+            return m;
+          })
+        };
       }
       return out;
+    });
+  }
+
+  // The walk the attaches below share: every part sub-response of every
+  // native match in a response (or in a sub-response, which holds none).
+  function eachPartLookup(resp, fn) {
+    (resp && resp.nativeMatches || []).forEach(function (m) {
+      (m && m.parts || []).forEach(function (p) {
+        if (p && p.lookup && typeof p.lookup === "object") fn(p.lookup);
+      });
     });
   }
 
@@ -879,12 +943,15 @@
   // 學 carries both languages (the SPEC's own anchor pairing), 生 is
   // polyphonic in ja with an eum-less TRAILING pair (no tooltip there),
   // 民 is ja-only and 國 zh-only, so one 국민 lookup nests two half-width
-  // lines, one per language.
+  // lines, one per language. 工 (hybrid card depth ADDENDUM) is reached
+  // only inside a hybrid part's sub-lookup, which pins that the attach
+  // walks in.
   var SINO = {
     "學": { ja: [["ガク", "학"]], zh: [["xué", "학"]] },
     "生": { ja: [["セイ", "생"], ["ショウ", ""]], zh: [["shēng", "생"]] },
     "民": { ja: [["ミン", "민"]] },
-    "國": { zh: [["guó", "국"]] }
+    "國": { zh: [["guó", "국"]] },
+    "工": { zh: [["gōng", "공"]] }
   };
   var sinoReads = 0;
 
@@ -893,12 +960,18 @@
   // display order are baked at build time, so nothing here sorts or joins.
   function attachSinoMatches(resp) {
     sinoReads++;
-    if (!resp || resp.ok !== true || !Array.isArray(resp.matches)) return resp;
-    resp.matches.forEach(function (m) {
+    if (!resp || resp.ok !== true) return resp;
+    return attachSinoInto(resp);
+  }
+  // One read per request: the sub-responses inside hybrid parts are walked
+  // under the same read, as the worker's attach walks them.
+  function attachSinoInto(resp) {
+    (Array.isArray(resp.matches) ? resp.matches : []).forEach(function (m) {
       if (!m || m.kind !== "char") return;
       var entry = SINO[m.canonical];
       if (entry) m.sino = entry;
     });
+    eachPartLookup(resp, attachSinoInto);
     return resp;
   }
 
@@ -932,7 +1005,11 @@
     chars: {
       "學": { d: ["어떤 원리에 따라 조직된 지식의 체계.", "‘학문’의 뜻을 더하는 접미사."], s: 67890 },
       "國": { d: ["일정한 영토와 주권을 가진 집단."], s: 40001 },
-      "革": { d: ["짐승의 가죽."], s: 40002 }
+      "革": { d: ["짐승의 가죽."], s: 40002 },
+      // Hybrid card depth ADDENDUM: reached only inside 가공되다's 加工
+      // sub-lookup, so the nested 加 card shows a definition; 工 has its
+      // hun alone.
+      "加": { d: ["더하여 보태다."], s: 40003 }
     }
   };
   var koReads = 0;
@@ -961,6 +1038,11 @@
   function attachKoMatches(resp) {
     koReads++;
     if (!resp || resp.ok !== true) return resp;
+    return attachKoInto(resp);
+  }
+  // One read per request, the hybrid parts' sub-responses walked under it
+  // (word, char and native keys alike), as the worker's attachKo walks them.
+  function attachKoInto(resp) {
     (resp.matches || []).forEach(function (m) {
       if (!m || typeof m !== "object") return;
       if (m.kind === "word") {
@@ -996,6 +1078,7 @@
         if (e) p.ko = e;
       });
     });
+    eachPartLookup(resp, attachKoInto);
     return resp;
   }
 
@@ -5840,22 +5923,56 @@
       api.queryAll(".card.native").length === 1 &&
       !api.query(".hybrid-spelling") && !api.query(".hybrid-parts"),
       viewHtml());
-    check("fixture: unflagged 가공되다 still splits into 加工 (the unflagged path is untouched)",
+    check("fixture: unflagged 가공되다 still splits into 加工 and its characters (the unflagged path is untouched)",
       fake.__lookup("가공되다").matches.map(function (m) {
         return m.kind + ":" + m.canonical;
-      }).join(",") === "word:加工" && !("nativeMatches" in fake.__lookup("가공되다")),
+      }).join(",") === "word:加工,char:加,char:工" && !("nativeMatches" in fake.__lookup("가공되다")),
       JSON.stringify(fake.__lookup("가공되다")));
+    // Hybrid card depth (SPEC ADDENDUM 2026-09-05): on the flagged wire every
+    // part carries its sub-response. 加工's is the unflagged lookup of 加工
+    // (the word and its two characters, as typing 加工 yields them), 되다's
+    // its native entries with no parts; the row fields stay as they were.
     var ntvProc = await sendNative("가공되다");
+    function partsSansLookup(parts) {
+      return parts.map(function (p) {
+        var copy = {};
+        Object.keys(p).forEach(function (k) { if (k !== "lookup") copy[k] = p[k]; });
+        return copy;
+      });
+    }
+    function kindsOf(matches) {
+      return (matches || []).map(function (m) {
+        return m.kind + ":" + (m.canonical || m.word);
+      }).join(",");
+    }
     check("whole-word precedence on the wire: the hybrid claims the run, no split matches",
       ntvProc.matches.length === 0 && ntvProc.nativeMatches.length === 1 &&
       ntvProc.nativeMatches[0].word === "가공되다" &&
       ntvProc.nativeMatches[0].origin === "hybrid" &&
-      JSON.stringify(ntvProc.nativeMatches[0].parts) ===
+      JSON.stringify(partsSansLookup(ntvProc.nativeMatches[0].parts)) ===
         JSON.stringify([
           { hanja: "加工", hangul: "가공", glosses: ["processing; manufacturing"] },
           { hangul: "되다", native: true, glosses: ["to become"], pos: "verb" }
         ]),
       JSON.stringify(ntvProc));
+    var ntvProcParts = ntvProc.nativeMatches[0].parts;
+    check("each part carries its sub-response: 加工 the unflagged lookup of 加工, 되다 its native entries without parts",
+      kindsOf(ntvProcParts[0].lookup.matches) === "word:加工,char:加,char:工" &&
+      ntvProcParts[0].lookup.matches[0].usedInCount === 1 &&
+      JSON.stringify(ntvProcParts[0].lookup.matches[0].chars) === JSON.stringify(["加", "工"]) &&
+      JSON.stringify(ntvProcParts[0].lookup.matches) === JSON.stringify(fake.__lookup("加工").matches) &&
+      !("nativeMatches" in ntvProcParts[0].lookup) &&
+      JSON.stringify(ntvProcParts[1].lookup) === JSON.stringify({ nativeMatches: [
+        { kind: "native", word: "되다", pos: "verb", glosses: ["to become"], origin: "native" }
+      ] }),
+      JSON.stringify(ntvProcParts));
+    var ntvProcSino = await fake.sendMessage({ type: "lookup", text: "가공되다", native: true, sino: true });
+    check("a flagged sino request reaches inside the sub-lookup: the nested 工 character carries its entry",
+      !ntvProcSino.nativeMatches[0].parts[0].lookup.matches[1].sino &&
+      JSON.stringify(ntvProcSino.nativeMatches[0].parts[0].lookup.matches[2].sino) ===
+        JSON.stringify({ zh: [["gōng", "공"]] }) &&
+      !ntvProc.nativeMatches[0].parts[0].lookup.matches[2].sino,
+      JSON.stringify(ntvProcSino.nativeMatches[0].parts[0].lookup.matches[2]));
     var ntvProcJosa = await sendNative("가공되다가");
     check("the claim strips a trailing josa the way rule 3b does",
       ntvProcJosa.matches.length === 0 &&
@@ -5863,9 +5980,9 @@
       JSON.stringify(ntvProcJosa));
     api.showAt(anchor, ntvProc.matches, "가공되다", undefined, ntvProc.nativeMatches);
     await wait(60);
-    check("one lead card: the native view under its hangul key, no word card for the split",
-      api.viewKeys().join(",") === "native:가공되다" && api.cardCount() === 1 &&
-      !api.query(".word-body") && !api.query(".card.hedged") &&
+    check("one lead card: the native view under its hangul key, no top-level word card for the split",
+      api.viewKeys().join(",") === "native:가공되다" && api.queryAll(".view > .card").length === 1 &&
+      !api.query(".view > .card > .word-body") && !api.query(".card.hedged") &&
       api.query(".card.native .surface").textContent === "가공되다" &&
       api.query(".card.native .native-tag").textContent === "hybrid" &&
       api.query(".card.native .gloss-text").textContent === "To be processed",
@@ -5895,40 +6012,144 @@
       ntvHanjaSeg.getBoundingClientRect().right === ntvHangulSeg.getBoundingClientRect().left,
       getComputedStyle(ntvHanjaSeg).padding + " " + ntvHanjaSeg.getBoundingClientRect().right + " vs " +
         ntvHangulSeg.getBoundingClientRect().left);
-    var ntvChips = api.queryAll(".card.native .hybrid-parts .part-row");
+    // Hybrid card depth (SPEC ADDENDUM 2026-09-05): the parts render as a
+    // COMPONENT WORDS section on the nested rail, one nested card per part
+    // in headword order, the way a word card nests its characters.
+    var ntvBox = api.query(".card.native .hybrid-parts");
+    var ntvRail = ntvBox && ntvBox.querySelector(".part-list");
+    var ntvNested = ntvRail ? Array.prototype.slice.call(ntvRail.children) : [];
+    var ntvWord = ntvNested[0];
+    var ntvWordHead = ntvWord && ntvWord.querySelector(".word-body > .head");
     check("the hanja segment takes the accent colour, the hangul segment the muted one",
-      ntvChips.length === 2 &&
-      getComputedStyle(ntvHanjaSeg).color === getComputedStyle(ntvChips[0].querySelector(".p-hangul")).color &&
+      !!ntvWordHead &&
+      getComputedStyle(ntvHanjaSeg).color === getComputedStyle(ntvWordHead.querySelector(".hangul .rnav")).color &&
       getComputedStyle(ntvHangulSeg).color !== getComputedStyle(ntvHanjaSeg).color &&
       getComputedStyle(ntvHangulSeg).color !== getComputedStyle(api.query(".card.native .surface")).color,
       [ntvHanjaSeg, ntvHangulSeg].map(function (s) { return s && getComputedStyle(s).color; }).join(" | "));
-    check("two part rows after the gloss block in headword order, in the component-word row idiom",
-      ntvChips.length === 2 &&
-      ntvChips[0].querySelector(".p-hanja").textContent === "加工" &&
-      ntvChips[0].querySelector(".p-hangul").textContent === "가공" &&
-      ntvChips[0].getAttribute("role") === "button" && ntvChips[0].getAttribute("tabindex") === "0" &&
-      ntvChips[1].querySelector(".p-hanja").textContent === "되다" &&
-      !ntvChips[1].querySelector(".p-hangul") &&
-      ntvChips[1].getAttribute("role") === "button" && !ntvChips[1].classList.contains("inert") &&
-      !!(api.query(".card.native .gloss").compareDocumentPosition(api.query(".hybrid-parts")) &
+    check("COMPONENT WORDS after the gloss block: a label and a rail with one nested card per part, in headword order, no rows",
+      !!ntvBox && ntvBox.children.length === 2 &&
+      ntvBox.children[0].className === "label" && ntvBox.children[0].textContent === "Component words" &&
+      ntvNested.length === 2 &&
+      ntvNested[0].className === "card component hybrid-word" &&
+      ntvNested[1].className === "card native component" &&
+      !!(api.query(".card.native .gloss").compareDocumentPosition(ntvBox) &
         Node.DOCUMENT_POSITION_FOLLOWING) &&
-      !api.query(".hybrid-parts .label"),
-      api.query(".hybrid-parts") ? api.query(".hybrid-parts").outerHTML : "no chips");
-    // Row glosses ADDENDUM (2026-09-05): each row shows its part's first
-    // gloss the way a component-word row does (two-space separator after
-    // the hangul; a native row has no hangul beside its main text), and the
-    // aria-label carries the gloss.
-    check("each part row shows its first gloss: 加工 가공 processing, 되다 to become",
-      ntvChips[0].querySelector(".p-gloss").textContent === "  processing; manufacturing" &&
-      ntvChips[0].querySelector(".p-text").textContent === "가공  processing; manufacturing" &&
-      ntvChips[1].querySelector(".p-gloss").textContent === "to become" &&
-      ntvChips[1].querySelector(".p-text").textContent === "to become" &&
-      ntvChips[0].getAttribute("aria-label") === "加工 가공 processing; manufacturing" &&
-      ntvChips[1].getAttribute("aria-label") === "되다 to become",
-      api.query(".hybrid-parts") ? api.query(".hybrid-parts").outerHTML : "no chips");
+      !ntvBox.querySelector(".part-row") && api.cardCount() === 5,
+      ntvBox ? ntvBox.outerHTML : "no section");
+    check("the nested 加工 card is the word card in full: head with hangul chip, star and source link; gloss; chips; Used-in row; no selector, no hedge, no Same sound",
+      !!ntvWordHead && ntvWordHead.querySelector(".surface").textContent === "加工" &&
+      ntvWordHead.querySelector(".hangul .rnav").textContent === "가공" &&
+      ntvWordHead.querySelector(".hangul .rnav").title === "Look up 가공" &&
+      ntvWordHead.querySelector(".save").getAttribute("aria-label") === "Save 加工" &&
+      ntvWordHead.querySelector(".save").nextElementSibling === ntvWordHead.querySelector(".wiki") &&
+      ntvWord.querySelector(".word-body .gloss-text").textContent === "Processing; manufacturing" &&
+      Array.prototype.map.call(ntvWord.querySelectorAll(".word-body .chip"), function (c) {
+        return c.getAttribute("aria-label");
+      }).join("|") === "加 더할 가|工 장인 공" &&
+      ntvWord.querySelector(".usedin-text").textContent === "Used in 1 larger word" &&
+      !ntvWord.querySelector(".spellings") && !ntvWord.querySelector(".hedge").firstChild &&
+      !ntvWord.querySelector(".samesound"),
+      ntvWord ? ntvWord.outerHTML : "no nested word card");
+    var ntvWordChars = ntvWord
+      ? ntvWord.querySelectorAll(".components > .component-list > .card.component") : [];
+    check("...and nests its COMPONENT HANJA with full bodies: 加 and 工 with the readings line, star, gloss and compounds",
+      !!ntvWord && ntvWord.querySelector(".components > .label").textContent === "Component hanja" &&
+      ntvWordChars.length === 2 &&
+      ntvWordChars[0].querySelector(".surface").textContent === "加" &&
+      ntvWordChars[0].querySelector(".eumhun").textContent === "더할 가Middle school" &&
+      ntvWordChars[0].querySelector(".save").getAttribute("aria-label") === "Save 加" &&
+      ntvWordChars[0].querySelector(".gloss-text").textContent === "To add; to increase" &&
+      ntvWordChars[0].querySelectorAll(".compound-row").length === 3 &&
+      ntvWordChars[1].querySelector(".surface").textContent === "工" &&
+      ntvWordChars[1].querySelector(".eumhun .rnav").textContent === "공" &&
+      ntvWordChars[1].querySelectorAll(".compound-row").length === 3 &&
+      !ntvWordChars[1].querySelector(".cpd-more"),
+      ntvWord ? ntvWord.outerHTML : "no nested word card");
+    function fontSizeOf(node) { return parseFloat(getComputedStyle(node).fontSize); }
+    check("three levels read as three ranks: each head smaller and each rail further in than the one above",
+      fontSizeOf(api.query(".card.native > .head .surface")) > fontSizeOf(ntvWordHead.querySelector(".surface")) &&
+      fontSizeOf(ntvWordHead.querySelector(".surface")) > fontSizeOf(ntvWordChars[0].querySelector(".surface")) &&
+      ntvWordChars[0].getBoundingClientRect().left > ntvWord.getBoundingClientRect().left &&
+      ntvWord.getBoundingClientRect().left > api.query(".card.native").getBoundingClientRect().left &&
+      ntvWordChars[0].getBoundingClientRect().right <= api.query(".card.native").getBoundingClientRect().right,
+      [api.query(".card.native > .head .surface"), ntvWordHead.querySelector(".surface"),
+       ntvWordChars[0].querySelector(".surface")].map(fontSizeOf).join(" > ") + " left " +
+        [api.query(".card.native"), ntvWord, ntvWordChars[0]].map(function (n) {
+          return n.getBoundingClientRect().left;
+        }).join(" < "));
+    var ntvNative = ntvNested[1];
+    check("the nested 되다 card is its native card: POS chip, marker, source link, gloss; no star, no spelling, no parts, no Same sound",
+      !!ntvNative && ntvNative.querySelector(".surface").textContent === "되다" &&
+      ntvNative.querySelector(".pos-chip").textContent === "Verb" &&
+      ntvNative.querySelector(".native-tag").textContent === "native" &&
+      !!ntvNative.querySelector(".wiki") && !ntvNative.querySelector(".save") &&
+      ntvNative.querySelector(".gloss-text").textContent === "To become" &&
+      !ntvNative.querySelector(".hybrid-spelling") && !ntvNative.querySelector(".hybrid-parts") &&
+      !ntvNative.querySelector(".samesound") && !ntvNative.querySelector(".card"),
+      ntvNative ? ntvNative.outerHTML : "no nested native card");
+    // The nested stars are the real thing: revealed by the render pass's one
+    // savedCheck, and the word's star saves 加工 as its own card would.
+    var ntvStar = ntvWordHead.querySelector(".save");
+    check("the nested stars are revealed by the render pass, resting on ☆, its savedCheck carrying the nested identities",
+      !ntvStar.classList.contains("save--unknown") && ntvStar.textContent === "☆" &&
+      api.queryAll(".card.native .save").length === 3 &&
+      store.lastCheckKeys().join(",") === "w:加工,c:加,c:工",
+      ntvStar.className + " " + (store.lastCheckKeys() || []).join(","));
+    var ntvSavedBefore = store.state().items.length;
+    ntvStar.click();
+    await wait(60);
+    function savedHas(kind, key) {
+      return store.state().items.some(function (it) { return it.kind === kind && it.key === key; });
+    }
+    check("the nested star saves 加工 through the saved-words path, bubble anchored in the nested head",
+      ntvStar.textContent === "★" && ntvStar.classList.contains("save--on") &&
+      store.state().items.length === ntvSavedBefore + 1 && savedHas("word", "加工") &&
+      !!api.saveBubble() && api.saveBubble().parentNode === ntvWordHead,
+      JSON.stringify(store.state().items));
+    escape();
+    await wait(30);
+    ntvStar.click();
+    await wait(60);
+    check("...and unsaves it again, leaving the store as it was",
+      ntvStar.textContent === "☆" && !savedHas("word", "加工") &&
+      store.state().items.length === ntvSavedBefore && api.isVisible(),
+      JSON.stringify(store.state().items));
+    // Chips and rows on the nested card behave as on a lead word card.
+    var ntvCallsChip = fake.__calls;
+    ntvWord.querySelectorAll(".word-body .chip")[1].click();
+    await wait(60);
+    check("an eumhun chip on the nested card orients to its nested 工 card instead of opening a view",
+      api.viewKeys().join(",") === "native:가공되다" && fake.__calls === ntvCallsChip &&
+      ntvWordChars[1].classList.contains("flash") && ntvWordChars[1].isConnected,
+      "calls=" + (fake.__calls - ntvCallsChip) + " " + ntvWordChars[1].className);
+    ntvWord.querySelector(".usedin-row").click();
+    await wait(60);
+    check("the nested Used-in row opens the used-in list of 加工: 再加工",
+      api.viewKeys().join(",") === "native:가공되다,usedin:加工" &&
+      api.panelText().indexOf("재가공") >= 0 && api.panelText().indexOf("再加工") >= 0 &&
+      api.crumbLabels()[0] === "가공되다",
+      JSON.stringify(api.viewKeys()) + " " + api.panelText());
+    api.queryAll(".crumb")[0].click();
+    await wait(60);
+    api.query(".hybrid-word .hangul .rnav").click();
+    await wait(60);
+    check("the nested head's hangul chip opens the 가공 lookup, as a lead word card's does",
+      api.viewKeys().join(",") === "native:가공되다,word:加工" &&
+      api.query(".view > .card > .word-body .surface").textContent === "加工" &&
+      api.crumbLabels()[0] === "가공되다",
+      JSON.stringify(api.viewKeys()) + " " + JSON.stringify(api.crumbLabels()));
+    api.queryAll(".crumb")[0].click();
+    await wait(60);
+    check("back on the hybrid card, the section renders again as it did",
+      api.viewKeys().join(",") === "native:가공되다" &&
+      api.query(".hybrid-parts .part-list").children.length === 2 &&
+      api.query(".hybrid-word .word-body .surface").textContent === "加工" &&
+      api.queryAll(".hybrid-word .component-list > .card").length === 2,
+      api.panelText());
+    ntvHanjaSeg = api.query(".card.native .headmeta .hybrid-spelling .hybrid-hanja");
     ntvHanjaSeg.click();
     await wait(60);
-    check("the head's hanja chip opens the hanja word card, exactly as the part row does",
+    check("the head's hanja chip opens the hanja word card as its own view",
       api.viewKeys().join(",") === "native:가공되다,word:加工" &&
       api.query(".word-body .surface").textContent === "加工" &&
       api.crumbLabels()[0] === "가공되다",
@@ -5941,54 +6162,91 @@
     check("clicking the hangul segment goes nowhere and asks the worker nothing",
       fake.__calls === ntvCallsHangulSeg && api.viewKeys().join(",") === "native:가공되다",
       "calls=" + (fake.__calls - ntvCallsHangulSeg) + " " + JSON.stringify(api.viewKeys()));
-    ntvChips = api.queryAll(".card.native .hybrid-parts .part-row");
-    ntvChips[0].click();
-    await wait(60);
-    check("the hanja row opens the hanja word card, as a component-word row does",
-      api.viewKeys().join(",") === "native:가공되다,word:加工" &&
-      api.query(".word-body .surface").textContent === "加工" &&
-      api.crumbLabels()[0] === "가공되다",
-      JSON.stringify(api.viewKeys()) + " " + JSON.stringify(api.crumbLabels()));
-    api.queryAll(".crumb")[0].click();
-    await wait(60);
-    api.queryAll(".card.native .hybrid-parts .part-row")[1].click();
-    await wait(60);
-    check("the hangul chip opens the native card of its part",
-      api.viewKeys().join(",") === "native:가공되다,native:되다" &&
-      api.query(".card.native .surface").textContent === "되다" &&
-      api.query(".card.native .native-tag").textContent === "native" &&
-      !api.query(".hybrid-spelling") && !api.query(".hybrid-parts"),
-      JSON.stringify(api.viewKeys()) + " " + api.panelText());
+    // 공부하다: 工夫 is no fixture word, and the fixture has 工 but not 夫, so
+    // the part's sub-lookup holds one character and the rail nests that
+    // card; 하다 is no fixture entry and keeps its bare inert row.
     var ntvStudy = await sendNative("공부하다");
+    check("on the wire: 工夫 carries the 工 character alone in its sub-lookup; 하다 carries no lookup",
+      kindsOf(ntvStudy.nativeMatches[0].parts[0].lookup.matches) === "char:工" &&
+      !("glosses" in ntvStudy.nativeMatches[0].parts[0]) &&
+      !("lookup" in ntvStudy.nativeMatches[0].parts[1]) &&
+      !("native" in ntvStudy.nativeMatches[0].parts[1]),
+      JSON.stringify(ntvStudy.nativeMatches[0].parts));
     api.showAt(anchor, ntvStudy.matches, "공부하다", undefined, ntvStudy.nativeMatches);
     await wait(60);
-    var ntvStudyChips = api.queryAll(".card.native .hybrid-parts .part-row");
-    check("a hangul part the table lacks renders inert; the hanja chip keeps its navigation",
+    var ntvStudyRail = api.query(".card.native .hybrid-parts .part-list");
+    var ntvStudyRow = ntvStudyRail && ntvStudyRail.children[1];
+    check("a hanja part with characters but no word nests the character cards it has (工), then the bare inert 하다 row",
       api.query(".hybrid-spelling").textContent === "工夫하다" &&
-      ntvStudyChips.length === 2 &&
-      ntvStudyChips[0].getAttribute("role") === "button" &&
-      ntvStudyChips[1].classList.contains("inert") &&
-      !ntvStudyChips[1].hasAttribute("role") && !ntvStudyChips[1].hasAttribute("tabindex") &&
-      ntvStudyChips[1].querySelector(".p-hanja").textContent === "하다" &&
-      getComputedStyle(ntvStudyChips[1]).cursor === "default",
-      api.query(".hybrid-parts") ? api.query(".hybrid-parts").outerHTML : "no chips");
-    check("parts the tables lack keep their bare rows: no gloss, no gloss in the aria-label",
+      !!ntvStudyRail && ntvStudyRail.children.length === 2 &&
+      ntvStudyRail.children[0].className === "card component" &&
+      ntvStudyRail.children[0].querySelector(".surface").textContent === "工" &&
+      ntvStudyRail.children[0].querySelectorAll(".compound-row").length === 3 &&
+      !!ntvStudyRail.children[0].querySelector(".save") &&
+      !api.query(".hybrid-word") && api.cardCount() === 2 &&
+      ntvStudyRow.className === "part-row hybrid-part inert" &&
+      !ntvStudyRow.hasAttribute("role") && !ntvStudyRow.hasAttribute("tabindex") &&
+      ntvStudyRow.querySelector(".p-hanja").textContent === "하다" &&
+      getComputedStyle(ntvStudyRow).cursor === "default",
+      ntvStudyRail ? ntvStudyRail.outerHTML : "no rail");
+    check("the bare row carries no gloss and no gloss in its aria-label",
       !api.query(".hybrid-parts .p-gloss") &&
-      ntvStudyChips[0].getAttribute("aria-label") === "工夫 공부" &&
-      ntvStudyChips[1].getAttribute("aria-label") === "하다" &&
-      !ntvStudyChips[1].querySelector(".p-text"),
-      api.query(".hybrid-parts") ? api.query(".hybrid-parts").outerHTML : "no chips");
-    ntvStudyChips[0].click();
+      ntvStudyRow.getAttribute("aria-label") === "하다" &&
+      !ntvStudyRow.querySelector(".p-text"),
+      ntvStudyRow ? ntvStudyRow.outerHTML : "no row");
+    api.query(".hybrid-spelling .hybrid-hanja").click();
     await wait(60);
-    check("the hanja chip issues the same lookup a component-word row issues; nothing to show keeps the view",
-      fake.__lastText === "工夫" && api.viewKeys().join(",") === "native:공부하다",
-      fake.__lastText + " " + JSON.stringify(api.viewKeys()));
+    check("the head chip still issues the 工夫 lookup, which opens the 工 character it finds",
+      fake.__lastText === "工夫" && api.viewKeys().length === 2 &&
+      api.viewKeys()[0] === "native:공부하다" &&
+      api.query(".top-chars > .card .surface").textContent === "工" &&
+      api.crumbLabels()[0] === "공부하다",
+      fake.__lastText + " " + JSON.stringify(api.viewKeys()) + " " + api.panelText());
+    api.queryAll(".crumb")[0].click();
+    await wait(60);
     var ntvStudyCalls = fake.__calls;
-    ntvStudyChips[1].click();
+    api.query(".card.native .hybrid-parts .part-row").click();
     await wait(60);
-    check("the inert chip goes nowhere and asks the worker nothing",
+    check("the inert row goes nowhere and asks the worker nothing",
       fake.__calls === ntvStudyCalls && api.viewKeys().join(",") === "native:공부하다",
       "calls=" + (fake.__calls - ntvStudyCalls) + " " + JSON.stringify(api.viewKeys()));
+    // 재가공되다: 再 has no fixture data at all, so its row stays bare and
+    // navigating; 가공되다 is a hybrid with parts, and the depth bound means
+    // its nested card carries neither the parts nor the mixed spelling the
+    // parts would draw.
+    var ntvRe = await sendNative("재가공되다");
+    check("on the wire: a hanja part the tables lack carries no lookup; a native part that is a hybrid carries its entries without parts",
+      ntvRe.matches.length === 0 && ntvRe.nativeMatches.length === 1 &&
+      ntvRe.nativeMatches[0].word === "재가공되다" &&
+      JSON.stringify(ntvRe.nativeMatches[0].parts[0]) === JSON.stringify({ hanja: "再", hangul: "재" }) &&
+      ntvRe.nativeMatches[0].parts[1].native === true &&
+      JSON.stringify(ntvRe.nativeMatches[0].parts[1].lookup) === JSON.stringify({ nativeMatches: [
+        { kind: "native", word: "가공되다", pos: "verb", glosses: ["to be processed"], origin: "hybrid" }
+      ] }),
+      JSON.stringify(ntvRe));
+    api.showAt(anchor, ntvRe.matches, "재가공되다", undefined, ntvRe.nativeMatches);
+    await wait(60);
+    var ntvReRail = api.query(".card.native .hybrid-parts .part-list");
+    var ntvReNested = ntvReRail && ntvReRail.children[1];
+    check("depth bound: the 再 row stays bare and navigating; the nested 가공되다 card nests nothing and draws no spelling",
+      api.query(".hybrid-spelling").textContent === "再가공되다" &&
+      !!ntvReRail && ntvReRail.children.length === 2 &&
+      ntvReRail.children[0].className === "part-row hybrid-part" &&
+      ntvReRail.children[0].getAttribute("role") === "button" &&
+      ntvReRail.children[0].getAttribute("aria-label") === "再 재" &&
+      ntvReNested.className === "card native component" &&
+      ntvReNested.querySelector(".surface").textContent === "가공되다" &&
+      ntvReNested.querySelector(".native-tag").textContent === "hybrid" &&
+      ntvReNested.querySelector(".gloss-text").textContent === "To be processed" &&
+      !ntvReNested.querySelector(".hybrid-spelling") && !ntvReNested.querySelector(".hybrid-parts") &&
+      !ntvReNested.querySelector(".card") && !ntvReNested.querySelector(".save") &&
+      api.queryAll(".hybrid-parts").length === 1 && api.cardCount() === 2,
+      ntvReRail ? ntvReRail.outerHTML : "no rail");
+    ntvReRail.children[0].click();
+    await wait(60);
+    check("the bare 再 row issues its lookup; nothing to show keeps the view",
+      fake.__lastText === "再" && api.viewKeys().join(",") === "native:재가공되다",
+      fake.__lastText + " " + JSON.stringify(api.viewKeys()));
     var ntvLoveKeep = await sendNative("사랑");
     check("a string that is both a hanja word and a native headword keeps the identity group",
       ntvLoveKeep.matches.filter(function (m) { return m.kind === "word"; }).length === 1 &&
@@ -6107,33 +6365,38 @@
     check("공부했어 opens the 공부하다 hybrid card: note, mixed spelling and both chips, no split cards",
       dcStudy.matches.length === 0 &&
       dcStudy.nativeMatches.map(function (m) { return m.word + ":" + m.form; }).join(",") === "공부하다:공부했어" &&
-      api.cardCount() === 1 && api.viewKeys().join(",") === "native:공부하다" &&
+      api.queryAll(".view > .card").length === 1 && api.viewKeys().join(",") === "native:공부하다" &&
       !api.query(".word-body") &&
       formNotes().join("|") === "공부했어 → form of 공부하다" &&
       api.query(".card.native .formnote").nextElementSibling.classList.contains("head") &&
       api.query(".card.native .hybrid-spelling").textContent === "工夫하다" &&
-      api.queryAll(".card.native .hybrid-parts .part-row").length === 2 &&
+      api.query(".card.native .hybrid-parts .part-list").children.length === 2 &&
+      api.query(".card.native .hybrid-parts .card.component .surface").textContent === "工" &&
+      api.query(".card.native .hybrid-parts .part-row.inert .p-hanja").textContent === "하다" &&
       api.query(".card.native .native-tag").textContent === "hybrid",
       JSON.stringify(dcStudy) + " " + api.panelText());
     // 加工 IS a fixture word, so this is the split the claim has to shut out.
     var dcProcOff = fake.__lookup("가공됐어");
     var dcProc = await sendNative("가공됐어");
     check("가공됐어: unflagged still splits into 加工; flagged, the form claims the run and no split rides",
-      dcProcOff.matches.map(function (m) { return m.kind + ":" + m.canonical; }).join(",") === "word:加工" &&
+      dcProcOff.matches.map(function (m) { return m.kind + ":" + m.canonical; }).join(",") === "word:加工,char:加,char:工" &&
       !("nativeMatches" in dcProcOff) &&
       dcProc.matches.length === 0 &&
       dcProc.nativeMatches.map(function (m) { return m.word + ":" + m.form; }).join(",") === "가공되다:가공됐어",
       JSON.stringify(dcProc));
     api.showAt(anchor, dcProc.matches, "가공됐어", undefined, dcProc.nativeMatches);
     await wait(60);
-    check("the noted hybrid card keeps its navigating chips",
+    check("the noted hybrid card keeps its navigating chip and the same nested body",
       api.viewKeys().join(",") === "native:가공되다" &&
       formNotes().join("|") === "가공됐어 → form of 가공되다" &&
       api.query(".card.native .hybrid-spelling").textContent === "加工되다" &&
-      api.queryAll(".card.native .hybrid-parts .part-row").length === 2 &&
-      !api.query(".word-body"),
+      api.query(".card.native .hybrid-parts .part-list").children.length === 2 &&
+      api.query(".card.native .hybrid-word .word-body .surface").textContent === "加工" &&
+      api.queryAll(".card.native .hybrid-word .component-list > .card").length === 2 &&
+      api.query(".card.native .hybrid-parts .card.native .surface").textContent === "되다" &&
+      !api.query(".view > .card > .word-body") && api.queryAll(".formnote").length === 1,
       JSON.stringify(api.viewKeys()) + " " + api.panelText());
-    api.queryAll(".card.native .hybrid-parts .part-row")[0].click();
+    api.query(".card.native .hybrid-spelling .hybrid-hanja").click();
     await wait(60);
     check("drilling from the lemma card: the crumb reads the lemma, not the form",
       api.viewKeys().join(",") === "native:가공되다,word:加工" &&
@@ -6974,22 +7237,40 @@
       var koProc = await sendKo("가공되다", { native: true });
       api.showAt(anchor, koProc.matches, "가공되다", undefined, koProc.nativeMatches);
       await wait(60);
-      check("KO: both hybrid part rows show their Korean definitions; the head chip's tooltip is Korean",
-        koProc.nativeMatches[0].parts[0].ko.s === 20005 && koProc.nativeMatches[0].parts[1].ko.s === 30003 &&
-        textsOf(".hybrid-parts .p-gloss").join("|") ===
-          "  원자재나 반제품을 인공적으로 처리하여 새로운 제품을 만듦.|새로운 신분이나 지위를 가지다." &&
-        api.query(".hybrid-parts .part-row").getAttribute("aria-label") ===
-          "加工 가공 원자재나 반제품을 인공적으로 처리하여 새로운 제품을 만듦." &&
+      // Hybrid card depth (SPEC ADDENDUM 2026-09-05): the attach walks into
+      // the sub-lookups (word, char and native keys), and each nested card
+      // renders its 우리말샘 definition as it does when it leads: 加工 from
+      // words, 加 from chars (工 has its hun alone), 되다 from natives.
+      var koProcParts = koProc.nativeMatches[0].parts;
+      check("KO: the nested cards carry their Korean definitions; the head chip's tooltip is Korean",
+        koProcParts[0].ko.s === 20005 && koProcParts[1].ko.s === 30003 &&
+        koProcParts[0].lookup.matches[0].ko.s === 20005 &&
+        koProcParts[0].lookup.matches[1].ko.s === 40003 && !koProcParts[0].lookup.matches[2].ko &&
+        koProcParts[1].lookup.nativeMatches[0].ko.s === 30003 &&
+        api.query(".hybrid-parts > .label").textContent === "구성 단어" &&
+        api.query(".hybrid-word .word-body .gloss-text").textContent ===
+          "원자재나 반제품을 인공적으로 처리하여 새로운 제품을 만듦." &&
+        api.query(".hybrid-word .components > .label").textContent === "구성 한자" &&
+        textsOf(".hybrid-word .component-list > .card .gloss-text").join("|") === "더하여 보태다." &&
+        !api.query(".hybrid-word .component-list .ko-marker") &&
+        api.query(".hybrid-parts .card.native .gloss-text").textContent === "새로운 신분이나 지위를 가지다." &&
+        api.query(".hybrid-parts .card.native .pos-chip").textContent === "동사" &&
+        api.query(".hybrid-parts .card.native .native-tag").textContent === "고유어" &&
+        api.query(".hybrid-word .usedin-text").textContent === "더 긴 단어 1개에 쓰임" &&
         api.query(".hybrid-spelling .hybrid-hanja").title === "加工 찾기",
-        textsOf(".hybrid-parts .p-gloss").join("|") + " / " +
+        textsOf(".hybrid-parts .gloss-text").join("|") + " / " +
           (api.query(".hybrid-spelling .hybrid-hanja") || {}).title);
       sweepKo("가공되다 ko");
       var koStudy = await sendKo("공부하다", { native: true });
       api.showAt(anchor, koStudy.matches, "공부하다", undefined, koStudy.nativeMatches);
       await wait(60);
-      check("KO: parts the tables lack stay bare under 한국어 too, with no marker on the rows",
+      check("KO: the 工 card nests with its hun alone and the bare 하다 row stays bare, with no marker on either",
         !koStudy.nativeMatches[0].parts[0].ko && !koStudy.nativeMatches[0].parts[1].ko &&
-        api.queryAll(".hybrid-parts .part-row").length === 2 &&
+        !koStudy.nativeMatches[0].parts[0].lookup.matches[0].ko &&
+        api.query(".hybrid-parts .part-list").children.length === 2 &&
+        api.query(".hybrid-parts .card.component .surface").textContent === "工" &&
+        !api.query(".hybrid-parts .card.component .gloss-text") &&
+        api.query(".hybrid-parts .part-row.inert .p-hanja").textContent === "하다" &&
         !api.query(".hybrid-parts .p-gloss") && !api.query(".hybrid-parts .ko-marker"),
         api.query(".hybrid-parts") ? api.query(".hybrid-parts").outerHTML : "no chips");
       sweepKo("공부하다 ko");

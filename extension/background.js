@@ -8,6 +8,7 @@
 
 import {
   buildFullCompounds,
+  buildNativeEntryMatches,
   buildOmniboxSuggestions,
   buildReadingIndex,
   buildUsedIn,
@@ -562,6 +563,86 @@ function koForRequest() {
 }
 
 /**
+ * The attach pipeline a lookup response goes through, in one place: decomp
+ * and found-in always, sino and ko when the request carried the flag (a
+ * null table means unflagged, and the step is skipped rather than run
+ * against an empty table, so an unflagged response never gains a field).
+ * Hybrid card depth ADDENDUM: the outer response and every hybrid part's
+ * sub-response go through this same function, which is what makes a
+ * nested 戰爭 card carry exactly what a direct lookup of 戰爭 carries.
+ *
+ * @param {object} result a lookup() response
+ * @param {object} data the loaded bundle (hanja, words, variants, decomp)
+ * @param {() => object} getIndex thunk for the found-in index
+ * @param {{sino:object|null, ko:object|null}} tables the flagged tables
+ */
+function attachAll(result, data, getIndex, tables) {
+  let joined = attachFoundIn(attachDecomp(result, data), getIndex);
+  if (tables.sino !== null) joined = attachSino(joined, tables.sino);
+  if (tables.ko !== null) joined = attachKo(joined, tables.ko);
+  return joined;
+}
+
+/**
+ * Hybrid card depth ADDENDUM: the `lookup` a hybrid part carries, minted
+ * from an attached sub-response: `{ matches }` for a hanja part, `{
+ * nativeMatches }` for a native part, and null when there is nothing to
+ * carry (a part the tables lack, or something that is not a response at
+ * all). This is the only place the field is made, so a part's `lookup` is
+ * never anything but an object holding one non-empty array; the SPEC's
+ * guard ("not an object with an array matches or nativeMatches is
+ * dropped") is a shape this function cannot produce. Exported for the tests.
+ */
+export function partLookup(sub) {
+  if (!sub || typeof sub !== "object" || sub.ok !== true) return null;
+  if (Array.isArray(sub.matches) && sub.matches.length > 0) return { matches: sub.matches };
+  if (Array.isArray(sub.nativeMatches) && sub.nativeMatches.length > 0) {
+    return { nativeMatches: sub.nativeMatches };
+  }
+  return null;
+}
+
+/**
+ * Hybrid card depth ADDENDUM: hang a sub-response on every part of every
+ * native match that carries parts, so the renderer can nest the hanja
+ * word's full card and the native part's card under the hybrid.
+ *
+ * A hanja part (戰爭 in 전쟁하다) gets the UNFLAGGED literal lookup of its
+ * hanja string, put through `attach` (the same pipeline the outer response
+ * went through), so `lookup.matches` holds the word match and the character
+ * matches exactly as a direct lookup of 戰爭 would. Unflagged means natives
+ * never join, so a sub-lookup never holds a hybrid: depth is bounded by
+ * construction. A native part (하다) gets the entries of its hangul shaped
+ * as native matches, parts omitted (buildNativeEntryMatches), through the
+ * same `attach` for its ko entries. A part the tables lack gets no field.
+ *
+ * Runs on the flagged path only (handleLookup calls it for a native-flagged
+ * request); an unflagged response has no native matches and is untouched.
+ * The existing part fields (hanja, hangul, glosses, pos, native) are left
+ * exactly as the lookup put them. Exported for the tests, which hand it a
+ * bundle and an attach closure of their own.
+ *
+ * @param {object} result the outer response, already attached
+ * @param {object} bundle the lookup bundle (native table included)
+ * @param {(sub:object) => object} attach the attach pipeline for a sub-response
+ */
+export function attachPartLookups(result, bundle, attach) {
+  if (!result || result.ok !== true || !Array.isArray(result.nativeMatches)) return result;
+  for (const match of result.nativeMatches) {
+    if (!match || typeof match !== "object" || !Array.isArray(match.parts)) continue;
+    for (const part of match.parts) {
+      if (!part || typeof part !== "object") continue;
+      const sub = typeof part.hanja === "string"
+        ? lookup(part.hanja, bundle, { interpret: false, native: false })
+        : { ok: true, nativeMatches: buildNativeEntryMatches(part.hangul, bundle) };
+      const shaped = partLookup(attach(sub));
+      if (shaped !== null) part.lookup = shaped;
+    }
+  }
+  return result;
+}
+
+/**
  * Handle a {type:"lookup", text, interpret, native} message.
  *
  * Romanized search ADDENDUM (input-channel rule): `interpret` is set only by
@@ -584,6 +665,11 @@ function koForRequest() {
  * language setting (set exactly when it is 한국어). Like `sino` it has no
  * lookup semantics: ko.json is attached after the join, so only a flagged
  * request loads it and only a flagged response carries `ko` entries.
+ *
+ * Hybrid card depth ADDENDUM: on the native-flagged path, every hybrid
+ * part of every native match gains a `lookup` sub-response through the
+ * same attach pipeline (attachPartLookups). Unflagged requests never reach
+ * it and stay byte-identical.
  * @returns {Promise<{ok:true, matches:object[]}|{ok:false, error:string}>}
  */
 export async function handleLookup(text, interpret, native, sino, ko) {
@@ -604,15 +690,17 @@ export async function handleLookup(text, interpret, native, sino, ko) {
       interpret: interpret === true,
       native: flagged,
     });
-    let joined = attachFoundIn(attachDecomp(result, data), () => getFoundInIndex(data));
-    if (sino === true) {
-      // A missing or malformed sino.json degrades to an empty table: the
-      // lookup still answers, the cards simply carry no readings line.
-      joined = attachSino(joined, await getSino().catch(() => guardSino(null)));
-    }
-    if (ko !== true) return joined;
-    // The same degradation for ko.json: the cards fall back to English.
-    return attachKo(joined, await koForRequest());
+    // The flagged tables, fetched once per request. A missing or malformed
+    // sino.json degrades to an empty table: the lookup still answers, the
+    // cards simply carry no readings line. The same for ko.json: the cards
+    // fall back to English.
+    const tables = {
+      sino: sino === true ? await getSino().catch(() => guardSino(null)) : null,
+      ko: ko === true ? await koForRequest() : null,
+    };
+    const attach = (response) => attachAll(response, data, () => getFoundInIndex(data), tables);
+    const joined = attach(result);
+    return flagged ? attachPartLookups(joined, bundle, attach) : joined;
   } catch (err) {
     return { ok: false, error: toErrorMessage(err) };
   }

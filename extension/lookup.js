@@ -1025,6 +1025,43 @@ function nativePartsOf(entry, nativeWords, wordTable) {
 }
 
 /**
+ * One native.json entry shaped as a native match: kind, word, pos, glosses
+ * (a copy), and `origin` when the entry declares one of the three classes.
+ * The two fields a match may carry beyond these, `parts` and `form`, are
+ * the caller's to add: buildNativeMatches adds both, a hybrid part's
+ * sub-response (buildNativeEntryMatches) neither.
+ */
+function nativeEntryMatch(word, entry) {
+  const match = {
+    kind: "native",
+    word,
+    pos: entry.pos,
+    glosses: Array.isArray(entry.glosses) ? entry.glosses.slice() : [],
+  };
+  const origin = nativeOriginOf(entry);
+  if (origin !== null) match.origin = origin;
+  return match;
+}
+
+/**
+ * Hybrid card depth ADDENDUM: the entries of one native headword shaped as
+ * native matches, every POS in table order, for the `lookup.nativeMatches`
+ * a hybrid's native part carries (되다 in 가공되다). `parts` is deliberately
+ * omitted, so a native part that is itself a hybrid never nests its own
+ * parts, and `form` never applies (the part is a headword, not a surface).
+ * Empty for a headword the table lacks.
+ *
+ * @param {string} word the part's hangul
+ * @param {{native?:object}} data parsed data bundle
+ * @returns {Array<{kind:"native", word:string, pos:string, glosses:string[], origin?:string}>}
+ */
+export function buildNativeEntryMatches(word, data) {
+  if (typeof word !== "string" || word === "") return [];
+  const nativeWords = (data && data.native && data.native.words) || {};
+  return usableNativeEntries(nativeWords, word).map((entry) => nativeEntryMatch(word, entry));
+}
+
+/**
  * Build the `nativeMatches` array for a flagged lookup. One match per
  * (word, pos) pair, spans in text order, native.json entry order within a
  * word. Empty when the native table has nothing to say.
@@ -1069,14 +1106,7 @@ export function buildNativeMatches(text, data) {
         if (form === null && existing.form !== undefined) delete existing.form;
         continue;
       }
-      const match = {
-        kind: "native",
-        word,
-        pos: entry.pos,
-        glosses: Array.isArray(entry.glosses) ? entry.glosses.slice() : [],
-      };
-      const origin = nativeOriginOf(entry);
-      if (origin !== null) match.origin = origin;
+      const match = nativeEntryMatch(word, entry);
       // Hybrid parts ADDENDUM: the field rides only when the entry's parts
       // validate; absent parts (or junk) add no field.
       const parts = nativePartsOf(entry, nativeWords, wordTable);

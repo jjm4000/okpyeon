@@ -74,6 +74,21 @@ current review clears.
   native.json, since each blocked the lemma card it pointed at. The
   design record is deconjugation-kickoff.md.
 
+- **Hybrid card depth.** The hybrid card (전쟁하다) stopped at its head,
+  gloss and two part rows while the hanja word card beside it nested
+  component cards with compounds. Mockup A, user-picked as the most
+  consistent with the design: a COMPONENT WORDS section nests the hanja
+  word's full card (head with star and link, character chips, Used-in,
+  its own COMPONENT HANJA cards) and the native part's card, the way a
+  word card nests its characters. Each hybrid part carries a
+  sub-lookup on the wire, the unflagged lookup of its hanja put
+  through the same attach pipeline, so the nested card is exactly the
+  card a direct lookup gives, Korean definitions included. Depth is
+  bounded by construction (sub-lookups are unflagged, so never contain
+  a hybrid). Same round: the head's hanja part became a nav chip (blue
+  text must be clickable) and the part rows, now the fallback for
+  parts the tables lack, carry glosses.
+
 ## 1.3: shipped
 
 Everything since the v1.2.0 tag went out as one release, uploaded
@@ -453,6 +468,24 @@ correctness" bullet of 1.1, the same way 1.1.1 folded into 1.2.
   scored against Wiktionary's tags in the same pinned test as recall,
   and the note line already has the slot. A settings toggle was
   considered and rejected: it would not lower the cost of the table.
+- **Second-pass resolver: particles, contractions, compound verbs.**
+  Raised by Jesse 2026-09-05 as "the same system could also be used
+  for compound words like 갔다왔어요", measured the same day on the
+  20,000 most frequent subtitle tokens against what the extension
+  resolves today (whole word, a one-syllable josa left over, or a verb
+  form of either): 14.6% of the token mass is still unresolved. Of
+  that, noun plus a two-syllable particle or the plural 들 (사람들이,
+  너한테, 말이야, 집에서, 지금까지) is 2.75% of all mass; compound verb
+  forms with both halves verbs and a connective between (살아있는,
+  들어봐요, 알고있어, 말아주세요, 왔다갔다) is 0.07%, because subtitles
+  space them; the rest is contractions and short pronouns (그건, 이건,
+  거예요, 그걸, 뭐야, 뭔가, 제가, 니가), unmeasured but visibly the
+  largest single block. One feature, in yield order: strip the
+  particle or plural and rerun the whole resolver on the remainder;
+  a small contractions table (그건 is 그것은, 거예요 is 것이에요, 제 is
+  저); then the verb split riding the same split-and-retry code,
+  rendered as two lemma cards under a note ("갔다왔어요 → 가다 + 오다",
+  the form note's container). 갔다왔어요 itself is not in the top 20k.
 - **Keyboard shortcut for the current selection** (Chrome's commands
   API) and **per-site disable**: one settings row each plus a little
   glue, and both come up in extension reviews constantly.
@@ -529,11 +562,12 @@ short forms.
   the record (need measured from subtitles, Wiktionary tables as
   ground truth, the generator's two passes, mockup A over B and C, the
   form-that-is-also-a-word reversal, the inflected-stub cleanup).
-- **Hybrid card depth** (in progress 2026-09-05): mockup A (nest the
-  hanja word's full card and the native part's card under COMPONENT
-  WORDS) picked over B (the hanja word card's shape plus a word row)
-  and C (rows kept, root's body under them) as the most consistent
-  with how a word card nests its characters.
+- **Hybrid card depth** (on main since 1.3): mockup A (nest the hanja
+  word's full card and the native part's card under COMPONENT WORDS)
+  picked over B (the hanja word card's shape plus a word row) and C
+  (rows kept, root's body under them) as the most consistent with how
+  a word card nests its characters. B had been the recommendation for
+  cost; A won on shape.
 
 ## Settled questions, kept so they are not relitigated
 

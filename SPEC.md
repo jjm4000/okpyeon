@@ -3322,7 +3322,11 @@ they feed the fallback row below.
     itself a hybrid with parts does NOT nest its parts (depth bound).
   - A native part native.json lacks: the bare inert row of today.
 - Depth: hybrid, then word, then character is the maximum. Nested
-  cards never nest a hybrid.
+  cards never nest a hybrid. Built 2026-09-06: a native part that is
+  itself a hybrid (가공되다 under 재가공되다) nests as a native card with
+  no mixed spelling and no parts section, since the wire omits its
+  parts on purpose; the head chip on the outer card is the way to its
+  own card.
 - A deconjugated hybrid (공부했어): the form note above, the same body.
 - Korean mode: every nested card carries its 우리말샘 definition, as
   the same card does when it leads.

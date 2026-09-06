@@ -17,6 +17,7 @@ import { dirname, join } from "node:path";
 import {
   buildFullCompounds,
   buildMatches,
+  buildNativeEntryMatches,
   buildNativeMatches,
   nativeOriginOf,
   NATIVE_ORIGINS,
@@ -3672,6 +3673,336 @@ await testAsync("deconjugation: `form` rides the worker path; junk never reaches
   assert.deepEqual(attached.nativeMatches[0].ko, ko.natives["먹다|verb"]);
 });
 
+// ---------------------------------------------------------------------------
+// Hybrid card depth ADDENDUM (2026-09-05): each hybrid part's `lookup`.
+// ---------------------------------------------------------------------------
+
+/**
+ * The depth fixtures beside the deconjugation bundle. The characters of
+ * 加工 join the hanja table (a derived copy, so the reading-index pins on the
+ * base table stand), with a decomposition for 加 and a character containing
+ * 工 so the decomp and found-in steps have something to hang inside a
+ * sub-lookup. On the native side, 되다 gains a second entry (the nested
+ * card lists every POS in table order) and 하다 is declared a hybrid of 爲
+ * + 다: a fixture shape, not an etymology, so that a native part with parts
+ * of its own exists to pin the depth bound on.
+ */
+const depthHanja = {
+  ...hanja,
+  chars: {
+    ...hanja.chars,
+    加: {
+      eumhun: [{ hun: "더할", eum: "가" }],
+      readings: ["가"],
+      glosses: ["to add; to increase"],
+      compounds: [{ hangul: "가공", hanja: "加工", gloss: "processing" }],
+      cw: ["加工"],
+      lvl: "m",
+    },
+    工: {
+      eumhun: [{ hun: "장인", eum: "공" }],
+      readings: ["공"],
+      glosses: ["work; craft; artisan"],
+      compounds: [{ hangul: "가공", hanja: "加工", gloss: "processing" }],
+      cw: ["加工"],
+      lvl: "m",
+    },
+  },
+};
+const depthNative = {
+  ...deconjNative,
+  words: {
+    ...deconjNative.words,
+    되다: [
+      { pos: "verb", glosses: ["to become"], origin: "native" },
+      { pos: "aux", glosses: ["to be done"], origin: "native" },
+    ],
+    하다: [
+      {
+        pos: "verb",
+        glosses: ["to do"],
+        f: 0,
+        origin: "hybrid",
+        parts: [{ hanja: "爲", hangul: "하" }, { hangul: "다" }],
+      },
+    ],
+  },
+};
+const depthData = { hanja: depthHanja, words: deconjWords, variants, native: depthNative };
+const depthDecompRaw = { v: 1, parts: { 加: [["力"], ["口"]], 功: [["工"], ["力"]] } };
+const depthKo = {
+  version: 1,
+  words: { 加工: { d: ["원자재나 반제품을 손질하다."], s: 1 } },
+  natives: {
+    "가공되다|verb": { d: ["가공이 되다."], s: 2 },
+    "되다|verb": { d: ["새로운 신분이나 지위를 가지다."], s: 3 },
+    "하다|verb": { d: ["어떤 행동을 하다."], s: 4 },
+  },
+  chars: {
+    加: { d: ["더하다."], s: 5 },
+    工: { d: ["장인."], s: 6 },
+  },
+};
+const depthSino = { version: 1, chars: { 加: { ja: [["カ", "가"]] } } };
+
+/**
+ * The attach pipeline as a test closure, composed from the worker's exported
+ * steps in the worker's order, with the tables the request is flagged for.
+ * attachPartLookups takes this closure, so the pin "a nested 加工 card is a
+ * direct lookup of 加工" holds for whatever the closure does.
+ */
+async function depthAttach(tables) {
+  const { attachDecomp, attachFoundIn, attachSino, attachKo, guardDecomp, buildFoundInIndex } =
+    await import("../extension/background.js");
+  const decomp = guardDecomp(depthDecompRaw);
+  const attachData = { hanja: depthHanja, decomp };
+  const index = buildFoundInIndex(decomp.parts);
+  return (res) => {
+    let joined = attachFoundIn(attachDecomp(res, attachData), () => index);
+    if (tables.sino) joined = attachSino(joined, tables.sino);
+    if (tables.ko) joined = attachKo(joined, tables.ko);
+    return joined;
+  };
+}
+
+await testAsync("hybrid card depth: the hanja part carries the word's direct lookup through the same pipeline", async () => {
+  const { attachPartLookups } = await import("../extension/background.js");
+  const attach = await depthAttach({ sino: depthSino, ko: depthKo });
+  const res = attachPartLookups(attach(lookup("가공되다", depthData, { native: true })), depthData, attach);
+  assert.deepEqual(res.matches, []);
+  const [ja, doeda] = res.nativeMatches[0].parts;
+  // The word match and the two character matches, decorated exactly as a
+  // direct lookup of 加工 through the same pipeline is.
+  const direct = attach(lookup("加工", depthData));
+  assert.deepEqual(ja.lookup, { matches: direct.matches });
+  assert.deepEqual(ja.lookup.matches.map((m) => [m.kind, m.canonical]), [
+    ["word", "加工"], ["char", "加"], ["char", "工"],
+  ]);
+  const [word, ga, gong] = ja.lookup.matches;
+  assert.equal(word.hangul, "가공");
+  assert.deepEqual(word.glosses, ["processing"]);
+  assert.deepEqual(word.chars, ["加", "工"]);
+  // The decomp, found-in, sino and ko steps all reached inside: 加 is made
+  // of 力 + 口, 工 is part of 功, 加 carries its Japanese reading, and ko
+  // rides the word key (加工), the char keys (加, 工) and the native key
+  // (되다|verb).
+  assert.deepEqual(ga.parts, [{ g: "力" }, { g: "口" }]);
+  assert.equal(gong.foundInCount, 1);
+  assert.equal("foundInCount" in ga, false);
+  assert.deepEqual(ga.sino, depthSino.chars.加);
+  assert.deepEqual(word.ko, depthKo.words.加工);
+  assert.deepEqual(ga.ko, depthKo.chars.加);
+  assert.deepEqual(gong.ko, depthKo.chars.工);
+  assert.deepEqual(doeda.lookup.nativeMatches[0].ko, depthKo.natives["되다|verb"]);
+  assert.equal("ko" in doeda.lookup.nativeMatches[1], false, "the aux entry has no ko entry");
+  // The existing part fields are exactly what the lookup put there; the
+  // outer match's own fields are untouched too.
+  const { lookup: jaLookup, ...jaRest } = ja;
+  assert.deepEqual(jaRest, { ...hybridLead.parts[0], ko: depthKo.words.加工 });
+  const { lookup: doedaLookup, ...doedaRest } = doeda;
+  assert.deepEqual(doedaRest, { ...hybridLead.parts[1], ko: depthKo.natives["되다|verb"] });
+  assert.equal(res.nativeMatches[0].word, "가공되다");
+  assert.deepEqual(res.nativeMatches[0].ko, depthKo.natives["가공되다|verb"]);
+  // Unflagged for sino and ko: the sub-lookup carries neither, like the
+  // outer response.
+  const plain = await depthAttach({});
+  const bare = attachPartLookups(plain(lookup("가공되다", depthData, { native: true })), depthData, plain);
+  assert.deepEqual(bare.nativeMatches[0].parts[0].lookup, { matches: plain(lookup("加工", depthData)).matches });
+  assert.ok(!JSON.stringify(bare).includes('"ko"'));
+  assert.ok(!JSON.stringify(bare).includes('"sino"'));
+  // The interpreted path reaches the same parts: gagongdoeda is 가공되다.
+  const rr = attachPartLookups(
+    attach(lookup("gagongdoeda", depthData, { interpret: true, native: true })), depthData, attach
+  );
+  assert.deepEqual(rr.nativeMatches[0].parts[0].lookup, { matches: direct.matches });
+});
+
+await testAsync("hybrid card depth: the native part carries its entries in table order, no parts, no form", async () => {
+  const { attachPartLookups } = await import("../extension/background.js");
+  const attach = await depthAttach({});
+  const res = attachPartLookups(attach(lookup("가공되다", depthData, { native: true })), depthData, attach);
+  const doeda = res.nativeMatches[0].parts[1];
+  assert.deepEqual(doeda.lookup, {
+    nativeMatches: [
+      { kind: "native", word: "되다", pos: "verb", glosses: ["to become"], origin: "native" },
+      { kind: "native", word: "되다", pos: "aux", glosses: ["to be done"], origin: "native" },
+    ],
+  });
+  for (const m of doeda.lookup.nativeMatches) {
+    assert.equal("parts" in m, false);
+    assert.equal("form" in m, false);
+    assert.equal("lookup" in m, false);
+  }
+  // The pure builder behind it: every usable entry of the headword, a
+  // headword the table lacks or a junk word yields nothing, and the glosses
+  // are copies.
+  assert.deepEqual(buildNativeEntryMatches("되다", depthData), doeda.lookup.nativeMatches);
+  assert.deepEqual(buildNativeEntryMatches("없는말", depthData), []);
+  assert.deepEqual(buildNativeEntryMatches("", depthData), []);
+  assert.deepEqual(buildNativeEntryMatches(7, depthData), []);
+  assert.deepEqual(buildNativeEntryMatches("되다", { hanja, words, variants }), []);
+  buildNativeEntryMatches("되다", depthData)[0].glosses.push("junk");
+  assert.deepEqual(depthNative.words.되다[0].glosses, ["to become"]);
+  // A part the tables lack carries no field at all: on the hybrid bundle
+  // 工夫 is no word and neither character has an entry, and 하다 is no
+  // headword.
+  const hybridAttach = (r) => r;
+  const study = attachPartLookups(lookup("공부하다", hybridData, { native: true }), hybridData, hybridAttach);
+  assert.deepEqual(study.nativeMatches[0].parts, [{ hanja: "工夫", hangul: "공부" }, { hangul: "하다" }]);
+  assert.ok(!JSON.stringify(study).includes('"lookup"'));
+  // On the depth bundle 工夫 is still no word, but 工 has a card: the
+  // sub-lookup is that character alone (the character-cards fallback), and
+  // 하다 is a headword with entries.
+  const deeper = attachPartLookups(attach(lookup("공부하다", depthData, { native: true })), depthData, attach);
+  const [gongbu, hada] = deeper.nativeMatches[0].parts;
+  assert.deepEqual(gongbu.lookup.matches.map((m) => [m.kind, m.canonical]), [["char", "工"]]);
+  assert.deepEqual(gongbu.lookup, { matches: attach(lookup("工夫", depthData)).matches });
+  assert.equal(hada.lookup.nativeMatches.length, 1);
+  assert.equal(hada.lookup.nativeMatches[0].word, "하다");
+});
+
+await testAsync("hybrid card depth: depth is bounded, a nested hybrid never nests its parts", async () => {
+  const { attachPartLookups } = await import("../extension/background.js");
+  const attach = await depthAttach({ ko: depthKo });
+  // 하다 is a hybrid with parts of its own in this bundle. As a lead match
+  // it carries them; as the native part of 공부하다 its nested match does
+  // not, and neither does anything under a hanja part.
+  const lead = lookup("하다", depthData, { native: true }).nativeMatches[0];
+  assert.deepEqual(lead.parts, [{ hanja: "爲", hangul: "하" }, { hangul: "다" }]);
+  const res = attachPartLookups(attach(lookup("공부하다", depthData, { native: true })), depthData, attach);
+  const nested = res.nativeMatches[0].parts[1].lookup.nativeMatches[0];
+  assert.deepEqual(nested, {
+    kind: "native",
+    word: "하다",
+    pos: "verb",
+    glosses: ["to do"],
+    origin: "hybrid",
+    ko: depthKo.natives["하다|verb"],
+  });
+  assert.equal("parts" in nested, false);
+  // Structural pin: no `lookup` holds a `nativeMatches` with parts, no
+  // hanja sub-lookup holds native matches at all, and no `lookup` holds
+  // another `lookup`.
+  const everyLookup = [];
+  for (const match of attachPartLookups(attach(lookup("가공되다 공부하다", depthData, { native: true })), depthData, attach).nativeMatches) {
+    for (const part of match.parts) if (part.lookup) everyLookup.push(part.lookup);
+  }
+  assert.equal(everyLookup.length, 4);
+  for (const sub of everyLookup) {
+    assert.ok(!JSON.stringify(sub).includes('"lookup"'), "a lookup inside a lookup");
+    assert.ok(!JSON.stringify(sub).includes('"parts":[{"h'), "hybrid parts inside a lookup");
+    if (sub.matches) assert.equal("nativeMatches" in sub, false);
+    if (sub.nativeMatches) {
+      assert.equal("matches" in sub, false);
+      assert.ok(sub.nativeMatches.every((m) => !("parts" in m) && !("form" in m)));
+    }
+  }
+});
+
+await testAsync("hybrid card depth: partLookup mints the only shapes the wire carries; junk is dropped", async () => {
+  const { partLookup, attachPartLookups } = await import("../extension/background.js");
+  const m = { kind: "word", canonical: "加工" };
+  const n = { kind: "native", word: "되다", pos: "verb" };
+  assert.deepEqual(partLookup({ ok: true, matches: [m] }), { matches: [m] });
+  assert.deepEqual(partLookup({ ok: true, nativeMatches: [n] }), { nativeMatches: [n] });
+  assert.equal("ok" in partLookup({ ok: true, matches: [m] }), false);
+  for (const junk of [null, undefined, "x", 7, [], {}, { ok: false, error: "nope" }, { ok: true },
+    { ok: true, matches: [] }, { ok: true, matches: "x" }, { ok: true, matches: null },
+    { ok: true, nativeMatches: [] }, { ok: true, nativeMatches: {} }, { matches: [m] }]) {
+    assert.equal(partLookup(junk), null, JSON.stringify(junk));
+  }
+  // A `lookup` written on a table entry's part never reaches the wire: the
+  // lookup rebuilds every part from its hanja and hangul alone, so the
+  // field on the wire is the built one, or absent.
+  const tampered = {
+    ...depthData,
+    native: {
+      ...depthNative,
+      words: {
+        ...depthNative.words,
+        가공되다: [{
+          ...depthNative.words.가공되다[0],
+          parts: [
+            { hanja: "加工", hangul: "가공", lookup: "junk" },
+            { hangul: "되다", lookup: { matches: "junk" } },
+          ],
+        }],
+        공부하다: [{
+          ...depthNative.words.공부하다[0],
+          parts: [{ hanja: "工夫", hangul: "공부", lookup: { matches: [m] } }, { hangul: "없는말", lookup: [n] }],
+        }],
+      },
+    },
+  };
+  const attach = (r) => r;
+  const res = attachPartLookups(lookup("가공되다", tampered, { native: true }), tampered, attach);
+  assert.deepEqual(res.nativeMatches[0].parts[0].lookup, { matches: lookup("加工", tampered).matches });
+  assert.deepEqual(res.nativeMatches[0].parts[1].lookup, { nativeMatches: buildNativeEntryMatches("되다", tampered) });
+  const study = attachPartLookups(lookup("공부하다", tampered, { native: true }), tampered, attach);
+  assert.deepEqual(study.nativeMatches[0].parts[0].lookup.matches.map((x) => x.canonical), ["工"]);
+  assert.equal("lookup" in study.nativeMatches[0].parts[1], false);
+  // Non-responses and responses without native matches pass through as
+  // they are, the attach never called.
+  let called = 0;
+  const counting = (r) => { called += 1; return r; };
+  const err = { ok: false, error: "nope" };
+  assert.equal(attachPartLookups(err, depthData, counting), err);
+  assert.equal(attachPartLookups(null, depthData, counting), null);
+  const noNatives = lookup("學生", depthData);
+  assert.equal(attachPartLookups(noNatives, depthData, counting), noNatives);
+  const junkParts = { ok: true, matches: [], nativeMatches: [null, 7, { kind: "native", parts: "x" }, { kind: "native", parts: [null, 3] }] };
+  assert.equal(attachPartLookups(junkParts, depthData, counting), junkParts);
+  assert.equal(called, 0);
+});
+
+await testAsync("hybrid card depth: unflagged and hybrid-free flagged responses are byte-identical", async () => {
+  const { attachPartLookups } = await import("../extension/background.js");
+  const attach = await depthAttach({ sino: depthSino, ko: depthKo });
+  // Unflagged: no native matches, so nothing to walk; the response is the
+  // attached response, byte for byte, and never carries the field.
+  for (const q of ["加工", "가공되다", "學生", "국", "gagongdoeda"]) {
+    const before = JSON.stringify(attach(lookup(q, depthData, { interpret: true })));
+    const after = attachPartLookups(attach(lookup(q, depthData, { interpret: true })), depthData, attach);
+    assert.equal(JSON.stringify(after), before, `query ${q}`);
+    assert.ok(!before.includes('"lookup"'), `query ${q}`);
+  }
+  // Flagged with no hybrid in the response: the field appears on hybrid
+  // parts only, so these are byte-identical to the attached response.
+  for (const q of ["하늘", "국민", "사랑", "먹었어", "가공되다국민", "하늘 사랑 우리"]) {
+    const before = JSON.stringify(attach(lookup(q, depthData, { native: true })));
+    const after = attachPartLookups(attach(lookup(q, depthData, { native: true })), depthData, attach);
+    assert.equal(JSON.stringify(after), before, `query ${q}`);
+    assert.ok(!before.includes('"lookup"'), `query ${q}`);
+  }
+  // The hybrid bundle's own pins still hold with the field stripped: the
+  // parts are what they were, plus `lookup`.
+  const res = attachPartLookups(lookup("가공되다", depthData, { native: true }), depthData, (r) => r);
+  const stripped = res.nativeMatches[0].parts.map(({ lookup: _sub, ...rest }) => rest);
+  assert.deepEqual(stripped, hybridLead.parts);
+});
+
+await testAsync("hybrid card depth: a deconjugated hybrid carries its parts with the same sub-lookups", async () => {
+  const { attachPartLookups } = await import("../extension/background.js");
+  const attach = await depthAttach({ ko: depthKo });
+  const run = (q) => attachPartLookups(attach(lookup(q, depthData, { native: true })), depthData, attach);
+  const formed = run("공부했어").nativeMatches[0];
+  const direct = run("공부하다").nativeMatches[0];
+  assert.equal(formed.form, "공부했어");
+  assert.equal("form" in direct, false);
+  assert.deepEqual(formed.parts, direct.parts);
+  assert.ok(formed.parts[1].lookup.nativeMatches.length > 0);
+  // 가공됐어 through the same path: the 加工 sub-lookup, the 되다 entries.
+  const processed = run("가공됐어").nativeMatches[0];
+  assert.equal(processed.form, "가공됐어");
+  assert.deepEqual(processed.parts, run("가공되다").nativeMatches[0].parts);
+  assert.deepEqual(processed.parts[0].lookup, { matches: attach(lookup("加工", depthData)).matches });
+  // Through romanization too.
+  const rr = attachPartLookups(
+    attach(lookup("gagongdwaesseo", depthData, { interpret: true, native: true })), depthData, attach
+  );
+  assert.deepEqual(rr.nativeMatches[0].parts, processed.parts);
+});
+
 test("the native pass is bounded by native.json's declared maxLen", () => {
   const capped = { ...nativeData, native: { version: 1, maxLen: 2, words: native.words } };
   // 하늘색 exists in the table, but a maxLen of 2 keeps the pass from trying
@@ -4488,6 +4819,92 @@ await testAsync("ko: the worker fetches ko.json on the first flagged request onl
     res = await MESSAGE_HANDLERS.lookup({ type: "lookup", text: "學生", ko: "yes" });
     assert.ok(!JSON.stringify(res).includes('"ko"'));
     assert.equal(koFetches(fetched), 1);
+  } finally {
+    globalThis.fetch = realFetch;
+    delete globalThis.chrome;
+  }
+});
+
+/**
+ * Hybrid card depth ADDENDUM through the worker itself. The worker's data
+ * bundle is cached for the life of the module (a resolved cache is never
+ * re-fetched), and the test above loaded the base fixtures into it, so the
+ * hybrid here is built on a hanja word every bundle in this file holds:
+ * 국민되다 as 國民 + 되다. native.json is not cached at this point (the test
+ * above 404s it, which clears that cache), so the stub serves this table.
+ * Placed after the ko fetch-count test on purpose: this test reads the
+ * cached ko fixture and would otherwise fetch it first.
+ */
+const workerNative = {
+  version: 1,
+  maxLen: 4,
+  words: {
+    국민되다: [
+      {
+        pos: "verb",
+        glosses: ["to become a citizen"],
+        origin: "hybrid",
+        parts: [{ hanja: "國民", hangul: "국민" }, { hangul: "되다" }],
+      },
+    ],
+    되다: [
+      { pos: "verb", glosses: ["to become"], origin: "native" },
+      { pos: "aux", glosses: ["to be done"], origin: "native" },
+    ],
+  },
+};
+
+await testAsync("hybrid card depth: the worker path builds the sub-lookups from its own tables", async () => {
+  const { handleLookup } = await import("../extension/background.js");
+  const realFetch = globalThis.fetch;
+  globalThis.chrome = { runtime: { getURL: (path) => `chrome-extension://okp/${path}` } };
+  try {
+    globalThis.fetch = async (url) => {
+      const name = /\/data\/(\w+)\.json$/.exec(url)?.[1];
+      const file = { hanja, words, variants, native: workerNative, ko }[name] ?? null;
+      return { ok: file !== null, status: file ? 200 : 404, json: async () => file };
+    };
+    const res = await handleLookup("국민되다", false, true, false, true);
+    assert.equal(res.ok, true);
+    assert.deepEqual(res.matches, [], "the hybrid claims the run, no 國民 split");
+    assert.equal(res.nativeMatches.length, 1);
+    const [ja, doeda] = res.nativeMatches[0].parts;
+    // The nested 國民 is the worker's own direct lookup of 國民, ko included.
+    const direct = await handleLookup("國民", false, false, false, true);
+    assert.deepEqual(ja.lookup, { matches: direct.matches });
+    assert.deepEqual(ja.lookup.matches.map((m) => m.canonical), ["國民", "國", "民"]);
+    assert.deepEqual(ja.lookup.matches[0].ko, ko.words.國民);
+    assert.deepEqual(ja.lookup.matches[1].ko, ko.chars.國);
+    assert.equal("ko" in ja.lookup.matches[2], false, "民 has no ko entry");
+    const { lookup: _sub, ...jaRest } = ja;
+    assert.deepEqual(jaRest, {
+      hanja: "國民", hangul: "국민", glosses: ["the people; citizens of a nation"], ko: ko.words.國民,
+    });
+    assert.deepEqual(doeda.lookup.nativeMatches.map((m) => m.pos), ["verb", "aux"]);
+    assert.deepEqual(doeda.lookup.nativeMatches[0].ko, ko.natives["되다|verb"]);
+    assert.ok(doeda.lookup.nativeMatches.every((m) => !("parts" in m) && !("form" in m)));
+    assert.deepEqual(res.nativeMatches[0].glosses, ["to become a citizen"]);
+    // Unflagged: byte-identical, the field never appears (and neither does
+    // the native table's claim: 國民 splits off as ever).
+    const off = await handleLookup("국민되다", false, false, false, false);
+    assert.equal(JSON.stringify(off), JSON.stringify(await handleLookup("국민되다", false, false, false)));
+    assert.ok(!JSON.stringify(off).includes('"lookup"'));
+    assert.ok(!JSON.stringify(off).includes('"nativeMatches"'));
+    assert.deepEqual(off.matches.filter((m) => m.kind === "word").map((m) => m.canonical), ["國民"]);
+    // Flagged without ko: the sub-lookups carry no ko either.
+    const noKo = await handleLookup("국민되다", false, true, false, false);
+    assert.ok(!JSON.stringify(noKo).includes('"ko"'));
+    assert.deepEqual(noKo.nativeMatches[0].parts[0].lookup.matches.map((m) => m.canonical), ["國民", "國", "民"]);
+    // A flagged response with no hybrid in it is byte-identical to before:
+    // 학생 has no native entry and the ko attach is the only decoration.
+    const student = await handleLookup("학생", false, true, false, true);
+    assert.ok(!JSON.stringify(student).includes('"lookup"'));
+    assert.deepEqual(student.matches[0].ko, ko.words.學生);
+    // The router reads the native flag strictly, so a junk flag never
+    // reaches the sub-lookups.
+    const { MESSAGE_HANDLERS } = await import("../extension/background.js");
+    const routed = await MESSAGE_HANDLERS.lookup({ type: "lookup", text: "국민되다", native: "yes", ko: true });
+    assert.ok(!JSON.stringify(routed).includes('"lookup"'));
   } finally {
     globalThis.fetch = realFetch;
     delete globalThis.chrome;
@@ -5330,6 +5747,32 @@ await testAsync("smoke: real native.json resolves 하늘 / 사랑 / 무리 / tog
   } else {
     assert.match(skyRow.description, new RegExp(`· ${skyOrigin}</dim>$`));
   }
+
+  // Hybrid card depth ADDENDUM on real data: 전쟁하다 is 戰爭 + 하다, and the
+  // 戰爭 part carries the 戰爭 word match with its two character matches,
+  // exactly the direct lookup; the 하다 part carries the verb entry with no
+  // parts. Nothing nests further.
+  const { attachPartLookups } = await import("../extension/background.js");
+  const war = attachPartLookups(lookup("전쟁하다", all, { native: true }), all, (r) => r);
+  const warMatch = (war.nativeMatches || []).find((m) => m.word === "전쟁하다");
+  assert.ok(warMatch && Array.isArray(warMatch.parts), "전쟁하다 should be a hybrid with parts");
+  const warPart = warMatch.parts.find((p) => p.hanja === "戰爭");
+  assert.ok(warPart, "전쟁하다 should carry a 戰爭 part");
+  assert.deepEqual(warPart.lookup, { matches: lookup("戰爭", all).matches });
+  // Every sense set of 戰爭 is a word match (the corpus also carries the
+  // Yukjin reading 졘쟝), then the two character matches.
+  const warKinds = warPart.lookup.matches.map((m) => [m.kind, m.canonical]);
+  assert.ok(warKinds.length >= 3 && warKinds[0][0] === "word" && warKinds[0][1] === "戰爭");
+  assert.deepEqual(warKinds.filter(([k]) => k === "char"), [["char", "戰"], ["char", "爭"]]);
+  assert.ok(warKinds.filter(([k]) => k === "word").every(([, c]) => c === "戰爭"));
+  assert.ok(warPart.lookup.matches.some((m) => m.kind === "word" && m.hangul === "전쟁"));
+  assert.equal("nativeMatches" in warPart.lookup, false);
+  const hadaPart = warMatch.parts.find((p) => p.hangul === "하다");
+  assert.ok(hadaPart && hadaPart.lookup, "the 하다 part should carry its entries");
+  assert.ok(hadaPart.lookup.nativeMatches.some((m) => m.pos === "verb"));
+  assert.ok(hadaPart.lookup.nativeMatches.every((m) => !("parts" in m) && !("form" in m)));
+  assert.ok(!JSON.stringify(warPart.lookup).includes('"lookup"'));
+  assert.ok(!JSON.stringify(hadaPart.lookup).includes('"lookup"'));
 
   // The declared cap is the real longest key.
   const nativeKeys = Object.keys(realNative.words);

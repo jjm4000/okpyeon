@@ -553,6 +553,19 @@
     ".hybrid-parts .part-row.inert:hover { background: transparent; }",
     ".hybrid-parts .part-row.inert::after { content: none; }",
     ".hybrid-parts .part-row.inert .p-hanja { color: var(--faint); }",
+    // Hybrid card depth ADDENDUM: the rail carries full cards (the 加工 word
+    // card under 가공되다, the 되다 native card) beside any bare row, so a
+    // row and a card get the rule a pair of cards gets. A nested word card's
+    // own COMPONENT HANJA is the third level: one step smaller again, so the
+    // heads still rank at the popup's 280px width and in the side panel.
+    ".hybrid-parts .part-row + .card.component,",
+    ".hybrid-parts .card.component + .part-row { border-top: 1px solid var(--rule); }",
+    ".hybrid-parts .part-row + .card.component { padding-top: 7px; }",
+    ".card.component .card.component .surface { font-size: 20px; }",
+    ".card.component .card.component .hangul,",
+    ".card.component .card.component .eumhun { font-size: 13px; }",
+    ".card.component .card.component .wiki { font-size: 10px; }",
+    ".card.component .native-meta { margin-top: 2px; }",
     // One block per part of speech when a headword has several.
     ".native-pos { margin-top: 8px; }",
     ".native-pos .glosses { margin-top: 4px; }",
@@ -928,6 +941,11 @@
   var crumbsExpanded = false; // a pressed "…" shows the whole trail until nav
   var charDataIndex = null;   // char -> char match data (accumulates)
   var charCardIndex = null;   // char -> the card element showing it, this view
+  // Hybrid card depth ADDENDUM: char cards nested under a hybrid's COMPONENT
+  // WORDS (加 under the 加工 card of 가공되다). renderCharRegions rebuilds
+  // charCardIndex from the word states and knows nothing of these, so an
+  // eumhun chip on a nested card finds its card here. Reset per view.
+  var hybridCharCards = null;
   var viewStack = [];         // the descent; last entry is the current view
   var currentSrcText = "";    // source text of the view being rendered (see noteApplies)
   var sessionKo = false;      // the ko flag this session's lookups carried
@@ -1172,6 +1190,7 @@
     crumbsExpanded = false;
     charDataIndex = Object.create(null);
     charCardIndex = Object.create(null);
+    hybridCharCards = Object.create(null);
     viewStack = [];
     wordStates = [];
     pendingScrollTop = null;
@@ -1496,8 +1515,12 @@
   // inert). Row glosses ADDENDUM: `glosses` (the part's own sense set) and
   // `ko` (its Korean entry) ride through as written, so the row renders them
   // exactly as a component-word row does; either may be absent (a part the
-  // tables lack keeps its bare row). Returns the cleaned list, or null when
-  // absent or malformed.
+  // tables lack keeps its bare row). Hybrid card depth ADDENDUM: `lookup`,
+  // the part's sub-response (the unflagged lookup of 加工 on a hanja part,
+  // the native entries of 되다 on a hangul part), rides through when it is an
+  // object holding an array `matches` or `nativeMatches`; anything else is
+  // dropped and the part renders its bare row. Returns the cleaned list, or
+  // null when absent or malformed.
   function hybridPartsOf(e) {
     var raw = e && e.parts;
     if (!Array.isArray(raw) || !raw.length) return null;
@@ -1518,6 +1541,11 @@
       var glosses = asArray(p.glosses).map(nonEmptyString).filter(Boolean);
       if (glosses.length) part.glosses = glosses;
       if (p.ko && typeof p.ko === "object") part.ko = p.ko;
+      var lookup = p.lookup;
+      if (lookup && typeof lookup === "object" &&
+          (Array.isArray(lookup.matches) || Array.isArray(lookup.nativeMatches))) {
+        part.lookup = lookup;
+      }
       out.push(part);
     }
     return out;
@@ -2524,9 +2552,11 @@
   // Clicking an eumhun chip. The character's full card is already on screen in
   // COMPONENT HANJA, so pushing a view would just duplicate it: scroll to the
   // card and flash it instead. Only when that card is genuinely absent do we
-  // fall back to an ordinary drill-down lookup.
+  // fall back to an ordinary drill-down lookup. A card nested under a hybrid's
+  // COMPONENT WORDS (加 under 加工 under 가공되다) is found the same way.
   function revealCharCard(ch) {
     var card = charCardIndex && charCardIndex[ch];
+    if (!card || !card.isConnected) card = hybridCharCards && hybridCharCards[ch];
     if (!card || !card.isConnected) {
       navigateTo(ch);
       return false;
@@ -2813,7 +2843,12 @@
     parent.appendChild(el("span", "native-tag", t(ORIGIN_MARKER_KEYS[origin])));
   }
 
-  function buildNativeCard(word, entries, spellings) {
+  // `nested` (Hybrid card depth ADDENDUM) marks the card as a hybrid's
+  // COMPONENT WORDS entry (되다 under 가공되다): its head and definitions
+  // render as when it leads, but it never nests parts of its own (the wire
+  // omits them, so a nested hybrid draws no mixed spelling either). Hybrid,
+  // then word, then character is the depth bound.
+  function buildNativeCard(word, entries, spellings, nested) {
     var card = el("div", "card native");
 
     appendFormNote(card, word, entries);
@@ -2853,7 +2888,7 @@
       });
     }
 
-    appendHybridParts(card, partsEntry);
+    if (nested !== true) appendHybridParts(card, partsEntry);
     appendSameSoundSpellings(card, spellings);
     return card;
   }
@@ -2882,23 +2917,33 @@
     card.setAttribute("aria-label", t("aria.formOf", { FORM: form, LEMMA: word }));
   }
 
-  /* ---- Hybrid parts: the mixed spelling and the part rows ---------------- *
+  /* ---- Hybrid parts: the mixed spelling and COMPONENT WORDS -------------- *
    * A hybrid entry (가공되다) may carry its segments from data: a hanja part
-   * ({hanja: 加工, hangul: 가공, glosses}) and hangul parts ({hangul: 되다,
-   * glosses, pos}). The head shows the 한자 병기 spelling built from them
-   * (加工되다): the hanja part is a nav chip that opens the hanja word's card
-   * with the tooltip the head hangul uses, the hangul part is muted and
-   * inert. After the gloss block, one row per part in the component-word
-   * row idiom in full: hanja, hangul, first gloss (加工 가공 processing;
-   * 되다 to become), the Korean definition under 한국어 through the row's
-   * `ko` as a component-word row shows it. A hanja row navigates exactly as
-   * a component-word row does (navigateTo with the hanja: the word card when
-   * the lookup has the word, else the character cards); a hangul row opens
-   * its native card when the worker resolved it (`native: true`), else
-   * renders inert. A part without glosses keeps its bare row. No parts, no
-   * element of either. Self-contained per the section convention: the two
-   * predicates here, these two functions, one call site each in
-   * buildNativeCard.
+   * ({hanja: 加工, hangul: 가공, glosses, lookup}) and hangul parts ({hangul:
+   * 되다, glosses, pos, lookup}). The head shows the 한자 병기 spelling built
+   * from them (加工되다): the hanja part is a nav chip that opens the hanja
+   * word's card with the tooltip the head hangul uses, the hangul part is
+   * muted and inert.
+   *
+   * Hybrid card depth ADDENDUM: after the gloss block, a COMPONENT WORDS
+   * section on the nested rail, one nested card per part in the parts'
+   * order, exactly as a word card nests its characters:
+   * - a hanja part whose `lookup.matches` holds the word (加工): that word's
+   *   full card by the builder a lead word card uses (head with the hangul
+   *   chip, star and source link; gloss; character chips; Used-in row; its
+   *   COMPONENT HANJA cards with full bodies). One spelling, so no selector
+   *   and no hedge box;
+   * - a hanja part whose `lookup.matches` holds only characters (工夫 where
+   *   words.json lacks the word): those character cards on the rail;
+   * - a hanja part without `lookup`: the bare row (hanja, hangul, gloss),
+   *   navigating as a component-word row does;
+   * - a hangul part whose `lookup.nativeMatches` holds its entries (되다):
+   *   its native card, marked nested so it never nests parts of its own
+   *   (no star: natives have no save namespace);
+   * - a hangul part without `lookup`: the bare inert row.
+   * No parts, no element of either. Self-contained per the section
+   * convention: the two predicates here, these functions, one call site
+   * each in buildNativeCard.
    * -------------------------------------------------------------------- */
 
   function appendHybridSpelling(meta, entry) {
@@ -2923,37 +2968,130 @@
     var box = el("div", "parts hybrid-parts");
     var list = el("div", "part-list");
     parts.forEach(function (p) {
-      var row = el("div", "part-row hybrid-part");
-      var gloss = rowGloss(p, asArray(p.glosses).map(nonEmptyString).filter(Boolean)[0] || "");
-      if (p.hanja) {
-        row.appendChild(el("span", "p-hanja", p.hanja));
-        var text = el("span", "p-text");
-        text.appendChild(el("span", "p-hangul", p.hangul));
-        if (gloss) text.appendChild(el("span", "p-gloss", "  " + gloss));
-        row.appendChild(clampWrap(text, 1));
-        row.setAttribute("aria-label", p.hanja + " " + p.hangul + (gloss ? " " + gloss : ""));
-        makeNavRow(row, p.hanja);
-      } else {
-        row.appendChild(el("span", "p-hanja", p.hangul));
-        if (gloss) {
-          var native = el("span", "p-text");
-          native.appendChild(el("span", "p-gloss", gloss));
-          row.appendChild(clampWrap(native, 1));
-        }
-        row.setAttribute("aria-label", p.hangul + (gloss ? " " + gloss : ""));
-        if (p.native === true) {
-          // A push, never an in-place swap: the native card is its own view.
-          makeNavRow(row, (function (hangul) {
-            return function () { pushNativeView(hangul); };
-          })(p.hangul));
-        } else {
-          row.classList.add("inert");
-        }
-      }
-      list.appendChild(row);
+      var nodes = p.hanja ? buildHybridHanjaPart(p) : buildHybridNativePart(p);
+      nodes.forEach(function (node) { list.appendChild(node); });
     });
+    if (!list.firstChild) return;
+    box.appendChild(el("div", "label", t("section.componentWords")));
     box.appendChild(list);
     card.appendChild(box);
+  }
+
+  // A hanja part (加工 of 가공되다): the nested word card when the
+  // sub-lookup found the word, else its character cards, else the bare row.
+  // Returns the nodes for the rail, in order.
+  function buildHybridHanjaPart(p) {
+    var sub = p.lookup ? usableMatches(p.lookup.matches) : [];
+    var word = null;
+    var chars = [];
+    sub.forEach(function (m) {
+      if (m.kind === "word") {
+        if (!word || (spellingKey(word) !== p.hanja && spellingKey(m) === p.hanja)) word = m;
+      } else if (m.kind === "char" && spellingKey(m)) {
+        chars.push(m);
+      }
+    });
+    // The sub-lookup's characters feed the chips and the nested cards the
+    // way a lead response's do: through the session's char index.
+    adoptCharData(chars);
+    if (word) return [buildNestedWordCard(word)];
+    if (chars.length) {
+      return uniqStrings(chars.map(spellingKey)).map(function (ch) {
+        return buildNestedCharCard(charDataIndex[ch] || chars.filter(function (m) {
+          return spellingKey(m) === ch;
+        })[0]);
+      });
+    }
+    return [buildHybridPartRow(p)];
+  }
+
+  // A hangul part (되다 of 가공되다): its native card when the sub-lookup
+  // carries the entries, else the bare row (navigating when the worker
+  // resolved the headword, inert otherwise).
+  function buildHybridNativePart(p) {
+    var entries = p.lookup
+      ? normalizeNativeMatches(p.lookup.nativeMatches).filter(function (entry) {
+          return entry.word === p.hangul;
+        })
+      : [];
+    if (!entries.length) return [buildHybridPartRow(p)];
+    var cardEl = buildNativeCard(p.hangul, entries, [], true);
+    cardEl.classList.add("component");
+    return [cardEl];
+  }
+
+  // The hanja word's full card, built by the lead word card's builder over a
+  // state of its own (one item, so no spelling selector; nothing for the
+  // view's word states to claim). Its COMPONENT HANJA are the characters the
+  // sub-lookup returned, nested with their full bodies, as renderCharRegions
+  // nests a lead word's.
+  function buildNestedWordCard(m) {
+    var state = {
+      items: [m], index: 0, card: null, body: null, chips: [],
+      natives: [],
+      partsBox: null, partsList: null,
+      componentsBox: null, componentList: null, owned: []
+    };
+    var cardEl = buildWordGroupCard(state);
+    cardEl.classList.add("component", "hybrid-word");
+    uniqStrings(asArray(m.chars)).forEach(function (ch) {
+      var info = charDataIndex[ch];
+      if (!info) return;
+      state.componentList.appendChild(buildNestedCharCard(info));
+      state.owned.push(ch);
+    });
+    if (state.componentList.firstChild) {
+      state.componentsBox.appendChild(el("div", "label", t("section.componentHanja")));
+      state.componentsBox.appendChild(state.componentList);
+    }
+    return cardEl;
+  }
+
+  // One character card on a hybrid's rail, registered so the eumhun chips
+  // above it scroll to it rather than opening a duplicate view. The first
+  // card built for a glyph keeps the registration, as charCardIndex does.
+  function buildNestedCharCard(m) {
+    var cardEl = buildCharCard(m);
+    cardEl.classList.add("component");
+    var ch = spellingKey(m);
+    if (ch && hybridCharCards && !hybridCharCards[ch]) hybridCharCards[ch] = cardEl;
+    return cardEl;
+  }
+
+  // The bare row for a part the tables lack, in the component-word row idiom:
+  // hanja, hangul, first gloss (or the Korean definition under 한국어 through
+  // the row's `ko`). A hanja row navigates exactly as a component-word row
+  // does (navigateTo with the hanja); a hangul row opens its native card when
+  // the worker resolved it (`native: true`), else renders inert.
+  function buildHybridPartRow(p) {
+    var row = el("div", "part-row hybrid-part");
+    var gloss = rowGloss(p, asArray(p.glosses).map(nonEmptyString).filter(Boolean)[0] || "");
+    if (p.hanja) {
+      row.appendChild(el("span", "p-hanja", p.hanja));
+      var text = el("span", "p-text");
+      text.appendChild(el("span", "p-hangul", p.hangul));
+      if (gloss) text.appendChild(el("span", "p-gloss", "  " + gloss));
+      row.appendChild(clampWrap(text, 1));
+      row.setAttribute("aria-label", p.hanja + " " + p.hangul + (gloss ? " " + gloss : ""));
+      makeNavRow(row, p.hanja);
+    } else {
+      row.appendChild(el("span", "p-hanja", p.hangul));
+      if (gloss) {
+        var native = el("span", "p-text");
+        native.appendChild(el("span", "p-gloss", gloss));
+        row.appendChild(clampWrap(native, 1));
+      }
+      row.setAttribute("aria-label", p.hangul + (gloss ? " " + gloss : ""));
+      if (p.native === true) {
+        // A push, never an in-place swap: the native card is its own view.
+        makeNavRow(row, (function (hangul) {
+          return function () { pushNativeView(hangul); };
+        })(p.hangul));
+      } else {
+        row.classList.add("inert");
+      }
+    }
+    return row;
   }
 
   /* ---- Same sound: hanja rows on a native-led card ----------------------- *
@@ -4482,6 +4620,7 @@
     // so appendMatchCards can simply be called per group.
     wordStates = [];
     charGroups = [];
+    hybridCharCards = Object.create(null);
     viewNativeGroups = nativeGroupsFor(view);
     nativeOwnedChars = Object.create(null);
     var count = 0;
