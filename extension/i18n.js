@@ -66,6 +66,8 @@
     "hedge_note": "Likely native Korean. This hanja spelling is obscure.",
     "hedge_lessCommon_label": "Less common homograph",
     "hedge_lessCommon_note": "Usually the native word. This hanja spelling is a homograph.",
+    "form_note": "form of $LEMMA$",
+    "aria_formOf": "$FORM$, form of $LEMMA$",
     "hint_nativeInAll_one": "$COUNT$ native word in All words",
     "hint_nativeInAll_other": "$COUNT$ native words in All words",
     "interp_keyboard": "(keyboard)",

@@ -150,9 +150,23 @@ diagnosed. Compaction followed.
   class-C pin superseded); a bounded memo on the generator keeps the
   vowel-soup timing inside its bound; background.js needed comments
   only. lookup tests 229, harness 716 and 395 untouched.
-- Paused here at Jesse's request (rate limits).
+- Paused at Jesse's request (rate limits), then resumed.
+- Wave 3 (commit after this): content.js appendFormNote (div.formnote
+  before the native card's head: bold form, arrow, t("form.note")),
+  aria-label, form-derived matches never fold into a hanja group's Same
+  sound (claimNativeGroup skips them), a native-only root view crumbs
+  as the surface; copy keys form_note and aria_formOf in EN and KO; the
+  test pages' miniature worker imports the real deconjugate.js and
+  mirrors the gate; fixtures 먹다 좋다 살다 사다 남다 and 男子. Harness
+  716 to 736 and 395 to 400. ROADMAP.md: deconjugation in "Since 1.3",
+  grammar labels stay in Later. The feature is complete on main.
 
-NEXT (wave 3, one agent, files: extension/content/content.js,
+NEXT: a 1.4 release (version bump, zip, listing counts re-verified
+against the data, both screenshot sets if any card changed, dashboard
+upload), or the next Later item. The wave 3 brief below is kept as the
+record of how the harness was extended.
+
+WAVE 3 BRIEF (done; files: extension/content/content.js,
 extension/i18n.js built-in EN table, extension/_locales/en and ko
 messages.json, test-page/index.html and embed.html): the SPEC's
 "### Rendering", "### Copy (binding)" and the Harness bullet under

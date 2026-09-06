@@ -387,6 +387,11 @@
     // hybrid 가공되다. Rule 3b would split the hybrid into this word plus the
     // native 되다; the native whole-string check must claim the run first.
     "加工": [{ hangul: "가공", glosses: ["processing; manufacturing"] }],
+    // Deconjugation (SPEC ADDENDUM 2026-09-05): a hangul that is also a
+    // form (남자 would be 남 + 자 of the fixture verb 남다). A run this word
+    // explains whole is this word and never deconjugates. 男 and 子 are
+    // deliberately not fixture chars: the word card alone is the pin.
+    "男子": [{ hangul: "남자", glosses: ["man; male"] }],
     "國民": [{ hangul: "국민", glosses: ["the people; citizens of a nation"] }],
     "學生": [{ hangul: "학생", glosses: ["student; pupil"] }],
     "韓國": [{ hangul: "한국", glosses: ["Korea; South Korea"] }],
@@ -665,7 +670,18 @@
       pos: "verb", glosses: ["to study"], origin: "hybrid",
       parts: [{ hanja: "工夫", hangul: "공부" }, { hangul: "하다" }]
     }],
-    "되다": [{ pos: "verb", glosses: ["to become"], origin: "native" }]
+    "되다": [{ pos: "verb", glosses: ["to become"], origin: "native" }],
+    // Deconjugation (SPEC ADDENDUM 2026-09-05): the lemmas the checks reach
+    // through a form (먹었어 is 먹 + 었 + 어, 좋은 is 좋 + 은). 사는 resolves to
+    // both 살다 (ㄹ-drop before 는) and 사다 (bare stem), and the `f` buckets
+    // are distinct on purpose so the ordering is the fixture's decision:
+    // 살다 (2) before 사다 (3). 남다 exists so the 男子 block, not a missing
+    // lemma, is what keeps 남자 off the lemma path.
+    "먹다": [{ pos: "verb", glosses: ["to eat"], origin: "native", f: 3 }],
+    "좋다": [{ pos: "adj", glosses: ["to be good"], origin: "native", f: 1 }],
+    "살다": [{ pos: "verb", glosses: ["to live"], origin: "native", f: 2 }],
+    "사다": [{ pos: "verb", glosses: ["to buy"], origin: "native", f: 3 }],
+    "남다": [{ pos: "verb", glosses: ["to remain"], origin: "native", f: 4 }]
   };
   var nativeReads = 0;
 
@@ -688,6 +704,77 @@
     return claimed > sino ? claimed : 0;
   }
 
+  // --- Deconjugation (SPEC ADDENDUM 2026-09-05) ---------------------------
+  // The REAL generator, imported the way the romanizer is: the module loads
+  // once, on the first flagged lookup that has a hangul run of two or more
+  // syllables, and that lookup answers with a promise (sendMessage settles
+  // both call styles either way, as it does for interpreted lookups). The
+  // fixture tables are the gate; the generator only proposes.
+  var deconjugateFn = null;
+  var deconjugatePromise = null;
+  function loadDeconjugate() {
+    if (!deconjugatePromise) {
+      deconjugatePromise = import("../extension/deconjugate.js")
+        .then(function (mod) { deconjugateFn = mod.deconjugate; return deconjugateFn; });
+    }
+    return deconjugatePromise;
+  }
+
+  function conjugates(entry) {
+    return entry.pos === "verb" || entry.pos === "adj";
+  }
+
+  // The lemmas a form resolves to: generator candidates that are fixture
+  // headwords with a verb or adj entry, ordered by the entries' `f` (absent
+  // last) and then by generator order. 사는 gives 사다 first from the
+  // generator; the buckets put 살다 ahead.
+  function lemmasFor(form) {
+    var ranked = [];
+    deconjugateFn(form).forEach(function (lemma, index) {
+      var entries = (NATIVE[lemma] || []).filter(conjugates);
+      if (!entries.length) return;
+      var f = Infinity;
+      entries.forEach(function (e) { if (typeof e.f === "number" && e.f < f) f = e.f; });
+      ranked.push({ lemma: lemma, index: index, f: f });
+    });
+    ranked.sort(function (a, b) { return a.f === b.f ? a.index - b.index : a.f - b.f; });
+    return ranked.map(function (r) { return r.lemma; });
+  }
+
+  // The gate in miniature (the worker's deconjugatedClaim), asked only when
+  // nativeWholeLength declined: the whole run, then the run minus one
+  // syllable (먹기가 finds 먹다 at 먹기 and the josa goes on). Blocked when
+  // a native headword or a hanja word with a non-rare spelling, anchored at
+  // the first syllable, reaches that length or further: 남자 is 男子, never
+  // 남다. Returns the claimed length and the lemmas, or length 0.
+  function deconjugatedClaim(h) {
+    var none = { length: 0, lemmas: [] };
+    if (h.length < 2) return none;
+    var blocked = 0, len, key;
+    for (len = Math.min(5, h.length); len >= 2; len--) {
+      if (NATIVE[h.substr(0, len)]) { blocked = len; break; }
+    }
+    for (len = Math.min(MAX_WORD, h.length); len >= 2; len--) {
+      key = h.substr(0, len);
+      if (BY_HANGUL[key] && !BY_HANGUL[key].every(isRare)) {
+        if (len > blocked) blocked = len;
+        break;
+      }
+    }
+    var lengths = [h.length];
+    if (h.length - 1 >= 2) lengths.push(h.length - 1);
+    for (var k = 0; k < lengths.length; k++) {
+      if (lengths[k] <= blocked) return none;
+      var lemmas = lemmasFor(h.substr(0, lengths[k]));
+      if (lemmas.length) return { length: lengths[k], lemmas: lemmas };
+    }
+    return none;
+  }
+
+  function deconjugatedLength(h) {
+    return deconjugatedClaim(h).length;
+  }
+
   // Hybrid parts on the wire: {hanja?, hangul}, plus native:true on a hangul
   // part the table holds (the chip that opens a native card).
   function nativePartsFor(entry) {
@@ -706,13 +793,39 @@
   function nativeMatchesFor(text, matches) {
     nativeReads++;
     var found = [];
+    function indexOfWord(word) {
+      for (var f = 0; f < found.length; f++) if (found[f].word === word) return f;
+      return -1;
+    }
+    // A direct claim: the whole entry list, no form. A lemma reached through
+    // a form earlier keeps the direct match, as the worker's join does.
     function claim(word) {
-      if (NATIVE[word] && found.indexOf(word) < 0) found.push(word);
+      if (!NATIVE[word]) return;
+      var at = indexOfWord(word);
+      if (at < 0) found.push({ word: word, form: null });
+      else found[at].form = null;
+    }
+    // Deconjugation ADDENDUM: the lemmas a form resolved to, in gate order,
+    // each carrying the form; a lemma already reached directly stays direct.
+    function claimForm(form, lemmas) {
+      lemmas.forEach(function (lemma) {
+        if (indexOfWord(lemma) < 0) found.push({ word: lemma, form: form });
+      });
     }
     runs(String(text || "").normalize("NFC")).forEach(function (run) {
       if (run.kind !== "hangul") return;
       var h = run.s, i = nativeWholeLength(h);
-      if (i > 0) claim(h.substr(0, i));
+      if (i > 0) {
+        claim(h.substr(0, i));
+      } else {
+        // Failing a headword, a conjugated form claims the run for its
+        // lemmas, the same claim the lookup's hangul branch makes.
+        var formClaim = deconjugatedClaim(h);
+        if (formClaim.length > 0) {
+          claimForm(h.substr(0, formClaim.length), formClaim.lemmas);
+          i = formClaim.length;
+        }
+      }
       while (i < h.length) {
         var hit = null;
         for (var len = Math.min(5, h.length - i); len >= 2; len--) {
@@ -725,8 +838,12 @@
       if (m && m.kind === "word" && m.hangul) claim(m.hangul);
     });
     var out = [];
-    found.forEach(function (word) {
-      NATIVE[word].forEach(function (entry) {
+    found.forEach(function (hit) {
+      var word = hit.word;
+      // Only a verb or an adjective joins through a form (the worker's
+      // conjugatingEntries); a direct hit brings every entry.
+      var entries = hit.form ? NATIVE[word].filter(conjugates) : NATIVE[word];
+      entries.forEach(function (entry) {
         var m = {
           kind: "native", word: word,
           pos: entry.pos, glosses: entry.glosses.slice()
@@ -736,6 +853,8 @@
         if (entry.origin) m.origin = entry.origin;
         var parts = nativePartsFor(entry);
         if (parts) m.parts = parts;
+        // Deconjugation ADDENDUM: the claimed surface, on form hits only.
+        if (hit.form) m.form = hit.form;
         out.push(m);
       });
     });
@@ -1015,6 +1134,9 @@
   function coveredSyllables(h, native) {
     var mark = [], i, j, len;
     var claimed = native ? nativeWholeLength(h) : 0;
+    // Deconjugation ADDENDUM: a form's claim counts as covered too, so the
+    // candidate is CLASS_WHOLE in the collapse.
+    if (native && claimed === 0) claimed = deconjugatedLength(h);
     for (i = 0; i < claimed; i++) mark[i] = true;
     i = claimed;
     while (i < h.length) {
@@ -1085,7 +1207,7 @@
       if (!matches.length && !nativeMatches.length) continue;
       var whole = matches.some(function (m) {
         return (m.kind === "word" && m.surface === hangul) || m.kind === "reading";
-      }) || nativeMatches.some(function (m) { return m.word === hangul; });
+      }) || nativeMatches.some(function (m) { return m.word === hangul || m.form === hangul; });
       var covered = whole ? hangul.length : coveredSyllables(hangul, native);
       survivors.push({
         hangul: hangul, tier: candidates[i].tier,
@@ -1134,7 +1256,10 @@
   // `start` marking where each group's matches begin. Native hits collect at
   // the response level, deduped in preferred order, as the worker does it.
   function interpretedLookup(typed, native) {
-    return loadDeromanize().then(function (deromanize) {
+    // Both modules first, so the per-candidate lookups inside stay
+    // synchronous (the gate needs the generator in hand).
+    return Promise.all([loadDeromanize(), loadDeconjugate()]).then(function (mods) {
+      var deromanize = mods[0];
       var dub = dubeolsikInterpretation(typed, native);
       var rr = rrInterpretation(typed, native, deromanize);
       var interps = [dub, rr].filter(function (x) { return x !== null; });
@@ -1169,6 +1294,16 @@
     // worker's does. The interpreted path answers with a promise.
     if (o.interpret === true && LATIN_QUERY.test(typed)) {
       return interpretedLookup(typed, o.native === true);
+    }
+    // Deconjugation ADDENDUM: a flagged lookup with a hangul run the gate
+    // could ask about needs the generator loaded; the first such lookup
+    // answers with a promise and every later one is synchronous again. The
+    // unflagged path never loads it, so it stays exactly as it was.
+    if (o.native === true && !deconjugateFn &&
+        runs(typed.normalize("NFC")).some(function (r) {
+          return r.kind === "hangul" && r.s.length >= 2;
+        })) {
+      return loadDeconjugate().then(function () { return lookup(text, opts); });
     }
 
     var words = [], chars = [], seenChar = {};
@@ -1215,8 +1350,10 @@
         }
       } else {
         // Whole-word precedence, flagged only: the claimed syllables are the
-        // native pass's; rule 3b starts after them.
+        // native pass's; rule 3b starts after them. Deconjugation ADDENDUM:
+        // failing a headword, a form's claim takes the syllables the same way.
         var h = run.s, j = o.native === true ? nativeWholeLength(h) : 0;
+        if (o.native === true && j === 0) j = deconjugatedLength(h);
         while (j < h.length) {
           var found = null, foundLen = 0;
           for (var l = Math.min(MAX_WORD, h.length - j); l >= 2; l--) {
@@ -1743,10 +1880,20 @@
           // SPEC gate: only flagged requests may touch the native table. An
           // interpreted response is a promise and already carries its own
           // native hits, collected per candidate inside the interpreters.
-          if (msg.native === true && resp && typeof resp.then !== "function" &&
-              resp.ok === true) {
-            var nm = nativeMatchesFor(String(msg.text || ""), resp.matches);
-            if (nm.length) resp.nativeMatches = nm;
+          // Deconjugation ADDENDUM: a literal flagged lookup may answer with
+          // a promise too (the generator loading), so the join lands after
+          // it settles; a synchronous answer is joined synchronously as
+          // before.
+          if (msg.native === true && resp &&
+              !(msg.interpret === true && LATIN_QUERY.test(String(msg.text || "").trim()))) {
+            var joinNative = function (r) {
+              if (r && r.ok === true) {
+                var nm = nativeMatchesFor(String(msg.text || ""), r.matches);
+                if (nm.length) r.nativeMatches = nm;
+              }
+              return r;
+            };
+            resp = typeof resp.then === "function" ? resp.then(joinNative) : joinNative(resp);
           }
           // Same gate for the sino table. The attach lands AFTER the lookup
           // settles, so interpreted (promise) responses carry their per-char
@@ -2382,6 +2529,55 @@
       api.queryAll(".samesound-row").length === 1 &&
       api.query(".samesound-row .native-tag").textContent === "loan",
       (api.query(".samesound-row") || {}).textContent);
+    // --- Deconjugation (SPEC ADDENDUM 2026-09-05) --------------------------
+    // Typing a conjugated form (먹었어 is 먹 + 었 + 어) in All words opens the
+    // lemma card under its note; the hanja scope keeps the hint in its place.
+    function formNotes() {
+      return api.queryAll(".card.native .formnote").map(function (n) { return n.textContent; });
+    }
+    var ntvAllEat = await embed.searchFor("먹었어", { native: true, scope: "all" });
+    await wait(TAIL);
+    check("typing a conjugated form opens the lemma card with its note in the sidebar",
+      ntvAllEat.ok === true && ntvAllEat.count === 1 && api.cardCount() === 1 &&
+      api.viewKeys().join(",") === "native:먹다" &&
+      api.query(".card.native .surface").textContent === "먹다" &&
+      api.query(".card.native").firstElementChild.classList.contains("formnote") &&
+      formNotes().join("|") === "먹었어 → form of 먹다" &&
+      api.query(".card.native .formnote b").textContent === "먹었어" &&
+      api.query(".card.native").getAttribute("aria-label") === "먹었어, form of 먹다" &&
+      !api.query(".word-body") && !api.query(".native-hint"),
+      JSON.stringify(ntvAllEat) + " " + JSON.stringify(api.viewKeys()) + " " + api.panelText());
+    var ntvAllLive = await embed.searchFor("사는", { native: true, scope: "all" });
+    await wait(TAIL);
+    check("an ambiguous form renders one noted lemma card each, 살다 first, no word card",
+      ntvAllLive.ok === true && ntvAllLive.count === 2 && api.cardCount() === 2 &&
+      api.queryAll(".card.native .surface").map(function (s) { return s.textContent; }).join("|") === "살다|사다" &&
+      formNotes().join("|") === "사는 → form of 살다|사는 → form of 사다" &&
+      !api.query(".word-body"),
+      JSON.stringify(ntvAllLive) + " " + api.panelText());
+    var ntvAllMan = await embed.searchFor("남자", { native: true, scope: "all" });
+    await wait(TAIL);
+    check("a form that is also a word renders the word: 男子, no lemma card",
+      ntvAllMan.ok === true && api.query(".word-body .surface").textContent === "男子" &&
+      !api.query(".card.native") && !api.query(".formnote"),
+      JSON.stringify(ntvAllMan) + " " + api.panelText());
+    var ntvAllProcForm = await embed.searchFor("가공됐어", { native: true, scope: "all" });
+    await wait(TAIL);
+    check("a form of the hybrid opens the hybrid card under its note: mixed spelling, both chips, no 加工 split",
+      ntvAllProcForm.ok === true && ntvAllProcForm.count === 1 &&
+      api.viewKeys().join(",") === "native:가공되다" &&
+      formNotes().join("|") === "가공됐어 → form of 가공되다" &&
+      api.query(".hybrid-spelling").textContent === "加工되다" &&
+      api.queryAll(".hybrid-parts .part-row").length === 2 &&
+      !api.query(".word-body"),
+      JSON.stringify(ntvAllProcForm) + " " + api.panelText());
+    var ntvHanjaEat = await embed.searchFor("먹었어", { native: true, scope: "hanja" });
+    await wait(TAIL);
+    check("hanja scope is unaffected: no lemma card, no note, the hint stands in",
+      ntvHanjaEat.ok === true && ntvHanjaEat.count === 0 &&
+      !api.query(".card.native") && !api.query(".formnote") && !api.query(".word-body") &&
+      !!api.query(".native-hint"),
+      JSON.stringify(ntvHanjaEat) + " " + api.panelText());
     var ntvAllSignHanja = await embed.searchFor("사인", { native: true, scope: "hanja" });
     await wait(TAIL);
     check("Hanja scope: the loan entry is a hint, never a row or a marker",

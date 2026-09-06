@@ -663,6 +663,16 @@
     ".hedge { margin-bottom: 8px; }",
     ".hedge .label { margin-top: 0; }",
     ".hedge-note { font-size: 11px; line-height: 1.4; color: var(--muted); }",
+    /* ---- form note: a lemma card reached through a conjugated form ---- */
+    // Both palettes through the variables: --fg, --muted, --faint and --rule
+    // are redefined under the dark scheme above.
+    ".formnote {",
+    "  margin-bottom: 8px; padding-bottom: 6px;",
+    "  border-bottom: 1px solid var(--rule);",
+    "  font-size: 11px; line-height: 1.4; color: var(--muted);",
+    "}",
+    ".formnote b { font-weight: 600; color: var(--fg); }",
+    ".formnote-arrow { color: var(--faint); }",
     /* ---- homograph spelling selector ---- */
     ".spellings { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 9px; }",
     ".spell-chip {",
@@ -1463,9 +1473,20 @@
       if (parts !== null) entry.parts = parts;
       // The Korean entry rides through as the worker attached it.
       if (e.ko && typeof e.ko === "object") entry.ko = e.ko;
+      // Deconjugation ADDENDUM: the conjugated surface a lemma was reached
+      // through (먹었어 on the 먹다 match). A direct match carries none.
+      var form = nonEmptyString(e.form);
+      if (form) entry.form = form;
       out.push(entry);
     });
     return out;
+  }
+
+  // Deconjugation ADDENDUM: the form a native group was reached through, read
+  // off its first entry (the entries of one lemma agree), else null.
+  function nativeFormOf(entries) {
+    var first = asArray(entries)[0];
+    return first ? nonEmptyString(first.form) || null : null;
   }
 
   // One part is {hanja?, hangul, native?}: `hanja` on a Sino segment, and
@@ -1525,11 +1546,16 @@
   }
 
   // A word card claims the native group sharing its hangul, exactly once.
+  // Deconjugation ADDENDUM: a group reached through a form is never a word
+  // card's Same sound entry. Its word is the lemma, which no hanja group of
+  // the form spells (먹었어's group is 먹다), so the test below would already
+  // miss; the guard states the rule so the lemma card can never be folded
+  // into a word card that happens to share its hangul.
   function claimNativeGroup(word) {
     if (!word) return null;
     for (var i = 0; i < viewNativeGroups.length; i++) {
       var group = viewNativeGroups[i];
-      if (group.word === word && !group.claimed) {
+      if (group.word === word && !group.claimed && nativeFormOf(group.entries) === null) {
         group.claimed = true;
         return group;
       }
@@ -2782,6 +2808,8 @@
   function buildNativeCard(word, entries, spellings) {
     var card = el("div", "card native");
 
+    appendFormNote(card, word, entries);
+
     var head = el("div", "head");
     head.appendChild(el("div", "surface", word));
     var meta = el("div", "headmeta");
@@ -2820,6 +2848,30 @@
     appendHybridParts(card, partsEntry);
     appendSameSoundSpellings(card, spellings);
     return card;
+  }
+
+  /* ---- Deconjugation: the form note (SPEC ADDENDUM 2026-09-05) ----------- *
+   * A lemma card reached through a conjugated form (먹었어 is 먹 + 었 + 어,
+   * and the card is 먹다's) gets one muted line before its head, where the
+   * hedge box sits on a hedged word card: the form in bold, an arrow, then
+   * "form of 먹다" (한국어: "먹다의 활용형"). No grammar labels. The card
+   * itself is the lemma's ordinary card under the note: a hybrid keeps its
+   * mixed spelling and chips, and a direct match (no `form`) renders no
+   * element at all. Self-contained: this function, its one call site in
+   * buildNativeCard, and the .formnote rules in the stylesheet.
+   * -------------------------------------------------------------------- */
+
+  function appendFormNote(card, word, entries) {
+    var form = nativeFormOf(entries);
+    if (form === null) return;
+    var note = el("div", "formnote");
+    note.appendChild(bold(form));
+    note.appendChild(document.createTextNode(" "));
+    note.appendChild(el("span", "formnote-arrow", "→"));
+    note.appendChild(document.createTextNode(" "));
+    note.appendChild(document.createTextNode(t("form.note", { LEMMA: word })));
+    card.appendChild(note);
+    card.setAttribute("aria-label", t("aria.formOf", { FORM: form, LEMMA: word }));
   }
 
   /* ---- Hybrid parts: the mixed spelling and the part chips --------------- *
@@ -4733,7 +4785,11 @@
       scrollTop: 0, selection: null
     } : {
       key: (ambiguous && typed) ? "typed:" + typed : viewKey(list),
-      label: (ambiguous && typed) ? typed : viewLabel(list, ""),
+      // Deconjugation ADDENDUM: a view with nothing but native cards (사는
+      // resolving to 살다 and 사다) has no match to name itself by, so the
+      // crumb is the surface itself. Every other root view names itself
+      // from its matches exactly as before.
+      label: (ambiguous && typed) ? typed : viewLabel(list, typed),
       matches: list,
       native: natives,
       groups: groups,
@@ -5283,6 +5339,11 @@
       viewDepth: function () { return viewStack.length; },
       viewKeys: function () {
         return viewStack.map(function (v) { return v.key; });
+      },
+      // The crumb text each level would show, root included (the root's
+      // crumb only renders once a drill-down exists).
+      viewLabels: function () {
+        return viewStack.map(function (v) { return v.label; });
       },
       // The current view's search context (see viewSourceText). A
       // QWERTY-converted query must leave the HANGUL here and never the Latin

@@ -151,6 +151,25 @@
   "hedge_lessCommon_note": {
     "message": "Usually the native word. This hanja spelling is a homograph."
   },
+  "form_note": {
+    "message": "form of $LEMMA$",
+    "placeholders": {
+      "lemma": {
+        "content": "$1"
+      }
+    }
+  },
+  "aria_formOf": {
+    "message": "$FORM$, form of $LEMMA$",
+    "placeholders": {
+      "form": {
+        "content": "$1"
+      },
+      "lemma": {
+        "content": "$2"
+      }
+    }
+  },
   "hint_nativeInAll_one": {
     "message": "$COUNT$ native word in All words",
     "placeholders": {

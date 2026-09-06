@@ -51,6 +51,29 @@ current review clears.
   with parts: 3,117 of 3,847. Suites: node 219, index.html 716,
   embed.html 395, build verify 122.
 
+- **Deconjugation.** Native verbs and adjectives were reachable only
+  in dictionary form: a selected 먹었어 found nothing and 공부했어 found
+  the 工夫 split. 31.6% of the frequent subtitle tokens the dictionary
+  could not reach were such forms. A pure generator
+  (extension/deconjugate.js) strips endings under a layer grammar and
+  reverses the fused vowels and irregular stems, and native.json is the
+  only gate: 99.90% of the 335,835 form-lemma pairs in Wiktionary's
+  conjugation tables resolve, pinned as a node test with a 99.5% floor.
+  The lemma's ordinary card renders with a one-line note above the head
+  ("먹었어 → form of 먹다", "먹다의 활용형"), mockup A, user-picked over
+  the surface in the head and over naming the grammar (a Later item).
+  Romanized input gets it through parity (mushihaesseo resolves to
+  무시하다). Decided on measurement: a form that is also a dictionary
+  word does not deconjugate (7.7% of hanja keys would otherwise grow
+  lemma cards: 남자, 여자, 전화, 사실), except when every hanja spelling is
+  rare. Ambiguous forms (사는: 살다, 사다) render one card each, ordered
+  by a new frequency bucket on verb lemmas summed from their forms'
+  subtitle counts. Side find: Wiktionary lists inflected forms as their
+  own entries (있어 "present tense form of 있다", 사는 "topic-marked form
+  of 사", 빨간 "realis adnominal of 빨갛다"); 49 such headwords left
+  native.json, since each blocked the lemma card it pointed at. The
+  design record is deconjugation-kickoff.md.
+
 ## 1.3: shipped
 
 Everything since the v1.2.0 tag went out as one release, uploaded
@@ -187,8 +210,9 @@ anchors.
   entry states the fact it used to guess. The omnibox becomes the All
   words search remotely. native.json: 15,527 quality-filtered lemmas,
   1.24 MB, lazily loaded only when flagged; off is byte-identical.
-  Known gap by design: no deconjugation, so native verbs/adjectives
-  are reachable from typed search and exact-form selection only.
+  Known gap by design at the time: no deconjugation, so native
+  verbs/adjectives were reachable from typed search and exact-form
+  selection only (closed on main after 1.3, see Since 1.3).
   Chips, char cards, and saved words are untouched (native cards ship
   without a star until a native key namespace exists).
 - **Romanized search v2.** The rr maps are retired for a function:
@@ -467,23 +491,9 @@ correctness" bullet of 1.1, the same way 1.1.1 folded into 1.2.
   sense with nothing to attach it to. A small proper-noun lane in
   the native build (Wiktionary tags them) would give them cards and
   Korean definitions in one step.
-- **Deconjugation for native words.** In design as of 2026-09-05,
-  SPEC addendum written; being built next. Native verbs and adjectives
-  were reachable only by their dictionary form; a selected 먹었어 found
-  nothing. Design: a generous ending-stripping generator gated by
-  native.json, no shipped tables, measured against Wiktionary's
-  conjugation tables (336,686 form-lemma pairs; the prototype reached
-  91.6% recall before the missing endings were added). Settled by
-  mockups: the lemma's card with a one-line note above the head
-  ("먹었어 → form of 먹다"), picked over putting the selected form in
-  the head (crowded the hybrid card) and over naming the grammar (see
-  the next item). A form that is also a dictionary word does not
-  deconjugate: 7.7% of hanja words' hangul would otherwise grow lemma
-  cards (남자 to 남다, 전화 to 접다). Verb lemmas gain a frequency
-  bucket from subtitle counts so ambiguous forms (사는) order on
-  evidence.
-- **Grammar labels on the form note.** Mockup C from the deconjugation
-  round: "먹었어 → form of 먹다 · past, casual" (한국어 "과거, 해체").
+- **Grammar labels on the form note.** Deconjugation itself is done
+  (Since 1.3). Mockup C from that round: "먹었어 → form of 먹다 ·
+  past, casual" (한국어 "과거, 해체").
   Deferred because the labels are a taxonomy in two languages, not a
   lookup: every ending needs an English and a Korean name, stacked
   endings need an ordering rule, and the Korean side uses grammarians'

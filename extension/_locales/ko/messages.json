@@ -135,6 +135,25 @@
   "hedge_lessCommon_note": {
     "message": "보통은 고유어입니다. 이 한자 표기는 동음어입니다."
   },
+  "form_note": {
+    "message": "$LEMMA$의 활용형",
+    "placeholders": {
+      "lemma": {
+        "content": "$1"
+      }
+    }
+  },
+  "aria_formOf": {
+    "message": "$FORM$, $LEMMA$의 활용형",
+    "placeholders": {
+      "form": {
+        "content": "$1"
+      },
+      "lemma": {
+        "content": "$2"
+      }
+    }
+  },
   "hint_nativeInAll": {
     "message": "전체 단어에 고유어 $COUNT$개",
     "placeholders": {
