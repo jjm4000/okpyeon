@@ -3142,7 +3142,8 @@ lemmas by SUMMED subtitle count of its Wiktionary conjugation forms (the
 lemma itself), ranks broken by the lemma string. A lemma with no counted
 form has no `f`. This is data, computed once at build; the runtime never
 touches the tables. Anchors: 하다, 있다, 되다, 가다 are bucket 0 or 1;
-살다 ranks above 사다; a lemma absent from the extract has no `f`.
+살다's bucket is no higher than 사다's; a lemma absent from the extract
+has no `f`.
 Non-verb entries never carry `f` (the guard strips it).
 
 ### Gate and lookup semantics (extension/lookup.js)
@@ -3157,7 +3158,13 @@ Non-verb entries never carry `f` (the guard strips it).
   a dictionary word explains the run whole at that length or longer: a
   native headword (already handled by the whole-word check), or a rule
   3b span anchored at the first syllable reaching as far, unless every
-  spelling of that span is rare.
+  spelling of that span is rare. In that rare case the claim still takes
+  the syllables off rule 3b (the claim mechanics are one rule), so the
+  rare spelling is not rendered and the lemma is the whole answer:
+  selecting 살기 shows 살다 with its note, and the rare 殺氣 stays
+  reachable by typing the hanja. Built 2026-09-05 this way; a Same
+  sound row for the rare spelling on the lemma card is a possible later
+  refinement, not part of this addendum.
 - Claim mechanics: identical to the whole-word check in BOTH
   buildMatches and buildNativeMatches (the flagged path only): rule 3b
   and the native pass never see the claimed syllables; what the claim
@@ -3170,7 +3177,11 @@ Non-verb entries never carry `f` (the guard strips it).
   existing fields (origin, parts, glosses) unchanged. Dedupe by (word,
   pos) is unchanged; a lemma reached directly as a whole word keeps the
   direct match without `form`. Survivors order by `f` (absent compares
-  as worst), then generator order.
+  as worst), then generator order. The bucket is coarse on purpose (the
+  words.json scale): 살다 and 사다 sum to 8,976 and 7,467 subtitle
+  tokens over their forms, both bucket 2, so 사는 renders 사다 first on
+  generator order (bare stem before ㄹ-drop). Both cards render; which
+  leads is not a claim worth a finer key.
 - Response shape otherwise untouched; `form` is the only new field, and
   the guard (guardKo/attachKo paths and the worker's native guard)
   passes it through as a non-empty hangul string or drops it.
@@ -3220,21 +3231,28 @@ Non-verb entries never carry `f` (the guard strips it).
   reported. Both read pipeline/cache/kaikki-Korean.jsonl and skip with a
   notice when the cache is absent, like the other data-backed tests.
 - Node, lookup: 먹었어 resolves to 먹다 with form 먹었어; 좋은 to 좋다;
-  공부했어 to 공부하다 with no 工夫 split; 사는 to 살다 before 사다;
+  공부했어 to 공부하다 with no 工夫 split; 사는 to both 살다 and 사다
+  (fixture pins the `f` ordering with distinct buckets; real data leaves
+  the order to the generator);
   먹기가 to 먹다 with the josa left; 남자, 사실, 학생은 and 국민이 never
   deconjugate; a run whose only whole explanation is rare deconjugates
   and the lemma leads; 하늘, 가공되다 and every unflagged response are
   byte-identical to today; `f` never on non-verb entries.
-- Node, romanized parity: mushihaesseo now roots as 무시하다 with the
-  form note (CLASS_WHOLE, superseding the class-C pin) and 無視 as its
-  part; balgyeonhaesseo roots as 발견하다; gukmin, gungmin, kukmin,
-  haneul, su and toddlf unchanged.
+- Node, romanized parity: mushihaesseo now resolves `to` 무시했어 (the
+  hangul candidate stays the from/to mapping) with an empty `matches`
+  and the native match 무시하다 carrying form 무시했어 and its 無視 + 하다
+  parts (CLASS_WHOLE, superseding the class-C pin); balgyeonhaesseo
+  likewise resolves to 발견했어 with 발견하다 (the 沿海 splinter is shut
+  out by the class rule); the unflagged class-C pins stand; gukmin,
+  gungmin, kukmin, haneul, su and toddlf unchanged. The renderer keys
+  the view by the lemma and uses the surface as srcText.
 - Harness (both pages, fixtures extended with 먹다, 좋다, 살다, 사다):
   먹었어 opens 먹다 with the note; 좋은 opens 좋다; 공부했어 opens the
   공부하다 hybrid card with its chips and no split cards; 사는 renders
-  살다 then 사다, each noted; 남자 renders 男子 with no lemma card; the
-  crumb reads 먹다 for a single lemma and 사는 for two; Korean-mode note
-  copy; English snapshots unchanged.
+  both 살다 and 사다 (fixture buckets decide the order), each noted;
+  남자 renders 男子 with no lemma card; the crumb reads 먹다 for a single
+  lemma and 사는 for two; Korean-mode note copy; English snapshots
+  unchanged.
 - Build verify: `f` present on 하다 and 살다, absent on 하늘, 살다 below
   사다.
 

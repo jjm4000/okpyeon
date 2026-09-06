@@ -3104,12 +3104,17 @@ test("flagged: distinct POS entries stay distinct matches; empty is omitted", ()
   const res = lookup("국민", nativeData, { native: true });
   assert.equal("nativeMatches" in res, false);
   assert.deepEqual(res.matches, lookup("국민", data).matches);
-  // No deconjugation (documented gap): only the exact dictionary form hits.
-  assert.deepEqual(
-    lookup("먹다", nativeData, { native: true }).nativeMatches.map((m) => m.word),
-    ["먹다"]
-  );
-  assert.equal("nativeMatches" in lookup("먹었다", nativeData, { native: true }), false);
+  // The exact dictionary form hits directly, with no `form` on the match.
+  // The "no deconjugation" pin that stood here (먹었다 finding nothing) was
+  // superseded on 2026-09-05 by the deconjugation addendum: 먹었다 is 먹 +
+  // 었 + 다, and the base fixture's own 먹다 answers it, marked with the
+  // form. The addendum's tests are the section below the hybrid fixtures.
+  assert.deepEqual(lookup("먹다", nativeData, { native: true }).nativeMatches, [
+    { kind: "native", word: "먹다", pos: "verb", glosses: ["to eat"] },
+  ]);
+  assert.deepEqual(lookup("먹었다", nativeData, { native: true }).nativeMatches, [
+    { kind: "native", word: "먹다", pos: "verb", glosses: ["to eat"], form: "먹었다" },
+  ]);
 });
 
 // ---------------------------------------------------------------------------
@@ -3324,6 +3329,281 @@ await testAsync("hybrid parts: guardNative and attachKo spread parts through", a
   const attached = attachKo(res, ko);
   assert.deepEqual(attached.nativeMatches[0].parts, hybridLead.parts);
   assert.deepEqual(attached.nativeMatches[0].ko, ko.natives["가공되다|verb"]);
+});
+
+// ---------------------------------------------------------------------------
+// Deconjugation ADDENDUM (2026-09-05).
+// ---------------------------------------------------------------------------
+
+/**
+ * The deconjugation fixtures beside the hybrid bundle: the lemmas the SPEC
+ * anchors (먹다, 좋다, 살다 above 사다 by f, 있다, 하다) plus a noun 사다 that
+ * must never join through a form, and on the hanja side 下地 (하지, a word
+ * that is also the form 하 + 지) and the rare-only 殺氣 (살기, the form 살 +
+ * 기). A separate bundle again, so every earlier pin keeps its fixture.
+ */
+const deconjWords = {
+  ...hybridWords,
+  words: {
+    ...hybridWords.words,
+    下地: [{ hangul: "하지", glosses: ["low ground"] }],
+    殺氣: [{ hangul: "살기", glosses: ["murderous intent"], rare: true }],
+  },
+  byHangul: { ...hybridWords.byHangul, 하지: ["下地"], 살기: ["殺氣"] },
+};
+const deconjNative = {
+  version: 1,
+  maxLen: 4,
+  words: {
+    ...hybridNative.words,
+    먹다: [{ pos: "verb", glosses: ["to eat"], f: 2 }],
+    좋다: [{ pos: "adj", glosses: ["to be good"], f: 1 }],
+    살다: [{ pos: "verb", glosses: ["to live"], f: 2 }],
+    사다: [
+      { pos: "verb", glosses: ["to buy"], f: 3 },
+      { pos: "noun", glosses: ["a purchase"] },
+    ],
+    있다: [
+      { pos: "adj", glosses: ["to exist"], f: 0 },
+      { pos: "verb", glosses: ["to stay"], f: 0 },
+    ],
+    하다: [{ pos: "verb", glosses: ["to do"], f: 0 }],
+  },
+};
+const deconjData = { hanja, words: deconjWords, variants, native: deconjNative };
+const formMatch = (word, pos, glosses, form, extra) => ({
+  kind: "native",
+  word,
+  pos,
+  glosses,
+  ...(extra || {}),
+  form,
+});
+
+test("deconjugation: a conjugated form resolves to its lemma, marked with the form", () => {
+  // 먹었어 is 먹 + 었 + 어: the lemma's ordinary match, `form` added, and
+  // nothing else (the run is claimed, so rule 3b never sees it).
+  assert.deepEqual(lookup("먹었어", deconjData, { native: true }), {
+    ok: true,
+    matches: [],
+    nativeMatches: [formMatch("먹다", "verb", ["to eat"], "먹었어")],
+  });
+  // An adjective: 좋은 is 좋 + 은.
+  assert.deepEqual(lookup("좋은", deconjData, { native: true }).nativeMatches, [
+    formMatch("좋다", "adj", ["to be good"], "좋은"),
+  ]);
+  // A direct lookup of the lemma carries no `form`.
+  assert.deepEqual(lookup("먹다", deconjData, { native: true }).nativeMatches, [
+    { kind: "native", word: "먹다", pos: "verb", glosses: ["to eat"] },
+  ]);
+  // A lemma reached both ways keeps the direct match, whichever order the
+  // runs arrive in; dedupe by (word, pos) is unchanged.
+  for (const q of ["먹다 먹었어", "먹었어 먹다"]) {
+    assert.deepEqual(lookup(q, deconjData, { native: true }).nativeMatches, [
+      { kind: "native", word: "먹다", pos: "verb", glosses: ["to eat"] },
+    ], `query ${q}`);
+  }
+});
+
+test("deconjugation: the hybrid lemma claims the run and the Sino split is not rendered", () => {
+  // 공부했어 is 공부하 + 였 + 어. The hybrid entry rides with its parts (하다
+  // is a fixture entry in this bundle, so its chip is live).
+  assert.deepEqual(lookup("공부했어", deconjData, { native: true }), {
+    ok: true,
+    matches: [],
+    nativeMatches: [
+      formMatch("공부하다", "verb", ["to study"], "공부했어", {
+        origin: "hybrid",
+        parts: [{ hanja: "工夫", hangul: "공부" }, { hangul: "하다", native: true }],
+      }),
+    ],
+  });
+  // 가공됐어 is 가공되 + 었 + 어: 加工 IS a fixture word, and the claim keeps
+  // rule 3b off it, so no 加工 word match joins the response.
+  const processed = lookup("가공됐어", deconjData, { native: true });
+  assert.deepEqual(processed.matches, []);
+  assert.deepEqual(processed.nativeMatches.map((m) => [m.word, m.form]), [["가공되다", "가공됐어"]]);
+  assert.deepEqual(processed.nativeMatches[0].parts, hybridLead.parts);
+});
+
+test("deconjugation: several lemmas order by f, then generator order; only verb and adj entries join", () => {
+  // 사는 is 살 + 는 (ㄹ-drop) or 사 + 는. The generator proposes 사다 first
+  // (cheaper), f reorders: 살다 (f 2) leads 사다 (f 3). The noun 사다 never
+  // joins through a form.
+  assert.deepEqual(lookup("사는", deconjData, { native: true }).nativeMatches, [
+    formMatch("살다", "verb", ["to live"], "사는"),
+    formMatch("사다", "verb", ["to buy"], "사는"),
+  ]);
+  // Equal f keeps generator order: with 살다 at 3 beside 사다 at 3, 사다 leads.
+  const tied = {
+    ...deconjData,
+    native: {
+      ...deconjNative,
+      words: { ...deconjNative.words, 살다: [{ pos: "verb", glosses: ["to live"], f: 3 }] },
+    },
+  };
+  assert.deepEqual(
+    lookup("사는", tied, { native: true }).nativeMatches.map((m) => m.word),
+    ["사다", "살다"]
+  );
+  // Absent f compares as worst.
+  const unranked = {
+    ...deconjData,
+    native: {
+      ...deconjNative,
+      words: { ...deconjNative.words, 사다: [{ pos: "verb", glosses: ["to buy"] }] },
+    },
+  };
+  assert.deepEqual(
+    lookup("사는", unranked, { native: true }).nativeMatches.map((m) => m.word),
+    ["살다", "사다"]
+  );
+  // A lemma with two conjugating entries joins both, in entry order.
+  assert.deepEqual(lookup("있었어", deconjData, { native: true }).nativeMatches, [
+    formMatch("있다", "adj", ["to exist"], "있었어"),
+    formMatch("있다", "verb", ["to stay"], "있었어"),
+  ]);
+});
+
+test("deconjugation: the one-syllable remainder rule leaves the josa to the ordinary flow", () => {
+  // 먹기가: the whole run is no form, 먹기 is 먹 + 기, and the josa 가 goes
+  // through rule 3b and the native pass, which have nothing for it.
+  assert.deepEqual(lookup("먹기가", deconjData, { native: true }), {
+    ok: true,
+    matches: [],
+    nativeMatches: [formMatch("먹다", "verb", ["to eat"], "먹기")],
+  });
+  // With a real word behind it the run still splits as today: the form
+  // claims only the whole or the whole minus one syllable.
+  const behind = lookup("먹었어국민", deconjData, { native: true });
+  assert.deepEqual(wordsOf(behind.matches).map((m) => m.canonical), ["國民"]);
+  assert.equal("nativeMatches" in behind, false);
+});
+
+test("deconjugation: a form that is also a dictionary word never deconjugates", () => {
+  // 하지 is 下地 and would be 하 + 지; 사고 is 事故 and 思考 and would be 사 + 고;
+  // 학생은 and 국민이 hold a hanja word at the shorter length. Every one of
+  // them answers exactly as the unflagged lookup does, no lemma card.
+  const bare = { hanja, words: deconjWords, variants };
+  for (const q of ["하지", "사고", "학생은", "국민이", "국민이라"]) {
+    const res = lookup(q, deconjData, { native: true });
+    assert.equal("nativeMatches" in res, false, `query ${q}`);
+    assert.equal(JSON.stringify(res), JSON.stringify(lookup(q, bare)), `query ${q}`);
+    assert.ok(res.matches.some((m) => m.kind === "word"), `query ${q} keeps its hanja word`);
+  }
+  // A native headword at the shorter length blocks too: 하늘이 is 하늘 + 이,
+  // never a form, and 우리 (a pronoun headword) is not 울다's 울 + 이.
+  assert.deepEqual(
+    lookup("하늘이", deconjData, { native: true }).nativeMatches.map((m) => [m.word, m.form]),
+    [["하늘", undefined]]
+  );
+});
+
+test("deconjugation: a run whose only whole explanation is rare deconjugates and the lemma leads", () => {
+  // 살기: 殺氣 is the fixture's only spelling and it is rare, so it does not
+  // block; 살기 is 살 + 기 and the lemma claims the run.
+  assert.deepEqual(lookup("살기", deconjData, { native: true }), {
+    ok: true,
+    matches: [],
+    nativeMatches: [formMatch("살다", "verb", ["to live"], "살기")],
+  });
+  // Unflagged, the rare spelling answers as it always did.
+  const off = lookup("살기", deconjData);
+  assert.deepEqual(wordsOf(off.matches).map((m) => [m.canonical, m.rare]), [["殺氣", true]]);
+  // Make the spelling attested and the block returns.
+  const attested = {
+    ...deconjData,
+    words: {
+      ...deconjWords,
+      words: { ...deconjWords.words, 殺氣: [{ hangul: "살기", glosses: ["murderous intent"] }] },
+    },
+  };
+  assert.equal("nativeMatches" in lookup("살기", attested, { native: true }), false);
+});
+
+test("deconjugation: headwords, 하늘 and unflagged responses are byte-identical to before", () => {
+  // Headword answers are the hybrid bundle's, form-free.
+  for (const q of ["하늘", "하늘이", "가공되다", "가공되다가", "국민", "사랑"]) {
+    assert.equal(
+      JSON.stringify(lookup(q, deconjData, { native: true })),
+      JSON.stringify(lookup(q, hybridData, { native: true })),
+      `query ${q}`
+    );
+  }
+  // Unflagged: the generator never runs. 먹었어 finds nothing, as before.
+  for (const q of ["먹었어", "좋은", "공부했어", "사는", "살기", "meogeosseo"]) {
+    const bare = { hanja, words: deconjWords, variants };
+    assert.equal(
+      JSON.stringify(lookup(q, deconjData, { interpret: true })),
+      JSON.stringify(lookup(q, bare, { interpret: true })),
+      `query ${q}`
+    );
+    assert.equal("nativeMatches" in lookup(q, deconjData), false, `query ${q}`);
+  }
+  assert.deepEqual(lookup("먹었어", deconjData), { ok: true, matches: [] });
+  assert.deepEqual(lookup("먹었어", deconjData), lookup("먹었어", data));
+});
+
+test("deconjugation: romanized parity classes the form-claimed candidate CLASS_WHOLE", () => {
+  // meogeosseo de-romanizes to 먹었어, which the form claims whole, so `to`
+  // is the hangul (not the typed text of a partial parse) and the lemma is
+  // the whole answer.
+  assert.deepEqual(lookup("meogeosseo", deconjData, { interpret: true, native: true }), {
+    ok: true,
+    matches: [],
+    interpretations: [{ kind: "rr", from: "meogeosseo", to: "먹었어", start: 0 }],
+    nativeMatches: [formMatch("먹다", "verb", ["to eat"], "먹었어")],
+  });
+  // The hybrid through romanization: no 加工 split rides along.
+  const processed = lookup("gagongdwaesseo", deconjData, { interpret: true, native: true });
+  assert.deepEqual(processed.interpretations, [
+    { kind: "rr", from: "gagongdwaesseo", to: "가공됐어", start: 0 },
+  ]);
+  assert.deepEqual(processed.matches, []);
+  assert.deepEqual(processed.nativeMatches.map((m) => [m.word, m.form]), [["가공되다", "가공됐어"]]);
+});
+
+test("deconjugation: the omnibox suggests the lemma as a direct native match does", () => {
+  assert.deepEqual(
+    buildOmniboxSuggestions("먹었어", deconjData, { native: true }),
+    buildOmniboxSuggestions("먹다", deconjData, { native: true })
+  );
+  assert.deepEqual(
+    buildOmniboxSuggestions("사는", deconjData, { native: true }).map((r) => r.content),
+    ["살다", "사다"]
+  );
+  assert.deepEqual(
+    buildOmniboxSuggestions("meogeosseo", deconjData, { interpret: true, native: true }).map((r) => r.content),
+    ["먹다"]
+  );
+  // Unflagged, nothing.
+  assert.deepEqual(buildOmniboxSuggestions("먹었어", deconjData), []);
+});
+
+await testAsync("deconjugation: `form` rides the worker path; junk never reaches the wire", async () => {
+  const { guardNative, attachKo } = await import("../extension/background.js");
+  // An entry carrying a `form` field of its own (junk: the field is the
+  // match's, minted from the run) passes the guard untouched, and the match
+  // still carries the claimed surface, never the entry's string.
+  const guarded = guardNative({
+    version: 1,
+    maxLen: 4,
+    words: {
+      ...deconjNative.words,
+      먹다: [{ pos: "verb", glosses: ["to eat"], f: 2, form: "junk" }],
+    },
+  });
+  assert.equal(guarded.words.먹다[0].form, "junk", "the guard passes the table through");
+  const bundle = { ...deconjData, native: guarded };
+  const res = lookup("먹었어", bundle, { native: true });
+  assert.deepEqual(res.nativeMatches, [formMatch("먹다", "verb", ["to eat"], "먹었어")]);
+  assert.equal("form" in lookup("먹다", bundle, { native: true }).nativeMatches[0], false);
+  // ko attaches by the lemma's key, so the lemma's definition rides the
+  // form-derived match and `form` is left as is.
+  const ko = { version: 1, words: {}, natives: { "먹다|verb": { d: ["음식을 먹다."], s: 1 } }, chars: {} };
+  const attached = attachKo(res, ko);
+  assert.equal(attached.nativeMatches[0].form, "먹었어");
+  assert.deepEqual(attached.nativeMatches[0].ko, ko.natives["먹다|verb"]);
 });
 
 test("the native pass is bounded by native.json's declared maxLen", () => {
@@ -4865,41 +5145,67 @@ await testAsync("smoke: real native.json resolves 하늘 / 사랑 / 무리 / tog
     { hangul: "하다", native: true },
   ]);
   assert.ok(!mushihadaNative.includes("아다"), "the splinter junk 아다 must not");
-  // mushihaesseo stays class C (nothing covers 했어): it roots as the TYPED
-  // text and carries no splinter native matches. The anchored-coverage key
-  // leads it with 無視: the 무시-anchored parses (anchored 2) order before
-  // the splinter 뭇이해써 (理解, anchored 0), whatever the frequencies say.
+  // mushihaesseo, flagged. The class-C pin that stood here (root as typed,
+  // 無視 leading a partial parse) was superseded on 2026-09-05 by the
+  // deconjugation addendum: 무시했어 is 무시하 + 였 + 어, the generator
+  // proposes 무시하다 and native.json holds it as a verb, so the form claims
+  // the whole candidate (CLASS_WHOLE, no 無視 split rendered). `to` is the
+  // candidate itself, the surface the note line shows, and the match is the
+  // lemma's ordinary hybrid entry carrying `form`. The unflagged pins above
+  // stand: without the native table the query is still the class-C parse.
   const mushihaesseo = sayAll("mushihaesseo");
-  assert.deepEqual(
-    (mushihaesseo.interpretations || []).map((i) => [i.kind, i.to]),
-    [["rr", "mushihaesseo"]],
-    "flagged mushihaesseo roots as typed (class C)"
-  );
-  assert.equal(mushihaesseo.matches[0].kind, "word");
-  assert.equal(mushihaesseo.matches[0].canonical, "無視", "flagged mushihaesseo leads with 無視");
+  assert.deepEqual(mushihaesseo.interpretations, [
+    { kind: "rr", from: "mushihaesseo", to: "무시했어", start: 0 },
+  ]);
+  assert.deepEqual(mushihaesseo.matches, [], "flagged mushihaesseo renders no 無視 split");
+  const mushihaesseoNative = mushihaesseo.nativeMatches || [];
+  assert.equal(mushihaesseoNative[0] && mushihaesseoNative[0].word, "무시하다");
+  assert.equal(mushihaesseoNative[0].form, "무시했어", "the match carries the claimed form");
+  assert.equal(mushihaesseoNative[0].pos, "verb");
+  assert.equal(mushihaesseoNative[0].origin, "hybrid");
+  assert.deepEqual(mushihaesseoNative[0].parts, [
+    { hanja: "無視", hangul: "무시" },
+    { hangul: "하다", native: true },
+  ]);
   assert.ok(
-    !(mushihaesseo.nativeMatches || []).some((m) => m.word === "아다"),
-    "no splinter native matches on mushihaesseo"
+    mushihaesseoNative.every((m) => m.form === "무시했어" && m.word !== "아다"),
+    "every native match on mushihaesseo is a lemma of the form; no splinter junk"
   );
-  // Ambiguous romanization, flagged: both maximal parses of balgyeonhaesseo
-  // render (inclusivity is user-directed), anchoring deciding the order
-  // before frequency is consulted: 발견했어's 發見 anchors 2, the ㄺ-cluster
-  // splinter 밝연해써's 沿海 anchors 0. Root stays typed.
+  // balgyeonhaesseo, flagged: the same supersession (2026-09-05). Before the
+  // addendum both maximal parses rendered (發見 anchored 2 before the
+  // ㄺ-cluster splinter 밝연해써's 沿海) with the root as typed; now 발견했어
+  // is 발견하다's form, a whole answer, and the class rule shuts the
+  // splinter out. Unflagged (above), the two-parse pin still stands.
   const balgyeon = sayAll("balgyeonhaesseo");
-  assert.deepEqual(
-    (balgyeon.interpretations || []).map((i) => [i.kind, i.to]),
-    [["rr", "balgyeonhaesseo"]],
-    "flagged balgyeonhaesseo roots as typed (class C)"
-  );
-  assert.equal(balgyeon.matches[0].kind, "word");
-  assert.equal(balgyeon.matches[0].canonical, "發見", "flagged balgyeonhaesseo leads with 發見");
-  const balgyeonWords = balgyeon.matches
-    .filter((m) => m.kind === "word")
-    .map((m) => m.canonical);
-  assert.ok(
-    balgyeonWords.indexOf("沿海") > balgyeonWords.indexOf("發見"),
-    "flagged: the 沿海 splinter renders too, after 發見"
-  );
+  assert.deepEqual(balgyeon.interpretations, [
+    { kind: "rr", from: "balgyeonhaesseo", to: "발견했어", start: 0 },
+  ]);
+  assert.deepEqual(balgyeon.matches, [], "flagged balgyeonhaesseo renders no 發見 or 沿海 split");
+  const balgyeonNative = balgyeon.nativeMatches || [];
+  assert.equal(balgyeonNative[0] && balgyeonNative[0].word, "발견하다");
+  assert.equal(balgyeonNative[0].form, "발견했어");
+  // The form-that-is-also-a-word rule on real data: 남자 is 男子 and 사실 is
+  // 事實, never 남다 or 살다. 사는, freed of its inflected stub (the build
+  // rule), reaches both 살다 and 사다; the order is the data's f buckets and
+  // is not pinned here (the build verifies 살다 against 사다).
+  for (const q of ["남자", "사실"]) {
+    const r = lookup(q, all, { native: true });
+    assert.ok(!(r.nativeMatches || []).some((m) => m.form !== undefined), `${q} never deconjugates`);
+    assert.ok(r.matches.some((m) => m.kind === "word"), `${q} keeps its hanja word`);
+  }
+  const saneun = lookup("사는", all, { native: true });
+  assert.deepEqual(saneun.matches, []);
+  const saneunLemmas = (saneun.nativeMatches || []).map((m) => m.word).sort();
+  assert.deepEqual(saneunLemmas, ["사다", "살다"], "사는 reaches 살다 and 사다");
+  assert.ok(saneun.nativeMatches.every((m) => m.form === "사는"));
+  // `f` never on a non-verb entry (the guard strips it at build).
+  for (const [word, entries] of Object.entries(all.native.words)) {
+    for (const entry of entries) {
+      if (entry.pos !== "verb" && entry.pos !== "adj") {
+        assert.equal("f" in entry, false, `${word}|${entry.pos} carries f`);
+      }
+    }
+  }
   // Unflagged, the romanization stays Sino-only: no native rides along.
   assert.equal("nativeMatches" in lookup("haneul", all, { interpret: true }), false);
 

@@ -10,6 +10,7 @@
 
 import { qwertyToHangul } from "./dubeolsik.js";
 import { deromanize } from "./deromanize.js";
+import { deconjugate } from "./deconjugate.js";
 
 /** Rule 1: cap the input at 20 relevant (Han + Hangul) characters. */
 export const MAX_RELEVANT_CHARS = 20;
@@ -697,7 +698,12 @@ export function buildMatches(text, data, native) {
       // entire run keeps rule 3b off it; the native pass answers for it in
       // buildNativeMatches. What the claim leaves (a josa at most) is still
       // rule 3b's, so the two passes agree syllable for syllable.
-      const claimed = native === true ? nativeWholeLength(run.chars, bundle) : 0;
+      // Deconjugation ADDENDUM: a conjugated verb or adjective claims the
+      // run the same way when no headword does (먹었어 is 먹다's, so rule 3b
+      // never splits 工夫 off 공부했어). Flagged only, like the headword
+      // claim, so the generator never runs on the unflagged path.
+      let claimed = native === true ? nativeWholeLength(run.chars, bundle) : 0;
+      if (native === true && claimed === 0) claimed = deconjugatedLength(run.chars, bundle);
       const rest = claimed > 0 ? run.chars.slice(claimed) : run.chars;
       // Rule 3b: hangul reverse lookup.
       for (const span of segmentHangulRun(rest, byHangul, maxHangulLen)) {
@@ -779,8 +785,14 @@ export function buildMatches(text, data, native) {
  * table get its own greedy longest-match pass, under the same span rules as
  * rule 3b (min 2 syllables, longest first) but bounded by native.json's own
  * `maxLen`. So selecting 하늘이 finds 하늘, the greedy pass leaving the josa
- * unmatched exactly as rule 3b leaves it on 국민이. Conjugation is not
- * deconjugated (documented gap).
+ * unmatched exactly as rule 3b leaves it on 국민이.
+ *
+ * Deconjugation ADDENDUM (2026-09-05): the documented gap closed. A hangul
+ * run no headword claims is offered to the generator (deconjugatedClaim),
+ * and a conjugated verb or adjective claims the run for its lemmas the way
+ * a headword does: 먹었어 answers with 먹다 carrying `form: "먹었어"`, and
+ * 공부했어 with the 공부하다 hybrid, never the 工夫 split. Flagged path only,
+ * so the generator never runs for an unflagged response.
  *
  * Whole-word precedence ADDENDUM (2026-09-05): ONE exception to the Sino
  * resolver's authority. Before rule 3b touches a hangul run, the native
@@ -842,6 +854,119 @@ function nativeWholeLength(chars, bundle) {
 }
 
 /**
+ * Deconjugation ADDENDUM: the POS entries a form joins. A lemma's other
+ * entries (the noun 사고 beside the verb 사다's forms) never come through a
+ * form; only a verb or an adjective conjugates.
+ */
+const CONJUGATING_POS = Object.freeze(["verb", "adj"]);
+
+/** The verb and adj entries of one native key, else []. */
+function conjugatingEntries(nativeWords, lemma) {
+  return usableNativeEntries(nativeWords, lemma).filter((e) => CONJUGATING_POS.includes(e.pos));
+}
+
+/**
+ * The generator's output per form, remembered. The gate asks for one form
+ * from three places (buildMatches, buildNativeMatches, coverageOf) and the
+ * romanized path asks for up to RESOLVE_CAP candidates per query, so the
+ * memo keeps the generator to one run per distinct form. Pure input to pure
+ * output, so the memo can never go stale; it is bounded by being cleared
+ * when it fills, which costs one recomputation and nothing else.
+ */
+const DECONJUGATE_MEMO_CAP = 1024;
+const deconjugateMemo = new Map();
+
+function deconjugateMemoized(form) {
+  const known = deconjugateMemo.get(form);
+  if (known !== undefined) return known;
+  if (deconjugateMemo.size >= DECONJUGATE_MEMO_CAP) deconjugateMemo.clear();
+  const lemmas = deconjugate(form);
+  deconjugateMemo.set(form, lemmas);
+  return lemmas;
+}
+
+/**
+ * The deconjugation gate (SPEC "Deconjugation" addendum), flagged path only.
+ * Runs on a hangul run the native whole-word check declined, and answers with
+ * how many syllables a conjugated verb or adjective claims plus the lemmas
+ * that explain it: 먹었어 is 먹다 (먹 + 었 + 어), 사는 is 살다 (ㄹ-drop) or
+ * 사다. The generator proposes, native.json disposes: a candidate survives
+ * only as a headword with a verb or adj entry.
+ *
+ * Two lengths are tried, the whole run and the run minus a one-syllable
+ * remainder, the remainder rule nativeWholeLength has (먹기가 finds 먹다 at
+ * 먹기 and the josa goes on to the ordinary flow). A run that a dictionary
+ * word already explains at the tried length or further is that word and
+ * never deconjugates (남자 is 男子, not 남다; 사고 is 事故, not 사다): a native
+ * headword anchored at the first syllable blocks outright, and a rule 3b
+ * span does unless every spelling of it is rare (collapseEntries' rule), in
+ * which case the lemma leads as a native entry would. The block is by
+ * length, so a shorter form can never slip in under a longer word: 학생은
+ * cannot claim 학생 + 은 as a form when 學生 explains 학생.
+ *
+ * @param {string[]} chars one hangul run
+ * @param {object} bundle parsed data bundle (`native` and `words` consulted)
+ * @returns {{length:number, lemmas:string[]}} the claim; length 0 and no
+ *          lemmas when nothing conjugated explains the run
+ */
+function deconjugatedClaim(chars, bundle) {
+  const none = { length: 0, lemmas: [] };
+  if (chars.length < MIN_HANGUL_WORD_LEN) return none;
+  const nativeWords = (bundle.native && bundle.native.words) || {};
+  const wordTable = (bundle.words && bundle.words.words) || {};
+  const byHangul = (bundle.words && bundle.words.byHangul) || {};
+
+  // The longest whole explanation anchored at the first syllable: any native
+  // headword, or a hanja spelling with an attested (non-rare) sense.
+  const isNativeWord = (key) => usableNativeEntries(nativeWords, key).length > 0;
+  const nativeLen = anchoredLength(chars, isNativeWord, MIN_HANGUL_WORD_LEN, nativeMaxLenOf(bundle.native));
+  const isAttestedSinoWord = (key) =>
+    hasOwn(byHangul, key) &&
+    Array.isArray(byHangul[key]) &&
+    byHangul[key].some((spelling) => {
+      const sense = typeof spelling === "string" ? collapseEntries(wordTable[spelling], key) : null;
+      return sense !== null && sense.rare !== true;
+    });
+  const sinoLen = anchoredLength(chars, isAttestedSinoWord, MIN_HANGUL_WORD_LEN, maxHangulLenOf(bundle.words));
+  const blocked = Math.max(nativeLen, sinoLen);
+
+  const lengths = [chars.length];
+  if (chars.length - 1 >= MIN_HANGUL_WORD_LEN) lengths.push(chars.length - 1);
+  for (const length of lengths) {
+    if (length <= blocked) return none;
+    const form = chars.slice(0, length).join("");
+    const lemmas = deconjugateMemoized(form).filter(
+      (lemma) => conjugatingEntries(nativeWords, lemma).length > 0
+    );
+    if (lemmas.length > 0) return { length, lemmas };
+  }
+  return none;
+}
+
+/** How many syllables of a hangul run a conjugated form claims, else 0. */
+function deconjugatedLength(chars, bundle) {
+  return deconjugatedClaim(chars, bundle).length;
+}
+
+/**
+ * The best (lowest) lemma frequency bucket among a lemma's conjugating
+ * entries; absent compares as worst, the convention every f comparison here
+ * follows.
+ */
+function lemmaFrequency(nativeWords, lemma) {
+  let best = Infinity;
+  for (const entry of conjugatingEntries(nativeWords, lemma)) {
+    if (Number.isInteger(entry.f) && entry.f < best) best = entry.f;
+  }
+  return best;
+}
+
+/** True for a non-empty string of hangul only: what a `form` may carry. */
+function isHangulString(text) {
+  return typeof text === "string" && text !== "" && [...text].every(isHangul);
+}
+
+/**
  * Hybrid parts ADDENDUM: the entry's `parts`, validated, for the wire. Each
  * part keeps its `hangul` and, for a hanja segment, its `hanja`; a hangul-only
  * part additionally carries `native: true` when the native table holds that
@@ -876,7 +1001,10 @@ function nativePartsOf(entry, nativeWords) {
  *
  * @param {string} text raw query or selection
  * @param {{native?:object, words?:object, variants?:object}} data parsed data bundle
- * @returns {Array<{kind:"native", word:string, pos:string, glosses:string[], origin?:string}>}
+ * Deconjugation ADDENDUM: a match reached through a conjugated form carries
+ * `form`, the claimed surface; a direct match never does.
+ *
+ * @returns {Array<{kind:"native", word:string, pos:string, glosses:string[], origin?:string, form?:string}>}
  */
 export function buildNativeMatches(text, data) {
   const bundle = data || {};
@@ -889,15 +1017,23 @@ export function buildNativeMatches(text, data) {
   const nativeMaxLen = nativeMaxLenOf(bundle.native);
 
   const out = [];
-  const seen = new Set();
+  /** @type {Map<string, object>} "word|pos" -> the emitted match */
+  const seen = new Map();
 
   const entriesOf = (word) => usableNativeEntries(nativeWords, word);
 
-  const joinNative = (word) => {
-    for (const entry of entriesOf(word)) {
+  // Deconjugation ADDENDUM: `form` is the claimed surface a lemma was reached
+  // through (먹었어 on the 먹다 match), absent on a direct match. Dedupe by
+  // (word, pos) is unchanged, and a lemma reached directly keeps the direct
+  // match without `form` whichever order the two arrive in.
+  const joinEntries = (word, entries, form) => {
+    for (const entry of entries) {
       const key = `${word}|${entry.pos}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
+      const existing = seen.get(key);
+      if (existing !== undefined) {
+        if (form === null && existing.form !== undefined) delete existing.form;
+        continue;
+      }
       const match = {
         kind: "native",
         word,
@@ -910,7 +1046,25 @@ export function buildNativeMatches(text, data) {
       // validate; absent parts (or junk) add no field.
       const parts = nativePartsOf(entry, nativeWords);
       if (parts !== null) match.parts = parts;
+      // The form is minted from the run's own syllables, so the check is
+      // the wire rule stated once: a non-empty hangul string, or no field.
+      if (form !== null && isHangulString(form)) match.form = form;
+      seen.set(key, match);
       out.push(match);
+    }
+  };
+
+  const joinNative = (word) => joinEntries(word, entriesOf(word), null);
+
+  // The lemmas a conjugated form resolved to, verb and adj entries only,
+  // ordered by lemma frequency (absent last) and then by the generator's
+  // order, which Array.prototype.sort keeps for ties.
+  const joinForm = (form, lemmas) => {
+    const ranked = lemmas
+      .map((lemma, index) => ({ lemma, index, f: lemmaFrequency(nativeWords, lemma) }))
+      .sort((a, b) => (a.f === b.f ? a.index - b.index : a.f - b.f));
+    for (const { lemma } of ranked) {
+      joinEntries(lemma, conjugatingEntries(nativeWords, lemma), form);
     }
   };
 
@@ -942,8 +1096,19 @@ export function buildNativeMatches(text, data) {
       // Whole-word precedence: a native headword for the entire run claims
       // it before the Sino resolver sees a prefix to split off. What it
       // leaves (a josa at most) goes through the ordinary flow below.
-      const claimed = nativeWholeLength(run.chars, bundle);
-      if (claimed > 0) joinNative(run.chars.slice(0, claimed).join(""));
+      // Deconjugation ADDENDUM: failing a headword, a conjugated form claims
+      // the run for its lemmas (먹었어 for 먹다), the same claim buildMatches
+      // made, so the two passes still agree syllable for syllable.
+      let claimed = nativeWholeLength(run.chars, bundle);
+      if (claimed > 0) {
+        joinNative(run.chars.slice(0, claimed).join(""));
+      } else {
+        const claim = deconjugatedClaim(run.chars, bundle);
+        if (claim.length > 0) {
+          claimed = claim.length;
+          joinForm(run.chars.slice(0, claimed).join(""), claim.lemmas);
+        }
+      }
       const rest = claimed > 0 ? run.chars.slice(claimed) : run.chars;
       // Hangul runs: rule 3b spans are authoritative where they exist; the
       // stretches between them get the native-only pass.
@@ -1069,8 +1234,11 @@ function coverageOf(hangul, data, native) {
   };
 
   // Whole-word precedence: the same claim the lookup makes, so a candidate
-  // the native table holds whole measures as the lookup answers it.
-  const claimed = native ? nativeWholeLength(chars, bundle) : 0;
+  // the native table holds whole measures as the lookup answers it. The
+  // deconjugated claim (Deconjugation ADDENDUM) counts the same way: covered
+  // and anchored, so 무시했어 measures as 무시하다's whole answer.
+  let claimed = native ? nativeWholeLength(chars, bundle) : 0;
+  if (native && claimed === 0) claimed = deconjugatedLength(chars, bundle);
   if (claimed > 0) intervals.push([0, claimed]);
   const spans = segmentHangulRun(chars.slice(claimed), byHangul, maxHangulLenOf(bundle.words));
 
@@ -1150,13 +1318,15 @@ function rrInterpretation(raw, data, native) {
   // Pass 2: classify by coverage. Whole is read off the resolved matches
   // (a word match spanning the entire candidate, a reading list, which only
   // ever fires for a whole single syllable, or a native entry for the whole
-  // string); the rest measure their covered syllables.
+  // string, reached directly or as the form the whole string is: 무시했어
+  // is whole through 무시하다's `form`); the rest measure their covered
+  // syllables.
   for (const s of survivors) {
     const len = [...s.hangul].length;
     const whole =
       s.matches.some(
         (m) => (m.kind === "word" && m.surface === s.hangul) || m.kind === "reading"
-      ) || s.nativeMatches.some((m) => m.word === s.hangul);
+      ) || s.nativeMatches.some((m) => m.word === s.hangul || m.form === s.hangul);
     if (whole) {
       s.cls = CLASS_WHOLE;
       s.covered = len;

@@ -119,4 +119,55 @@ versus content.js); headless suites only, never the Browser pane.
 2026-09-05: Jesse chose deconjugation over a 1.4 release. Spike: the
 need measured from subtitles, the Wiktionary tables found and counted,
 the generator prototyped and measured at 91.6% recall with the misses
-diagnosed. Compaction followed; nothing designed or built yet.
+diagnosed. Compaction followed.
+
+2026-09-05, later: design settled and two of three build waves done.
+- Mockups: A (note line above the lemma card) chosen over B (surface in
+  the head) and C (grammar labels); C is a roadmap item; a settings
+  toggle for C was rejected (it would not lower the cost of the label
+  table). SPEC addendum "## Deconjugation" written and amended as the
+  waves reported.
+- Measured reversal: a form that is also a dictionary word does NOT
+  deconjugate (7.7% of hanja keys would otherwise grow lemma cards;
+  남자, 여자, 전화, 사실 among the 54 most frequent). Only all-rare hanja
+  groups let the lemma through, and then the lemma is the whole answer.
+- Generator second pass: layer grammar [요] FINAL [TENSE]{0,2} [HON]
+  stem (free stacking doubled false positives), the missing endings,
+  and phonological conditions on the irregulars. 99.90% recall over
+  335,835 pairs; 3.52% of hanja keys deconjugate (nearly all real forms
+  that coincide with a word). Reference: pipeline/spike_deconjugation.py.
+- Wave 1 (commit fb974b8): extension/deconjugate.js (pure, pinned by
+  test/deconjugate.test.mjs, 13 checks, recall floor 99.5%, precision
+  ceiling 4%); build emits `f` on verb/adj native rows from summed
+  subtitle counts of each lemma's forms; Wiktionary's inflected stub
+  entries (있어, 사는 "topic-marked form of 사", 빨간 "realis adnominal of
+  빨갛다", 고맙습니다) leave native.json: 49 headwords, found because 있어
+  showed up as its own lemma. Verify 143.
+- Wave 2 (this commit): lookup.js deconjugatedClaim beside
+  nativeWholeLength, flagged path only; native matches reached through
+  a form carry `form: "<surface>"`; CLASS_WHOLE for romanized
+  candidates (mushihaesseo now resolves to 무시하다 with the form, the
+  class-C pin superseded); a bounded memo on the generator keeps the
+  vowel-soup timing inside its bound; background.js needed comments
+  only. lookup tests 229, harness 716 and 395 untouched.
+- Paused here at Jesse's request (rate limits).
+
+NEXT (wave 3, one agent, files: extension/content/content.js,
+extension/i18n.js built-in EN table, extension/_locales/en and ko
+messages.json, test-page/index.html and embed.html): the SPEC's
+"### Rendering", "### Copy (binding)" and the Harness bullet under
+"### Tests" are the brief. The test pages resolve through their own
+miniature of the worker (nativeWholeLength and nativeMatchesFor in the
+fixture block; the romanizer is imported for real from
+extension/deromanize.js): the miniature must import extension/deconjugate.js
+the same way and apply the gate against its NATIVE fixture (add 먹다,
+좋다, 살다 f 2, 사다 f 3), keeping the shared fixture blocks byte-identical
+between the two pages. Renderer notes from wave 2: content.js groups
+natives by `group.word === word`, so a form-derived match must render as
+its own native card (the whole-view native lead when it is the only
+lemma; per-group otherwise), never joined to a hanja group of the form.
+Tell the agent not to open the test pages in any browser and to run the
+headless suites only via `python pipeline/run_selfchecks.py --page both`.
+After wave 3: ROADMAP.md moves deconjugation into "Since 1.3", the
+"Known gap by design" line in the 1.3 section gets a pointer, memory
+file updated, then a 1.4 release is the natural next cut.

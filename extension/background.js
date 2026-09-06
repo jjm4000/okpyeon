@@ -75,8 +75,13 @@ const KO_DATA_FILE = "data/ko.json";
  * search v2: the file's `rr` map is dead weight (the generator replaced it;
  * wave 3 removes it from the emit), so the guard no longer carries it.
  * The `words` table is the file's own object, entries untouched, so a
- * field the guard was never taught about (pos "name", `origin`) reaches
- * lookup.js as written.
+ * field the guard was never taught about (pos "name", `origin`, the lemma
+ * frequency `f` the deconjugation gate orders by) reaches lookup.js as
+ * written. Deconjugation ADDENDUM: a native match's `form` (the conjugated
+ * surface a lemma was reached through) is minted by lookup.js from the
+ * run's own syllables, never read off an entry, so a `form` field on a
+ * table entry never reaches the wire; the response path below carries the
+ * match objects as lookup.js built them.
  */
 export function guardNative(raw) {
   const n = raw !== null && typeof raw === "object" ? raw : {};
@@ -285,7 +290,10 @@ export function attachKoRows(rows, ko, kind) {
  * entry's pos is "name", so "서울|name" is a key like any other). The rows a
  * match carries (inline compounds, component-word parts, joined
  * decomposition parts) go through attachKoRows, so every gloss-bearing row
- * in a response has its Korean sense beside it.
+ * in a response has its Korean sense beside it. Deconjugation ADDENDUM: a
+ * match reached through a conjugated form still keys by its lemma ("먹다|verb"
+ * for the 먹었어 match), so the lemma's definition rides the form-derived
+ * match; the surface has no definition of its own and `form` is left as is.
  */
 export function attachKo(result, ko) {
   if (!result || result.ok !== true) return result;
