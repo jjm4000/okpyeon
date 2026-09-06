@@ -429,44 +429,6 @@ correctness" bullet of 1.1, the same way 1.1.1 folded into 1.2.
 
 ## Later / unscheduled
 
-- **Korean language mode: design record.** SHIPPED in 1.3 (see the
-  1.3 section); this entry keeps the decision trail only. Settled
-  by mockups: one Language control (English / 한국어) that switches the whole
-  chrome AND the definitions, defaulting to the browser language on
-  first run; Korean definitions replace English on word cards; char
-  cards use the Urimalsaem gloss, else the hun, else English; a
-  한국어 없음 marker over any English fallback; every string routed
-  through one message-table lookup so a further language is one file.
-  Rejected: separate chrome/definitions controls, a boolean mode
-  toggle, follow-the-browser with no row, and an EN fallback marker
-  (reads as a third pronunciation beside JP/CN). Earlier framing, kept
-  for the record: aimed at the Korean home market, learners of hanja
-  in Korea, for whom English glosses are the barrier and partly just
-  clutter. korean-mode-kickoff.md is the spike record. The corpus is
-  Urimalsaem (우리말샘, NIKL, CC BY-SA 2.0 KR), fetched from the
-  spellcheck-ko/korean-dict-nikl mirror on GitHub because the official
-  download demands Korean-carrier phone verification; its per-sense
-  hanja-origin fields make matching exact, so homograph contamination
-  is impossible by construction (ko-wiktionary was measured and
-  demoted to reference material). Matching runs in TWO LANES: hanja-
-  origin senses to words.json keys, 고유어 senses to native.json by
-  (hangul, POS), since native homographs exist too (우리 the pronoun
-  beside 우리 the animal pen). ONE CANONICAL ENTRY, TWO LANGUAGES: the
-  Korean glosses are a field on the same entries the English glosses
-  live on, attached worker-side from a lazy sidecar file, so the toggle
-  is a gloss-language pick and English fallback is automatic. Measured
-  coverage: ~92% of Sino words, flat across frequency buckets; native
-  words well covered; only ~2,100 single characters glossed in Korean,
-  and roughly 6,100 to 6,700 chars (two criteria, to reconcile) carry
-  English as their only meaning text, so char cards need eumhun
-  backfill or an English fallback. Remaining design (mockups first):
-  replace or accompany English, char-card treatment, UI chrome
-  language, settings shape, sense selection, coverage fallback.
-- **Korean-language store listing.** SHIPPED with 1.3: `_locales/en`
-  and `_locales/ko`, `default_locale`, the manifest name and description
-  as `__MSG_` keys, the Korean description and a Korean screenshot set
-  uploaded through the dashboard's language dropdown (which only
-  appears once the package declares the locale). Kept as a pointer.
 - **Word-level sibling pronunciations** (음악 -> おんがく / yīnyuè), a
   follow-up to the char-level sino line, analysis recorded 2026-08-31:
   the two languages are asymmetric in opposite directions. Mandarin is
@@ -480,11 +442,6 @@ correctness" bullet of 1.1, the same way 1.1.1 folded into 1.2.
   shared-spelling words the bridge corpus already parses, partial
   coverage with no honest synthesis fallback. Ship shape when
   designed: zh broadly via alignment, ja attested-only.
-- **Proper-noun hangul words** (서울, 부산, 한강). DONE on main as the
-  place-name lane with origin markers (see Since 1.3): 604 places with
-  Korean definitions and the 우리말샘 link. Other proper-noun classes
-  (people, organisations) are not admitted and there is no plan for
-  them.
 - **Grammar labels on the form note.** Deconjugation itself is done
   (Since 1.3). Mockup C from that round: "먹었어 → form of 먹다 ·
   past, casual" (한국어 "과거, 해체").
@@ -526,6 +483,57 @@ correctness" bullet of 1.1, the same way 1.1.1 folded into 1.2.
   copyright, so likely clean). Deliberately deferred; an optional badge
   long-term, not part of the level taxonomy that shipped.
 - List views auto-growing taller than card views.
+
+## Design records
+
+Decision trails for shipped features, kept so the reasoning is not
+relitigated. The kickoff files hold the full spikes; these are the
+short forms.
+
+- **Korean language mode** (shipped in 1.3). Settled by mockups: one
+  Language control (English / 한국어) that switches the whole chrome AND
+  the definitions, defaulting to the browser language on first run; Korean definitions replace English on word cards; char
+  cards use the Urimalsaem gloss, else the hun, else English; a
+  한국어 없음 marker over any English fallback; every string routed
+  through one message-table lookup so a further language is one file.
+  Rejected: separate chrome/definitions controls, a boolean mode
+  toggle, follow-the-browser with no row, and an EN fallback marker
+  (reads as a third pronunciation beside JP/CN). Earlier framing, kept
+  for the record: aimed at the Korean home market, learners of hanja
+  in Korea, for whom English glosses are the barrier and partly just
+  clutter. korean-mode-kickoff.md is the spike record. The corpus is
+  Urimalsaem (우리말샘, NIKL, CC BY-SA 2.0 KR), fetched from the
+  spellcheck-ko/korean-dict-nikl mirror on GitHub because the official
+  download demands Korean-carrier phone verification; its per-sense
+  hanja-origin fields make matching exact, so homograph contamination
+  is impossible by construction (ko-wiktionary was measured and
+  demoted to reference material). Matching runs in TWO LANES: hanja-
+  origin senses to words.json keys, 고유어 senses to native.json by
+  (hangul, POS), since native homographs exist too (우리 the pronoun
+  beside 우리 the animal pen). ONE CANONICAL ENTRY, TWO LANGUAGES: the
+  Korean glosses are a field on the same entries the English glosses
+  live on, attached worker-side from a lazy sidecar file, so the toggle
+  is a gloss-language pick and English fallback is automatic. Measured
+  coverage: ~92% of Sino words, flat across frequency buckets; native
+  words well covered; only ~2,100 single characters glossed in Korean,
+  and roughly 6,100 to 6,700 chars (two criteria, to reconcile) carry
+  English as their only meaning text, so char cards need eumhun
+  backfill or an English fallback. Remaining design (mockups first):
+  replace or accompany English, char-card treatment, UI chrome
+  language, settings shape, sense selection, coverage fallback.
+- **Place names and origin markers** (on main since 1.3): mockups
+  settled NATIVE / LOAN / HYBRID markers with the hybrid marked at
+  Jesse's insistence; the exclusion list and the 지명 attestation rule
+  are in the SPEC addendum of 2026-09-05.
+- **Deconjugation** (on main since 1.3): deconjugation-kickoff.md is
+  the record (need measured from subtitles, Wiktionary tables as
+  ground truth, the generator's two passes, mockup A over B and C, the
+  form-that-is-also-a-word reversal, the inflected-stub cleanup).
+- **Hybrid card depth** (in progress 2026-09-05): mockup A (nest the
+  hanja word's full card and the native part's card under COMPONENT
+  WORDS) picked over B (the hanja word card's shape plus a word row)
+  and C (rows kept, root's body under them) as the most consistent
+  with how a word card nests its characters.
 
 ## Settled questions, kept so they are not relitigated
 
