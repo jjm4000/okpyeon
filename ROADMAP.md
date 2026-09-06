@@ -467,13 +467,31 @@ correctness" bullet of 1.1, the same way 1.1.1 folded into 1.2.
   sense with nothing to attach it to. A small proper-noun lane in
   the native build (Wiktionary tags them) would give them cards and
   Korean definitions in one step.
-- **Deconjugation for native words.** Native verbs and adjectives are
-  reachable only by their dictionary form (typed search or exact-form
-  selection); a selected 먹었어 finds nothing. Romanized v2's
-  segmentation machinery is the natural host, and the whole-word
-  native precedence rule (2026-09-05) is the prerequisite: once 가공됐어
-  resolves to 가공되다, that rule is what shows the word's card instead
-  of splitting it again. The irregular table is the hard part.
+- **Deconjugation for native words.** In design as of 2026-09-05,
+  SPEC addendum written; being built next. Native verbs and adjectives
+  were reachable only by their dictionary form; a selected 먹었어 found
+  nothing. Design: a generous ending-stripping generator gated by
+  native.json, no shipped tables, measured against Wiktionary's
+  conjugation tables (336,686 form-lemma pairs; the prototype reached
+  91.6% recall before the missing endings were added). Settled by
+  mockups: the lemma's card with a one-line note above the head
+  ("먹었어 → form of 먹다"), picked over putting the selected form in
+  the head (crowded the hybrid card) and over naming the grammar (see
+  the next item). A form that is also a dictionary word does not
+  deconjugate: 7.7% of hanja words' hangul would otherwise grow lemma
+  cards (남자 to 남다, 전화 to 접다). Verb lemmas gain a frequency
+  bucket from subtitle counts so ambiguous forms (사는) order on
+  evidence.
+- **Grammar labels on the form note.** Mockup C from the deconjugation
+  round: "먹었어 → form of 먹다 · past, casual" (한국어 "과거, 해체").
+  Deferred because the labels are a taxonomy in two languages, not a
+  lookup: every ending needs an English and a Korean name, stacked
+  endings need an ordering rule, and the Korean side uses grammarians'
+  terms native speakers may not want. Once the resolver has run for a
+  while, a label table keyed on the endings actually stripped can be
+  scored against Wiktionary's tags in the same pinned test as recall,
+  and the note line already has the slot. A settings toggle was
+  considered and rejected: it would not lower the cost of the table.
 - **Keyboard shortcut for the current selection** (Chrome's commands
   API) and **per-site disable**: one settings row each plus a little
   glue, and both come up in extension reviews constantly.

@@ -3002,6 +3002,220 @@ very card the feature exists for. Two rules, user-picked as mockup C:
   native chip to the native card; typing the fixture hybrid yields one
   lead card and no split cards; English snapshots unchanged.
 
+## Deconjugation (ADDENDUM 2026-09-05, design settled by mockups)
+
+Native verbs and adjectives were reachable only in dictionary form: a
+selected or typed 먹었어 found nothing, and 공부했어 found the 工夫 split.
+Measured need (deconjugation-kickoff.md): of the 20,000 most frequent
+subtitle tokens, 31.6% of the token mass is a verb or adjective form the
+dictionary cannot reach. This addendum maps an inflected surface form to
+its lemma so the lemma's card renders. It supersedes the "conjugation is
+not deconjugated" gap in the native-words addendum and the "deconjugation
+stays out of scope for BOTH scripts" clause of romanized search v2: by
+the parity rule, a romanized query resolves through this stage exactly
+as typed hangul does (mushihaesseo becomes 무시했어, which resolves to
+무시하다).
+
+### Decisions (user-settled 2026-09-05)
+
+- RENDERING (mockup A): the lemma's ordinary card, untouched, with one
+  muted note line above the head where the hedge box sits on a hedged
+  card: the selected form in bold, an arrow, then "form of 먹다" (한국어:
+  "먹다의 활용형"). No grammar labels. Naming the endings (mockup C:
+  "past, casual" / "과거, 해체") is recorded in ROADMAP.md as a later
+  item; the note line is its container if it ever comes.
+- SURFACES: every hangul candidate. The selection popup, typed search,
+  romanized search (through parity) and the omnibox all go through the
+  same hangul resolver; internal navigation is literal as always. Runs
+  on the flagged (native) path only; unflagged responses stay
+  byte-identical, as for every native-lane feature.
+- AMBIGUITY: several lemmas for one form (사는: 살다 and 사다) render as
+  one lemma card each, in response order, each with its own note.
+  Order is the lemma frequency bucket (below), then generator order.
+- PRECEDENCE: a resolved lemma is a whole-word native match. It claims
+  the run the way a native headword does under the whole-word
+  precedence addendum, so the Sino split of the form (工夫 for 공부했어)
+  is not rendered and the candidate is CLASS_WHOLE for the romanized
+  collapse.
+- A FORM THAT IS ALSO A WORD does not deconjugate (measured decision,
+  reversing the kickoff's identity-group idea): the prototype turned
+  7.7% of hanja words' hangul into some lemma, and among the 54 most
+  frequent hanja keys 16 did (남자 to 남다, 여자 to 열다, 전화 to 접다,
+  사실 to 살다). A run that a dictionary word explains whole is that
+  word, and a stack of lemma cards after it would be noise far more
+  often than help. The one exception follows the lead rule: a run whose
+  only whole explanations are RARE hanja spellings does not block, and
+  the lemma leads the rare group as a native entry would.
+- KOREAN MODE: the lemma's 우리말샘 definition rides the lemma card as
+  it does today (ko.json natives are keyed by lemma and POS); a
+  conjugated surface has no definition of its own.
+- LENGTH FLOOR: two syllables. Single syllables stay the reading-browse
+  channel.
+
+### The generator: extension/deconjugate.js
+
+A pure function, no data, exported as `deconjugate(surface)` and
+returning candidate lemma strings (each ending in 다) in a
+deterministic order. It is GENEROUS BY DESIGN and the dictionary is the
+gate, the romanized-search v2 principle: it may propose 사다 and 살다 and
+싸다 for one form, and only native.json decides which survive. It ships
+no tables of forms.
+
+- Ending stripping follows the layer grammar [요] FINAL [TENSE]{0,2}
+  [HON] stem: an optional polite 요, exactly one final ending, up to
+  two tense infixes (었 았 였 겠), an optional honorific (시 으시 셨 으셨),
+  then the stem (셨어요 is 시 + 었 + 어요). Free stacking of finals was
+  measured and rejected: it doubled the false positives (자손 became
+  자다 through 소 + ㄴ) for no recall. The bare form is also tried as a
+  stem so fused infinitives (지칭해) restore. The FINAL inventory covers
+  sentence enders (습니다 ㅂ니다 습니까 어요 아요 여요 에요 어 아 여 지
+  지요 죠 네 네요 군요 구나 자 라 세요 셔요 십시오 읍시오 ㅂ시오 습디다
+  읍시다 ㅂ시다 소 오 우 구려 냐 느냐 나 나요 대 더라 더군), tense, mood
+  and honorific infixes (었 았 였 겠 시 으시 셨 으셨 셔 으셔 세 으세),
+  connectives (고 서 면 으면 면서 며 니 니까 려고 러 게 든 든지 거나 다가
+  지만 는데 은데 ㄴ데 던데 더니 도 야 어서 아서 어야 아야 어도 아도 라고
+  다고 자고 냐고 다면 려면), adnominal and nominal endings (는 은 ㄴ 을 ㄹ
+  던 기 음 ㅁ 는지 은지 을지 ㄹ까 을까 ㄹ게 을게 ㄹ래 을래 ㄹ수록 을수록),
+  and the imperatives 거라 너라 어라 아라 여라 으라. The jamo-initial
+  endings (ㄴ다 ㄹ까 ㅂ니다 ㅁ) match as the coda of the preceding
+  syllable. The kickoff's diagnosed misses (bare 요 서 야 도 after a
+  fused vowel: 해요 가서 해야; 으셔 and 셔 followed by another ending:
+  읽으셔서 하셔야; 읍시오 and ㅂ시오; 거라) are in the inventory. Dialect
+  alternatives (허다, 카다 for 하다) are deliberately not.
+- Stem restoration on the syllable the stripping leaves: fused past (갔
+  to 가, 했 to 하, 됐 to 되, 봤 to 보); fused infinitive vowels (봐 to
+  보, 줘 to 주, 해 to 하, 돼 to 되, 써 to 쓰, 켜 to 키); 으-drop (바빠 to
+  바쁘); ㅎ-irregular (그래 to 그렇, 빨간 to 빨갛); 르-irregular (몰라 to
+  모르); ㅂ-irregular (더워 to 덥, 도와 to 돕); ㅅ-irregular (나아 to 낫);
+  ㄷ-irregular (들어 to 듣); ㄹ-drop (사는 to 살, 압니다 to 알); ㄹ-stems
+  kept (살 to 살다); honorific fusion (하세 to 하, 셔 to 시).
+- PRECISION CONDITIONS (the prototype lacked them, and they are where its
+  false positives came from): an irregular restoration applies only
+  where the phonology allows it. ㅂ-, ㅅ- and ㄷ-irregular restorations
+  require the syllable after the stem to be vowel-initial (ㅇ) and the
+  stem syllable to be open (전화 must not become 접다); ㄹ-drop applies
+  only before an ending beginning with ㄴ, ㅂ, ㅅ or 오 (미안 must not
+  become 밀다); 르-irregular requires a 라 or 러 syllable after a
+  vowel-final syllable; 으-drop requires the fused syllable to be open.
+  A candidate equal to the surface itself is dropped (the whole-word
+  check owns that case), and a stem is never emptied.
+- ORDER: candidates sort by restoration cost (a bare stem plus one
+  ending before a fused past before an irregular), then by generation
+  order, so the sort is stable and pinned. The gate's survivors then
+  re-order by lemma frequency (below).
+- BOUNDS: the layer grammar bounds the stripping, and a pinned
+  candidate cap (DECONJUGATE_CAP, 64) bounds the output, so the worst
+  input degrades by truncation. Input is the run itself, already under
+  the relevant-character cap.
+- REFERENCE: pipeline/spike_deconjugation.py is the measured Python
+  rule set the module ports (not part of the build); the node test
+  below is what pins the port.
+
+### Lemma frequency (build)
+
+native.json verb and adjective entries gain `"f"`, the words.json bucket
+(min(9, floor(log4(rank)))) of the lemma's rank among verb and adjective
+lemmas by SUMMED subtitle count of its Wiktionary conjugation forms (the
+`forms` array of the cached kaikki extract, hangul-only forms, plus the
+lemma itself), ranks broken by the lemma string. A lemma with no counted
+form has no `f`. This is data, computed once at build; the runtime never
+touches the tables. Anchors: 하다, 있다, 되다, 가다 are bucket 0 or 1;
+살다 ranks above 사다; a lemma absent from the extract has no `f`.
+Non-verb entries never carry `f` (the guard strips it).
+
+### Gate and lookup semantics (extension/lookup.js)
+
+- deconjugatedLength(chars, bundle): for a hangul run of two syllables or
+  more that the native whole-word check declined, try the whole run,
+  then the run minus a one-syllable remainder (the same remainder rule
+  nativeWholeLength has, so 먹기가 finds 먹다 and the josa goes on to the
+  ordinary flow). For each length, `deconjugate(form)` filtered to
+  native.json headwords that have a verb or adj entry; the first length
+  with a survivor claims that many syllables. Blocked, returning 0, when
+  a dictionary word explains the run whole at that length or longer: a
+  native headword (already handled by the whole-word check), or a rule
+  3b span anchored at the first syllable reaching as far, unless every
+  spelling of that span is rare.
+- Claim mechanics: identical to the whole-word check in BOTH
+  buildMatches and buildNativeMatches (the flagged path only): rule 3b
+  and the native pass never see the claimed syllables; what the claim
+  leaves goes through the ordinary flow. coverageOf counts the claim as
+  covered and anchored, so a deconjugated candidate is CLASS_WHOLE in
+  the romanized collapse.
+- The match: for each surviving lemma, its verb and adj entries only (a
+  lemma's other POS entries do not join through a form) as ordinary
+  nativeMatches entries carrying `"form": "<the claimed surface>"`, the
+  existing fields (origin, parts, glosses) unchanged. Dedupe by (word,
+  pos) is unchanged; a lemma reached directly as a whole word keeps the
+  direct match without `form`. Survivors order by `f` (absent compares
+  as worst), then generator order.
+- Response shape otherwise untouched; `form` is the only new field, and
+  the guard (guardKo/attachKo paths and the worker's native guard)
+  passes it through as a non-empty hangul string or drops it.
+- Omnibox: a form-derived native match suggests the lemma exactly as a
+  direct native match does; no new copy.
+
+### Rendering (extension/content/content.js)
+
+- On the native card (buildNativeCard), when the entries carry `form`:
+  a note line before the head, class `formnote`, holding the form in
+  bold, an arrow glyph, and t("form.note", {LEMMA}). Only the first
+  entry's `form` is read (entries of one lemma agree). aria-label
+  t("aria.formOf", {FORM, LEMMA}) on the card.
+- View keying: a single surviving lemma keys and crumbs the view as the
+  lemma ("native:먹다"), srcText the surface, so the whole-view native
+  lead applies unchanged. Several lemmas compose per group, one native
+  card each in response order, and the crumb is the surface itself.
+- Hybrid lemmas render exactly as today under the note (mixed spelling,
+  chips); place, loan and every other native card is untouched.
+- Export and saved words: unchanged. The lemma card exports as it does
+  today; the note is not part of the export. Saved words still have no
+  native namespace.
+- Korean mode: the note reads "먹었어 → 먹다의 활용형"; nothing else
+  changes.
+
+### Copy (binding)
+
+| key | English | 한국어 |
+|---|---|---|
+| form.note | form of $LEMMA$ | $LEMMA$의 활용형 |
+| aria.formOf | $FORM$, form of $LEMMA$ | $FORM$, $LEMMA$의 활용형 |
+
+### Tests
+
+- Node, the generator against real data (the kickoff's ground truth):
+  recall over every distinct (hangul form, lemma) pair in the cached
+  extract's conjugation tables for lemmas native.json holds as verb or
+  adj, PINNED as a floor the build must clear: 99.5% (the Python
+  reference measured 99.90% of 335,835 pairs on 2026-09-05; what it
+  misses is dialect, "alternative" spellings and a few 러-irregular
+  pasts). Precision: the share of words.json byHangul keys (two
+  syllables or more) that deconjugate to any lemma, pinned as a ceiling
+  of 4% (measured 3.52%, nearly all of it real forms that coincide with
+  a hanja word: 하자, 사고, 보도, 가면; the form-that-is-also-a-word rule
+  is what keeps those off the screen). The ambiguity distribution
+  (survivors per hit; measured 97.2% one, 2.3% two) is
+  reported. Both read pipeline/cache/kaikki-Korean.jsonl and skip with a
+  notice when the cache is absent, like the other data-backed tests.
+- Node, lookup: 먹었어 resolves to 먹다 with form 먹었어; 좋은 to 좋다;
+  공부했어 to 공부하다 with no 工夫 split; 사는 to 살다 before 사다;
+  먹기가 to 먹다 with the josa left; 남자, 사실, 학생은 and 국민이 never
+  deconjugate; a run whose only whole explanation is rare deconjugates
+  and the lemma leads; 하늘, 가공되다 and every unflagged response are
+  byte-identical to today; `f` never on non-verb entries.
+- Node, romanized parity: mushihaesseo now roots as 무시하다 with the
+  form note (CLASS_WHOLE, superseding the class-C pin) and 無視 as its
+  part; balgyeonhaesseo roots as 발견하다; gukmin, gungmin, kukmin,
+  haneul, su and toddlf unchanged.
+- Harness (both pages, fixtures extended with 먹다, 좋다, 살다, 사다):
+  먹었어 opens 먹다 with the note; 좋은 opens 좋다; 공부했어 opens the
+  공부하다 hybrid card with its chips and no split cards; 사는 renders
+  살다 then 사다, each noted; 남자 renders 男子 with no lemma card; the
+  crumb reads 먹다 for a single lemma and 사는 for two; Korean-mode note
+  copy; English snapshots unchanged.
+- Build verify: `f` present on 하다 and 살다, absent on 하늘, 살다 below
+  사다.
+
 ## Verification expectations
 
 - A: after build, spot-check in the output: 國 has eumhun 나라/국 and compounds;
