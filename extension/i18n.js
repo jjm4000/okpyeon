@@ -28,7 +28,7 @@
   var LANGUAGES = ["en", "ko"];
 
   var EN = {
-    "appName": "Okpyeon: Hanja Popup Dictionary",
+    "appName": "Okpyeon: Korean Hanja Popup Dictionary",
     "appDesc": "A study tool for Korean learners. Highlight hanja, hanzi, or kanji to read them in Korean, or a hangul word to see its hanja.",
     "level_m": "Middle school",
     "level_h": "High school",

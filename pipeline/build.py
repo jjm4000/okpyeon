@@ -22,6 +22,7 @@ Outputs (UTF-8, no BOM, compact / no indentation)
     extension/data/native.json
     extension/data/sino.json
     extension/data/ko.json
+    extension/data/ko-natives.json
 
 Usage
     python pipeline/build.py            # download if missing, parse, emit, verify
@@ -65,7 +66,10 @@ CACHE = os.path.join(HERE, "cache")
 OUT = os.path.join(ROOT, "extension", "data")
 
 KAIKKI_URL = "https://kaikki.org/dictionary/Korean/kaikki.org-dictionary-Korean.jsonl"
-UNIHAN_URL = "https://www.unicode.org/Public/UCD/latest/ucd/Unihan.zip"
+# Pinned to a release (2026-10-14): "latest" moved to Unicode 18.0, whose
+# Unihan changes decomp.json, sino.json and variants.json. Moving to a new
+# Unicode version is a deliberate data change, made here with --force-download.
+UNIHAN_URL = "https://www.unicode.org/Public/17.0.0/ucd/Unihan.zip"
 # The Korean extract cannot see Wiktionary's Translingual section, which is
 # where shinjitai <-> kyujitai links live (気/氣, 戦/戰). Used ONLY to establish
 # variant links; everything displayed still comes from the Korean hanja entry.
@@ -187,31 +191,50 @@ def remote_size(url: str) -> int:
 
 
 def download(url: str, dest: str, force: bool = False) -> str:
+    """Download-if-missing for the large source dumps.
+
+    A cached file is a pinned snapshot: it is used as is, whatever the
+    server now holds, and replaced only by --force-download. The old rule
+    compared the cached size with the remote one and RESUMED (curl -C -)
+    whenever they differed, which is only correct for an interrupted
+    download of the same file. When an upstream dump was regenerated
+    (kaikki and Unihan publish new ones regularly) it appended the tail of
+    the new file onto the old one, and on 2026-10-14 that silently spliced
+    three caches. Now an in-flight download lives in <dest>.part, only a
+    .part is ever resumed, and the cache file appears by rename once the
+    .part reaches the remote size.
+    """
     os.makedirs(os.path.dirname(dest), exist_ok=True)
-    have = os.path.getsize(dest) if os.path.exists(dest) else 0
-    if force and have:
-        os.remove(dest)
-        have = 0
-    want = remote_size(url)
-    if have and want > 0 and have == want:
-        log("  cached   %s (%s)" % (os.path.basename(dest), mb(have)))
+    part = dest + ".part"
+    if force:
+        for p in (dest, part):
+            if os.path.exists(p):
+                os.remove(p)
+    if os.path.exists(dest):
+        log("  cached   %s (%s; refreshed only by --force-download)"
+            % (os.path.basename(dest), mb(os.path.getsize(dest))))
         return dest
+    want = remote_size(url)
+    have = os.path.getsize(part) if os.path.exists(part) else 0
     if have and want > 0 and have > want:
-        log("  local copy larger than remote; restarting %s" % os.path.basename(dest))
-        os.remove(dest)
+        log("  partial larger than remote; restarting %s" % os.path.basename(dest))
+        os.remove(part)
         have = 0
     log("  fetching %s%s" % (
         os.path.basename(dest),
         (" (resuming at %s of %s)" % (mb(have), mb(want))) if have else "",
     ))
-    # -C - resumes a partial download; large files stay cached across reruns.
     rc = subprocess.run(
         ["curl", "-L", "--fail", "--retry", "3", "--retry-delay", "2",
-         "-C", "-", "-o", dest, url]
+         "-C", "-", "-o", part, url]
     ).returncode
-    now = os.path.getsize(dest) if os.path.exists(dest) else 0
+    now = os.path.getsize(part) if os.path.exists(part) else 0
     if rc != 0 and not (want > 0 and now == want):
         raise SystemExit("download failed (curl exit %s): %s" % (rc, url))
+    if want > 0 and now != want:
+        raise SystemExit("download incomplete (%s of %s bytes), rerun to resume: %s"
+                         % (format(now, ","), format(want, ","), url))
+    os.replace(part, dest)
     log("  got      %s (%s)" % (os.path.basename(dest), mb(now)))
     return dest
 
@@ -1633,6 +1656,14 @@ def verify(hanja_obj, words_obj, variants_obj, decomp_obj=None,
     def add(name, ok, detail):
         checks.append((name, bool(ok), detail))
 
+    # Firefox ADDENDUM: Mozilla's linter rejects any text file over 5 MB, so
+    # every emitted data file must stay under it (ko.json was split for it).
+    sizes = {n: os.path.getsize(os.path.join(OUT, n))
+             for n in sorted(os.listdir(OUT)) if n.endswith(".json")}
+    big = {n: b for n, b in sizes.items() if b >= 5 * 1000 * 1000}
+    add("data files: every JSON file under 5 MB (Firefox store linter)",
+        not big, " ".join("%s=%.2fMB" % (n, b / 1e6) for n, b in sizes.items()))
+
     add("國 present in hanja.json", guk is not None,
         json.dumps(guk, ensure_ascii=False) if guk else "MISSING")
     add("國 eumhun 나라/국",
@@ -2707,7 +2738,8 @@ def verify_only():
         s = None
     try:
         k = rd("ko.json")
-    except (OSError, ValueError):
+        k["natives"] = rd("ko-natives.json")["natives"]
+    except (OSError, ValueError, KeyError):
         k = None
     log("chars %s | words %s | byHangul %s | variants %s | decomp %s | "
         "native %s | sino %s | ko %s" % (
@@ -3709,7 +3741,13 @@ def main(argv):
     s_d = write_json("decomp.json", decomp_obj)
     s_n = write_json("native.json", native_obj)
     s_s = write_json("sino.json", sino_obj)
-    s_k = write_json("ko.json", ko_obj)
+    # Firefox ADDENDUM: Mozilla's linter refuses text files over 5 MB, and
+    # ko.json had grown to 6.5 MB. Its natives table (2.4 MB) is written to
+    # its own file; the worker fetches both and merges them, so every reader
+    # downstream sees the one object it always did.
+    s_k = (write_json("ko.json", {k: v for k, v in ko_obj.items() if k != "natives"})
+           + write_json("ko-natives.json", {"version": ko_obj["version"],
+                                            "natives": ko_obj["natives"]}))
 
     # ---- report -------------------------------------------------------
     log("\n================= COUNTS ===================")

@@ -3378,6 +3378,113 @@ they feed the fallback row below.
   cards; embed export of the hybrid includes the nested cards; English
   snapshots for non-hybrid cards unchanged.
 
+## Firefox and the English name (ADDENDUM 2026-10-14, user-directed)
+
+Jesse: "let's do it" (a Firefox port, after an assessment the same
+day), and "the word 'korean' should be in the title on the English
+store so that people can more easily find it in search".
+
+### English name
+
+- appName in _locales/en (and the built-in EN table in i18n.js):
+  "Okpyeon: Korean Hanja Popup Dictionary" (38 characters; both stores'
+  name limits are wider). The one inserted word is the whole change, so
+  the name still reads as the product people already know. The Korean
+  name 옥편: 한자 팝업 사전 is unchanged (한자 already says Korean to a
+  Korean searcher). README, privacy policy and store-listing.md follow.
+  Chrome shows the new name after the next package upload; the side
+  panel header in the existing screenshots keeps the old one until the
+  screenshot sets are retaken.
+
+### One source tree, two packages
+
+- extension/ stays the Chrome package exactly as it is. The Firefox
+  package is generated from it at zip time by pipeline/make_firefox.py,
+  which copies the tree to dist/firefox/ (gitignored), rewrites only
+  manifest.json, and zips it to okpyeon-firefox-<version>.zip. No
+  Firefox-only file lives in extension/; Firefox-only code paths live
+  in the shared files behind feature checks.
+- Manifest transform (Chrome to Firefox):
+  - background: {"scripts": ["background.js"], "type": "module"}
+    replaces the service worker (Firefox runs MV3 background scripts as
+    event pages, never as service workers).
+  - side_panel and the sidePanel permission are removed;
+    sidebar_action is added: default_panel sidepanel/sidepanel.html,
+    default_title __MSG_appName__, the same icons, open_at_install false.
+  - host_permissions ["<all_urls>"] is added, matching the content
+    script's existing reach, so Firefox asks for it at install instead
+    of leaving the content script dormant until the user grants access
+    per site.
+  - browser_specific_settings.gecko: id "okpyeon@jjm4000.github.io"
+    (permanent once submitted; change before the first upload if a
+    different id is wanted), strict_min_version "140.0",
+    data_collection_permissions {"required": ["none"]} (Okpyeon collects
+    nothing; Mozilla requires the declaration for new add-ons, and the
+    key exists from Firefox 140 on desktop); gecko_android
+    strict_min_version "142.0", the key's Android floor.
+  - Everything else (name, description, locales, omnibox keyword,
+    content scripts, icons, action) carries over unchanged.
+- The script validates its output: every file the manifest names
+  exists in the copy, no Chrome-only key remains, the version equals
+  the Chrome manifest's. Mozilla's `web-ext lint` must report no errors
+  on dist/firefox/ (warnings listed in the release notes).
+
+- DATA FILES UNDER 5 MB (found by the first lint, 2026-10-14): Mozilla's
+  linter refuses any text file over 5 MB, and ko.json was 6.5 MB. The
+  build writes its natives table to ko-natives.json; the worker fetches
+  both files and merges them before guardKo, so the response shape and
+  every reader are unchanged, and a missing natives file costs only the
+  native definitions. Both packages ship the split (one source tree). A
+  build verify check keeps every emitted JSON file under 5 MB.
+
+### Runtime (extension/background.js)
+
+- Feature checks, never user-agent sniffing: the Chrome paths keep
+  testing chrome.sidePanel; the Firefox paths test
+  globalThis.browser?.sidebarAction. In Chrome the Firefox paths are
+  unreachable and the Chrome package is byte-identical in behaviour.
+- Toolbar button: Chrome keeps setPanelBehavior. Firefox gets an
+  action.onClicked listener that calls browser.sidebarAction.toggle()
+  synchronously (a user-action handler, so the gesture holds).
+- Omnibox Enter: where chrome.sidePanel is absent and sidebarAction is
+  present, Enter sets the pending query and calls
+  browser.sidebarAction.open() synchronously, exactly the Chrome
+  handshake (the panel pulls the pending query at boot, an already-open
+  panel is poked). If open() throws or rejects (Firefox may not count
+  omnibox Enter as a user action), the pending query is cleared and the
+  existing search-tab fallback runs. The window tracking stays
+  Chrome-only (Firefox opens the sidebar in the current window).
+- Nothing else changes: storage, messaging, data loading, i18n and the
+  omnibox suggestions are the same calls on both browsers.
+
+### Tests
+
+- Node (test/lookup.test.mjs or a new test file): the background
+  module still imports in Node with neither chrome nor browser defined;
+  with a stub `browser.sidebarAction` and no `chrome.sidePanel`, Enter
+  calls open() synchronously with the pending query set, and a
+  rejecting open() clears it and opens the tab; the Chrome path is
+  untouched with a stub chrome.sidePanel.
+- Build: make_firefox.py's own checks, plus `web-ext lint` (via npx)
+  with zero errors.
+- Manual, in real Firefox (Jesse, after install): load the package
+  with `web-ext run`; popup on a Korean page (selection and the
+  hanja/hangul cards); toolbar button toggles the sidebar; omnibox
+  `hj 국민` Enter opens the sidebar with the query, or the search tab
+  if Firefox refuses the gesture (record which); Korean mode; saved
+  words survive a browser restart; a fresh profile asks for site
+  access at install.
+
+### Store
+
+- addons.mozilla.org listing from store-listing.md (English and Korean
+  text, both screenshot sets), the privacy policy URL, and the source
+  is the package itself: the code is hand-written and unminified, and
+  the generated files are JSON data, so no separate source upload
+  should be needed (if the reviewer asks, the repository holds the
+  pipeline). Chrome and Firefox
+  ship the same version number.
+
 ## Verification expectations
 
 - A: after build, spot-check in the output: 國 has eumhun 나라/국 and compounds;

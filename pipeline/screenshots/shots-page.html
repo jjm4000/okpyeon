@@ -220,9 +220,13 @@ const [hanja, words, variants, sinoRaw] = await Promise.all(
     fetch("/extension/data/" + n + ".json").then((r) => r.json())));
 // Worker-style: ko.json is loaded only for the Korean UI, whose requests
 // carry the flag; the message table rides in beside it.
+// ko.json and ko-natives.json merge as the worker merges them.
 const [koRaw, koMessages] = lang === "ko"
   ? await Promise.all([
-      fetch("/extension/data/ko.json").then((r) => r.json()),
+      Promise.all([
+        fetch("/extension/data/ko.json").then((r) => r.json()),
+        fetch("/extension/data/ko-natives.json").then((r) => r.json()),
+      ]).then(([main, n]) => ({ ...main, natives: n.natives })),
       fetch("/extension/_locales/ko/messages.json").then((r) => r.json()),
     ])
   : [null, null];

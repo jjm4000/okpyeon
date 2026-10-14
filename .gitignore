@@ -7,3 +7,6 @@ okpyeon-*.zip
 # Local verification scratch files
 test-page/_*.local.html
 *.local.html
+
+# Firefox package staging (rebuilt by pipeline/make_firefox.py)
+dist/

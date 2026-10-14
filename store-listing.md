@@ -1,8 +1,15 @@
 # Chrome Web Store listing
 
+<!-- Firefox (addons.mozilla.org) reuses this file: the same name, the same
+     detailed description and both screenshot sets. AMO's summary field
+     allows 250 characters, so the short description below fits as is.
+     Package: okpyeon-firefox-<version>.zip from pipeline/make_firefox.py.
+     Add-on id okpyeon@jjm4000.github.io (permanent once submitted).
+     Data collection: none. The privacy policy URL is the same. -->
+
 ## Name
 
-Okpyeon: Hanja Popup Dictionary
+Okpyeon: Korean Hanja Popup Dictionary
 
 ## Short description (manifest `description`, 132 char limit)
 

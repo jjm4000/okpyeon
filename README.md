@@ -1,4 +1,4 @@
-# Okpyeon: Hanja Popup Dictionary
+# Okpyeon: Korean Hanja Popup Dictionary
 
 A study tool for Korean learners. Highlight hanja, hanzi, or kanji on any page
 to read them in Korean, or highlight a hangul word to see its hanja. The
@@ -90,6 +90,13 @@ From source: clone this repo, open `chrome://extensions`, enable Developer
 mode, and use **Load unpacked** on the `extension/` folder. The dictionary
 data is committed, so no build step is needed just to run it.
 
+Firefox (140 or later): `python pipeline/make_firefox.py` writes the Firefox
+package to `dist/firefox/` and `okpyeon-firefox-<version>.zip`. To try it,
+run `npx web-ext run --source-dir dist/firefox`, or load
+`dist/firefox/manifest.json` from `about:debugging` as a temporary add-on.
+The source tree is shared; only the manifest differs (see `SPEC.md`,
+"Firefox and the English name").
+
 ## Repository layout
 
 ```
@@ -119,6 +126,7 @@ Tests:
 ```
 node test/lookup.test.mjs
 node test/deconjugate.test.mjs
+node test/firefox.test.mjs
 ```
 
 UI self-checks, headless:

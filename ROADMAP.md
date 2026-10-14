@@ -89,6 +89,23 @@ current review clears.
   text must be clickable) and the part rows, now the fallback for
   parts the tables lack, carry glosses.
 
+- **Firefox package, and "Korean" in the English name.** One source
+  tree; pipeline/make_firefox.py generates the Firefox package by
+  rewriting only the manifest (background script instead of a service
+  worker, sidebar_action instead of the side panel, the add-on id and a
+  data-collection declaration of none). The worker gains a Firefox
+  branch for the toolbar button and omnibox Enter, behind feature
+  checks, with the search tab as the fallback if Firefox refuses the
+  omnibox gesture. Mozilla's linter refused ko.json (over its 5 MB text
+  limit), so the natives table moved to ko-natives.json in both
+  packages. Lint is clean apart from the guarded Chrome side-panel
+  calls, and the package installs in Firefox. The English name becomes
+  "Okpyeon: Korean Hanja Popup Dictionary" so the word Korean is in the
+  title store search reads (Jesse, 2026-10-14); the Korean name is
+  unchanged. Ships with the next release on both stores. Side find: the
+  build's downloader spliced three cached dumps when kaikki published
+  new ones; fixed, recovered, and recorded in pipeline/README.md.
+
 ## 1.3: shipped
 
 Everything since the v1.2.0 tag went out as one release, uploaded
@@ -491,10 +508,6 @@ correctness" bullet of 1.1, the same way 1.1.1 folded into 1.2.
   glue, and both come up in extension reviews constantly.
 - **Recent lookups** in the sidebar's empty search state, where today
   there is only a hint sentence. Every dictionary app has it.
-- **Firefox.** The code is MV3 WebExtensions and the data is static;
-  the sidebar API is the one real difference. Distribution rather than
-  a feature, and it roughly doubles the audience for the same
-  dictionary.
 - **Hun synthesis from Korean glosses.** About 4,470 characters still
   have neither a hun nor a Korean gloss after the Korean Wiktionary
   fill, and many of the filled ones show a gloss ("눕다.") rather than a

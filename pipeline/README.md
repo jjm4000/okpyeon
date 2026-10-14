@@ -38,6 +38,24 @@ The script does **download-if-missing → parse → emit → verify** in one pas
 takes roughly 30 seconds once the downloads are cached. It exits non-zero if any
 verification check fails.
 
+The cache is a pinned snapshot. A cached source is used as is, whatever the
+server now holds, and only `--force-download` replaces it; a download in
+progress lives in `<file>.part` and only a `.part` is ever resumed. Until
+2026-10-14 the downloader compared the cached size with the remote one and
+resumed onto the cached file whenever they differed. kaikki publishes new
+dumps regularly, so the first build after a new dump appended the tail of
+the new file onto the old one: the Korean, Translingual and Japanese dumps
+were spliced that way on 2026-10-14. They were recovered by cutting each
+back at the join (the first unparseable line; the end of the first gzip
+stream), and words.json, native.json, decomp.json, sino.json, variants.json
+and ko.json then rebuilt byte-identical. hanja.json rebuilt with one
+difference, the order of 綠汁機 and 搾汁機 in the compound lists of 綠, 汁,
+搾 and 機: those two words are the last entries of the recovered Korean
+dump, so the end of the old file is the one part the recovery cannot vouch
+for. The committed hanja.json was kept. Unihan is pinned to a Unicode
+release (17.0.0) for the same reason: `latest` moved to 18.0, which changes
+three output files, and moving is a deliberate data change.
+
 ### Flags
 
 | flag               | effect                                                        |
@@ -51,7 +69,7 @@ verification check fails.
 | file                             | URL                                                                  | size    |
 | -------------------------------- | -------------------------------------------------------------------- | ------- |
 | `cache/kaikki-Korean.jsonl`      | `https://kaikki.org/dictionary/Korean/kaikki.org-dictionary-Korean.jsonl` | ~190 MB |
-| `cache/Unihan.zip`               | `https://www.unicode.org/Public/UCD/latest/ucd/Unihan.zip`           | ~8 MB   |
+| `cache/Unihan.zip`               | `https://www.unicode.org/Public/17.0.0/ucd/Unihan.zip` (pinned)      | ~8 MB   |
 | `cache/kaikki-Translingual.jsonl`| `https://kaikki.org/dictionary/Translingual/kaikki.org-dictionary-Translingual.jsonl` | ~136 MB |
 | `cache/ja-extract.jsonl.gz`      | `https://kaikki.org/dictionary/downloads/ja/ja-extract.jsonl.gz` | ~62 MB (gz) |
 | `cache/ko_full_opensubtitles.txt`| `https://raw.githubusercontent.com/hermitdave/FrequencyWords/master/content/2018/ko/ko_full.txt` | ~11 MB |
@@ -440,6 +458,12 @@ one, and are inert in the UI. Of 9,469 characters, 9,191 get an entry:
 visibility rule.
 
 ## Korean definitions (`ko.json`)
+
+The output is two files: `ko.json` (the words and chars tables) and
+`ko-natives.json` (the natives table). Together they were 6.5 MB, over the
+5 MB limit Mozilla's store linter puts on any text file; the worker fetches
+both and merges them, so nothing downstream sees the split. A verify check
+keeps every emitted JSON file under 5 MB.
 
 `pipeline/urimalsaem.py` supplies the Korean definitions for the 한국어
 language setting from 우리말샘 (NIKL's open dictionary, CC BY-SA 2.0 KR),

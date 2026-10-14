@@ -70,6 +70,14 @@ const SINO_DATA_FILE = "data/sino.json";
 const KO_DATA_FILE = "data/ko.json";
 
 /**
+ * Firefox ADDENDUM: ko.json's natives table lives in its own file, because
+ * Mozilla's store linter refuses text files over 5 MB and the combined file
+ * was 6.5 MB. getKo fetches both and merges them, so guardKo and everything
+ * after it see the one object they always did.
+ */
+const KO_NATIVES_DATA_FILE = "data/ko-natives.json";
+
+/**
  * Shape guard for native.json: a bundle without the file must leave flagged
  * lookups working, with the native table simply empty. `maxLen` passes
  * through only as an integer; lookup.js falls back otherwise. Romanized
@@ -549,7 +557,17 @@ let koPromise = null;
 
 function getKo() {
   if (koPromise === null) {
-    koPromise = fetchJson(KO_DATA_FILE).then(guardKo);
+    koPromise = Promise.all([
+      fetchJson(KO_DATA_FILE),
+      // A missing natives file costs only the native definitions.
+      fetchJson(KO_NATIVES_DATA_FILE).catch(() => null),
+    ]).then(([main, natives]) => guardKo(
+      // The natives file wins when it loaded; otherwise whatever the main
+      // file carries stands (an older single-file ko.json still works).
+      main !== null && typeof main === "object" && natives !== null && typeof natives === "object"
+        ? { ...main, natives: natives.natives }
+        : main
+    ));
     koPromise.catch(() => {
       koPromise = null;
     });
@@ -1379,6 +1397,38 @@ if (typeof chrome !== "undefined" && chrome.sidePanel && chrome.sidePanel.setPan
   }
 }
 
+/**
+ * Firefox ADDENDUM (2026-10-14): Firefox has no side panel API. Its sidebar is
+ * sidebar_action, which the generated Firefox manifest declares in place of
+ * side_panel (pipeline/make_firefox.py). Feature checks only, never the user
+ * agent: in Chrome chrome.sidePanel exists and `browser` does not, so this is
+ * null there and none of the Firefox paths run. Exported for the tests.
+ */
+export function firefoxSidebar() {
+  if (typeof chrome !== "undefined" && chrome.sidePanel) return null;
+  const b = typeof globalThis.browser !== "undefined" ? globalThis.browser : null;
+  const sidebar = b !== null && typeof b === "object" ? b.sidebarAction : null;
+  return sidebar && typeof sidebar.open === "function" ? sidebar : null;
+}
+
+// Firefox ADDENDUM: the toolbar button toggles the sidebar, as the action
+// click does in Chrome through setPanelBehavior. toggle() is called
+// synchronously inside the click handler, which Firefox counts as a user
+// action, so the gesture holds.
+if (typeof chrome !== "undefined" && chrome.action && chrome.action.onClicked &&
+    firefoxSidebar() !== null) {
+  chrome.action.onClicked.addListener(() => {
+    const sidebar = firefoxSidebar();
+    if (sidebar === null || typeof sidebar.toggle !== "function") return;
+    try {
+      const pending = sidebar.toggle();
+      if (pending && typeof pending.catch === "function") pending.catch(() => {});
+    } catch {
+      // Nothing to fall back to: Firefox's own sidebar menu still opens it.
+    }
+  });
+}
+
 // Sidebar ADDENDUM (gesture fix, verified on real Chrome 2026-08-17): the
 // omnibox Enter gesture does NOT survive an awaited chrome.windows.getCurrent()
 // — sidePanel.open() must be the FIRST async call in the handler or it rejects
@@ -1573,6 +1623,24 @@ if (typeof chrome !== "undefined" && chrome.omnibox && chrome.omnibox.onInputCha
     // scope: via the pending query on the panel path, via the URL on the tab
     // path. Read from the keystroke-cached value, never awaited here.
     const scope = omniboxNative ? "all" : null;
+    // Firefox ADDENDUM: the same handshake through sidebarAction.open(),
+    // called synchronously for the same gesture reason. Firefox may not count
+    // omnibox Enter as a user action; then open() throws or rejects, the
+    // pending query is dropped, and the search tab stands in, as in Chrome.
+    const sidebar = firefoxSidebar();
+    if (sidebar !== null) {
+      setPendingQuery(text, scope);
+      try {
+        sidebar.open().then(pokePanelPages, () => {
+          setPendingQuery(null);
+          openSearchTab(text, disposition, scope);
+        });
+      } catch {
+        setPendingQuery(null);
+        openSearchTab(text, disposition, scope);
+      }
+      return;
+    }
     // No panel API, or the worker somehow has no window id yet: straight to
     // the tab path (which needs no gesture and carries the query in its URL).
     if (!chrome.sidePanel || !chrome.sidePanel.open || focusedWindowId === null) {

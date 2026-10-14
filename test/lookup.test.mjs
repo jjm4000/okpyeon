@@ -4911,6 +4911,35 @@ await testAsync("hybrid card depth: the worker path builds the sub-lookups from 
   }
 });
 
+await testAsync("ko: the two-file shape merges (ko.json plus ko-natives.json, Firefox ADDENDUM)", async () => {
+  // A fresh module instance, so this test's files fill the ko cache.
+  const bg = await import("../extension/background.js?ko-split");
+  const realFetch = globalThis.fetch;
+  const { natives: koNatives, ...koMain } = ko;
+  const served = [];
+  globalThis.fetch = async (url) => {
+    served.push(url);
+    const name = /\/data\/([\w-]+)\.json$/.exec(url)?.[1];
+    const file = { hanja, words, variants, native: workerNative, ko: koMain,
+                   "ko-natives": { version: 1, natives: koNatives } }[name] ?? null;
+    return { ok: file !== null, status: file ? 200 : 404, json: async () => file };
+  };
+  globalThis.chrome = { runtime: { getURL: (path) => `chrome-extension://okp/${path}` } };
+  try {
+    assert.equal("되다|verb" in koMain, false);
+    assert.ok(koNatives["되다|verb"], "the fixture's natives table holds 되다");
+    const res = await bg.handleLookup("국민되다", false, true, false, true);
+    assert.equal(res.ok, true);
+    assert.ok(served.some((u) => /\/data\/ko-natives\.json$/.test(u)), "the natives file is fetched");
+    const doeda = res.nativeMatches[0].parts[1];
+    assert.deepEqual(doeda.lookup.nativeMatches[0].ko, koNatives["되다|verb"],
+      "a native definition from the separate file reaches the response");
+  } finally {
+    globalThis.fetch = realFetch;
+    delete globalThis.chrome;
+  }
+});
+
 await testAsync("ko: isAllowedTabUrl admits Wiktionary articles and Urimalsaem senses, nothing else", async () => {
   const { isAllowedTabUrl, URIMALSAEM_URL_PREFIX, WIKI_URL_PREFIX } =
     await import("../extension/background.js");
@@ -6374,7 +6403,7 @@ test("messages.json: Chrome-valid names, declared placeholders, and ko covers en
     }
   }
   // The manifest's two, plus the ko description under the store's cap.
-  assert.equal(EN_FILE.appName.message, "Okpyeon: Hanja Popup Dictionary");
+  assert.equal(EN_FILE.appName.message, "Okpyeon: Korean Hanja Popup Dictionary");
   assert.equal(KO_FILE.appName.message, "옥편: 한자 팝업 사전");
   assert.ok(KO_FILE.appDesc.message.length <= 132);
 });

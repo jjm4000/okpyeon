@@ -1,7 +1,7 @@
 # Dictionary data license and attribution
 
 The JSON files in this directory (`hanja.json`, `words.json`, `variants.json`,
-`decomp.json`, `native.json`, `sino.json`, `ko.json`) are a derived database
+`decomp.json`, `native.json`, `sino.json`, `ko.json`, `ko-natives.json`) are a derived database
 compiled from the following sources by `pipeline/build.py`:
 
 - **English Wiktionary** (https://en.wiktionary.org) and the
