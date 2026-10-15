@@ -32,7 +32,12 @@ A study tool for Korean learners. Highlight hanja, hanzi, or kanji to read them 
      The 1.3 text below is Jesse's own edit, verbatim, with the WHAT IS
      INSIDE counts corrected to the built data after the glyph-alias
      merge. He cut the drafted KOREAN LANGUAGE MODE section from the
-     English listing; it stays in the Korean one. -->
+     English listing; it stays in the Korean one.
+     1.4 (2026-10-14): every WHAT IS INSIDE count re-verified against the
+     built data. Two moved, in both listings: native words 15,527 to
+     16,607 (native.json headwords, now including 604 place names and
+     the mixed-form hybrids) and native Korean definitions 12,071 to
+     13,115 (keys in the Korean natives table). The rest are unchanged. -->
 
 Okpyeon is a popup hanja dictionary for Korean learners. Much of Korean vocabulary is built from hanja roots the way English words are built from Latin, so once you know that 國 is 나라 국, the shared root in 국민, 국가, and 외국 becomes visible.
 
@@ -68,8 +73,8 @@ Two settings add each character's on'yomi and pinyin beside its Korean reading: 
 --  WHAT IS INSIDE  --
 - 9,415 hanja characters with readings, eumhun, definitions, levels and compounds
 - 27,620 Sino-Korean words indexed by both hanja and hangul
-- 15,527 native Korean words, included when the option is on
-- Korean definitions for 25,508 Sino-Korean words, 12,071 native words, and 3,983 characters
+- 16,607 native Korean words, included when the option is on
+- Korean definitions for 25,508 Sino-Korean words, 13,115 native words, and 3,983 characters
 - Japanese readings for 3,513 characters and Mandarin readings for 9,195
 - 9,130 character decompositions, with the sound-giving part marked on 7,151
 - 3,791 variant mappings covering simplified Chinese and Japanese shinjitai
@@ -135,8 +140,8 @@ Detailed description:
 --  들어 있는 것  --
 - 한자 9,415자의 음, 음훈, 뜻풀이, 등급, 단어
 - 한자어 27,620개, 한자와 한글 양쪽으로 찾기
-- 고유어 15,527개 (선택 사항을 켰을 때)
-- 한자어 25,508개, 고유어 12,071개, 한자 3,983자의 한국어 뜻풀이
+- 고유어 16,607개 (선택 사항을 켰을 때)
+- 한자어 25,508개, 고유어 13,115개, 한자 3,983자의 한국어 뜻풀이
 - 일본어 읽기 3,513자, 중국어 읽기 9,195자
 - 한자 짜임 9,130자, 그중 7,151자에 소리 부분 표시
 - 간체와 일본 신자체를 포함한 이체자 대응 3,791개
