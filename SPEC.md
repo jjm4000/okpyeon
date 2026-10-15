@@ -3474,6 +3474,13 @@ store so that people can more easily find it in search".
   if Firefox refuses the gesture (record which); Korean mode; saved
   words survive a browser restart; a fresh profile asks for site
   access at install.
+- Manual result (Jesse, 2026-10-14, Firefox release, web-ext run): popup
+  on selection, toolbar button opens the sidebar (left side, Firefox's
+  default), omnibox Enter opens the sidebar directly (Firefox honours
+  the gesture, so the tab fallback is not what users see), Korean mode
+  works. The restart check could not run: web-ext installs a temporary
+  add-on, which Firefox removes on close. It is deferred to the first
+  signed install from addons.mozilla.org.
 
 ### Store
 

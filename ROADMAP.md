@@ -99,7 +99,10 @@ current review clears.
   omnibox gesture. Mozilla's linter refused ko.json (over its 5 MB text
   limit), so the natives table moved to ko-natives.json in both
   packages. Lint is clean apart from the guarded Chrome side-panel
-  calls, and the package installs in Firefox. The English name becomes
+  calls, and the package installs in Firefox. Jesse's smoke test in
+  Firefox passed (popup, sidebar from the toolbar, omnibox Enter opening
+  the sidebar, Korean mode); saved words across a restart wait for the
+  first signed install. The English name becomes
   "Okpyeon: Korean Hanja Popup Dictionary" so the word Korean is in the
   title store search reads (Jesse, 2026-10-14); the Korean name is
   unchanged. Ships with the next release on both stores. Side find: the
