@@ -14,7 +14,9 @@ retaken (two Korean shots changed). Firefox: submitted to
 addons.mozilla.org on 2026-10-14 as a listed add-on, with the source
 archive okpyeon-source-1.4.0.zip (tracked files as on disk, so a
 rebuild with make_firefox.py is byte-identical to the package);
-awaiting review. Chrome: okpyeon-1.4.0.zip ready to upload.
+awaiting review. Chrome: okpyeon-1.4.0.zip uploaded 2026-10-15 with
+both listings' counts edited and the changed Korean screenshot
+replaced; awaiting review.
 
 - **Korean Wiktionary glosses for characters.** Spike 2026-09-05: the
   cached ko-wiktionary dump is not a 훈음 table, but its 한자 section
