@@ -4,7 +4,14 @@ Working list of planned changes. Ordering within a release is not priority
 order. The next store upload ships whatever is merged and verified when the
 current review clears.
 
-## Since 1.3: merged on main, not yet released
+## 1.4: packaged, not yet uploaded
+
+The manifest reads 1.4.0; the packages are okpyeon-1.4.0.zip (Chrome)
+and okpyeon-firefox-1.4.0.zip (Firefox, its first release), built
+2026-10-14 from the commit tagged v1.4.0. Still to do in the store
+dashboards: the listing counts re-verified against the data, both
+screenshot sets retaken (new name, new cards), the Chrome upload, and
+the first Mozilla submission.
 
 - **Korean Wiktionary glosses for characters.** Spike 2026-09-05: the
   cached ko-wiktionary dump is not a 훈음 table, but its 한자 section
