@@ -8,10 +8,13 @@ current review clears.
 
 The manifest reads 1.4.0; the packages are okpyeon-1.4.0.zip (Chrome)
 and okpyeon-firefox-1.4.0.zip (Firefox, its first release), built
-2026-10-14 from the commit tagged v1.4.0. Still to do in the store
-dashboards: the listing counts re-verified against the data, both
-screenshot sets retaken (new name, new cards), the Chrome upload, and
-the first Mozilla submission.
+2026-10-14 from the commit tagged v1.4.0. The listing counts were
+re-verified (two native-word counts moved) and both screenshot sets
+retaken (two Korean shots changed). Firefox: submitted to
+addons.mozilla.org on 2026-10-14 as a listed add-on, with the source
+archive okpyeon-source-1.4.0.zip (tracked files as on disk, so a
+rebuild with make_firefox.py is byte-identical to the package);
+awaiting review. Chrome: okpyeon-1.4.0.zip ready to upload.
 
 - **Korean Wiktionary glosses for characters.** Spike 2026-09-05: the
   cached ko-wiktionary dump is not a 훈음 table, but its 한자 section
