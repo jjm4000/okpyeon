@@ -3559,24 +3559,40 @@ first with the Sino reading in parentheses when the two differ.
   with none is omitted. Display: `jn (ja)` when both are present,
   otherwise whichever one is. It rides in the file the toggles already load,
   so no new fetch.
-- Japanese sources: English Wiktionary's Japanese entries (kaikki
-  Japanese dump: each entry's ja-* head template kana, in the entry's
-  listed order, joined to the entry's kyūjitai forms so 国民 meets 國民),
-  then the Japanese-language extract the build already parses
-  (unordered, so it can add Sino readings but never a `jn`). Every
-  spelling is canonicalized through variants.json.
-- Sino or native is decided by the existing on'yomi aligner (the one the
+- EVERYDAY READING FROM JMDICT (measured 2026-10-24, replacing a
+  first-listed rule): Wiktionary orders a word's readings by etymology,
+  not usage (相對 lists あいたい before そうたい; 終日 lists ひねもす before
+  しゅうじつ), so it cannot say which reading is everyday. JMdict (EDRDG,
+  CC BY-SA 4.0) marks each reading that appears in its frequency lists
+  (ichi, news, spec, nf) and lists an entry's readings in usage order.
+  Sino or native is decided by the existing on'yomi aligner (the one the
   Japanese compound bridge uses): a reading that parses into the
-  characters' on'yomi, rendaku and sokuon allowed, is Sino. `ja` is the
-  first Sino reading in listed order; `jn` is the first-listed reading
-  when that one is not Sino. 明日: あした (listed first, native), あす,
-  みょうにち (first Sino), めいじつ, so ja みょうにち, jn あした. 國民:
-  こくみん first and Sino, so ja こくみん and no jn.
+  characters' on'yomi, rendaku and sokuon allowed, is Sino.
+- The rule, per words.json key (JMdict spellings canonicalized through
+  variants.json): `ja` is the first common (frequency-marked) Sino
+  reading, entries taken in order of their best marker. `jn` is set only
+  when, inside the SAME JMdict entry as that Sino reading, the first
+  listed reading is common, native, and starts with a different kana:
+  明日 (あした, あす, みょうにち): ja みょうにち, jn あした. 今日 (きょう,
+  こんにち): ja こんにち, jn きょう. 日本 (にほん, にっぽん): にほん does not
+  align (ニチ shortens to に) but starts like にっぽん, so the word shows
+  にほん alone, as jn. 相對: あいたい and そうたい are separate entries, so
+  ja そうたい alone. 反應 (はんのう, はんおう): はんおう is unmarked, so no
+  common Sino reading exists and the word shows はんのう alone, as jn. A
+  word whose common readings are all native or mixed (場所 ばしょ, 先手
+  せんて) shows its first common reading alone, as jn.
+- Words JMdict lacks, or lists with no frequency marker, fall back to
+  Wiktionary: the first Sino reading from English Wiktionary's Japanese
+  entries (kaikki Japanese dump, head-template kana, kyūjitai forms
+  joined) or the Japanese-language extract the build already parses. A
+  fallback never sets `jn`.
 - Mandarin source: the kaikki Chinese dump the Mandarin compound bridge
   already reads, the word's first Mandarin Pinyin, kept as written for
   display (the bridge strips spaces and apostrophes only to split).
 - Anchors (build verify): 學校 ja がっこう zh xuéxiào; 明日 ja みょうにち jn
-  あした zh míngrì; 國民 ja こくみん, no jn; 大學 zh dàxué; 音樂 ja おんがく
+  あした zh míngrì; 今日 ja こんにち jn きょう; 日本 jn にほん, no ja; 相對 ja そうたい,
+  no jn; 反應 jn はんのう, no ja; 終日 ja しゅうじつ, no jn; 國民 ja こくみん,
+  no jn; 大學 zh dàxué; 音樂 ja おんがく
   zh yīnyuè; 代身 absent; every key is a words.json key; sino.json stays
   under 5 MB.
 

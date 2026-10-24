@@ -72,6 +72,8 @@ three output files, and moving is a deliberate data change.
 | `cache/Unihan.zip`               | `https://www.unicode.org/Public/17.0.0/ucd/Unihan.zip` (pinned)      | ~8 MB   |
 | `cache/kaikki-Translingual.jsonl`| `https://kaikki.org/dictionary/Translingual/kaikki.org-dictionary-Translingual.jsonl` | ~136 MB |
 | `cache/kaikki-Chinese.jsonl`     | `https://kaikki.org/dictionary/Chinese/kaikki.org-dictionary-Chinese.jsonl` | ~1.2 GB |
+| `cache/kaikki-Japanese.jsonl`    | `https://kaikki.org/dictionary/Japanese/kaikki.org-dictionary-Japanese.jsonl` | ~390 MB |
+| `cache/JMdict_e.gz`              | `http://ftp.edrdg.org/pub/Nihongo/JMdict_e.gz` (EDRDG, CC BY-SA 4.0) | ~10 MB (gz) |
 | `cache/ja-extract.jsonl.gz`      | `https://kaikki.org/dictionary/downloads/ja/ja-extract.jsonl.gz` | ~62 MB (gz) |
 | `cache/ko_full_opensubtitles.txt`| `https://raw.githubusercontent.com/hermitdave/FrequencyWords/master/content/2018/ko/ko_full.txt` | ~11 MB |
 | `cache/ko-wiki-edu-tier.wikitext` | `https://ko.wikipedia.org/w/index.php?title=대한민국_중고등학교_기초한자_목록&action=raw` (percent-encoded in `build.py`) | ~22 KB |
@@ -83,7 +85,15 @@ the Mandarin compound bridge in `sino.py`: each word's Mandarin reading
 (大學 dàxué) is split into per-character readings, and the Sino-Korean words
 it attests vote on which Mandarin reading pairs with which Korean one, so a
 character card shows 大 as dà rather than dài. Only lines naming a Pinyin
-pronunciation are parsed, about ten seconds per build.
+pronunciation are parsed, about ten seconds per build. The same dump gives
+`sino.json`'s `words` table its Mandarin readings (大學 dàxué).
+
+The Japanese word readings in that table come from JMdict, which marks the
+common readings of each word and lists them in usage order: the everyday
+reading leads (明日 あした) with the Sino one beside it (みょうにち) when the
+two differ. English Wiktionary's Japanese entries fill in Sino readings for
+words JMdict lacks or leaves unmarked. The rule is in SPEC.md, "Word-level
+sibling readings".
 
 The Translingual and Japanese extracts are used **only to establish variant
 links**. Nothing from them is ever displayed: every gloss, reading and eumhun

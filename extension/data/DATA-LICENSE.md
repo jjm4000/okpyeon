@@ -11,9 +11,18 @@ compiled from the following sources by `pipeline/build.py`:
   dual-licensed under the **Creative Commons Attribution-ShareAlike License
   (CC BY-SA)** and the GNU Free Documentation License. English Wiktionary's
   Chinese entries (also via kaikki.org) decide the order and pairing of the
-  Mandarin readings in `sino.json`. The Japanese extract
+  Mandarin readings in `sino.json` and supply its word-level Mandarin
+  readings; its Japanese entries supply word-level Japanese readings JMdict
+  lacks. The Japanese extract
   supplies variant links plus the word-reading evidence that attests and
   aligns the Japanese readings in `sino.json`.
+- **JMdict** (https://www.edrdg.org/wiki/index.php/JMdict-EDICT_Dictionary_Project),
+  the property of the Electronic Dictionary Research and Development Group,
+  used in conformance with the Group's licence
+  (https://www.edrdg.org/edrdg/licence.html), Creative Commons
+  Attribution-ShareAlike 4.0. It decides which Japanese reading of a word
+  `sino.json` shows as the everyday one (明日: あした, with みょうにち as the
+  Sino reading).
 - **The Unicode Unihan Database** (https://www.unicode.org/charts/unihan.html),
   used under the Unicode License (https://www.unicode.org/license.txt) for
   variant mappings, supplementary definitions, and readings (including the

@@ -127,6 +127,14 @@ JAPANESE_FILE = os.path.join(CACHE, "ja-extract.jsonl.gz")
 # entries, for word-level Mandarin readings (~1.2 GB, pinned like the rest).
 KAIKKI_ZH_URL = "https://kaikki.org/dictionary/Chinese/kaikki.org-dictionary-Chinese.jsonl"
 KAIKKI_ZH_FILE = os.path.join(CACHE, "kaikki-Chinese.jsonl")
+# SPEC "Word-level sibling readings" (2026-10-24): English Wiktionary's
+# Japanese entries, for word-level kana in listed order (~390 MB, pinned).
+KAIKKI_JA_URL = "https://kaikki.org/dictionary/Japanese/kaikki.org-dictionary-Japanese.jsonl"
+KAIKKI_JA_FILE = os.path.join(CACHE, "kaikki-Japanese.jsonl")
+# SPEC "EVERYDAY READING FROM JMDICT": JMdict (EDRDG, CC BY-SA 4.0), the
+# English-gloss edition, for which reading of a word is common (~10 MB gz).
+JMDICT_URL = "http://ftp.edrdg.org/pub/Nihongo/JMdict_e.gz"
+JMDICT_FILE = os.path.join(CACHE, "JMdict_e.gz")
 EXTFREQ_FILE = os.path.join(CACHE, "ko_full_opensubtitles.txt")
 EDU_TIER_FILE = os.path.join(CACHE, "ko-wiki-edu-tier.wikitext")
 IDS_FILE = os.path.join(CACHE, "babelstone-ids.txt")
@@ -2440,6 +2448,34 @@ def verify(hanja_obj, words_obj, variants_obj, decomp_obj=None,
                          if p[1] and p[1] not in shown]
         add("sino zh bridge: no Mandarin pair names an eum the card does not show",
             not off_card, " ".join(off_card[:10]))
+        # Word-level readings (SPEC "Word-level sibling readings").
+        sw = sino_obj.get("words") or {}
+        for k, want in (("學校", {"ja": "がっこう"}), ("明日", {"ja": "みょうにち", "jn": "あした"}),
+                        ("今日", {"ja": "こんにち", "jn": "きょう"}), ("日本", {"jn": "にほん"}),
+                        ("相對", {"ja": "そうたい"}), ("反應", {"jn": "はんのう"}),
+                        ("終日", {"ja": "しゅうじつ"}), ("國民", {"ja": "こくみん"}),
+                        ("音樂", {"ja": "おんがく"})):
+            got = {x: v for x, v in (sw.get(k) or {}).items() if x in ("ja", "jn")}
+            add("sino words: %s Japanese %s" % (k, json.dumps(want, ensure_ascii=False)),
+                got == want, json.dumps(sw.get(k), ensure_ascii=False))
+        for k, want in (("學校", {"ja": "がっこう", "zh": "xuéxiào"}),
+                        ("明日", {"ja": "みょうにち", "jn": "あした", "zh": "míngrì"}),
+                        ("國民", {"ja": "こくみん", "zh": "guómín"}),
+                        ("音樂", {"ja": "おんがく", "zh": "yīnyuè"})):
+            add("sino words: %s reads %s" % (k, json.dumps(want, ensure_ascii=False)),
+                sw.get(k) == want, json.dumps(sw.get(k), ensure_ascii=False))
+        add("sino words: 大學 zh dàxué", (sw.get("大學") or {}).get("zh") == "dàxué",
+            json.dumps(sw.get("大學"), ensure_ascii=False))
+        add("sino words: 代身 (Korean-only) has no entry", "代身" not in sw,
+            json.dumps(sw.get("代身"), ensure_ascii=False))
+        stray = [k for k in sw if k not in words_out]
+        add("sino words: every key is a words.json key", not stray,
+            " ".join(stray[:10]))
+        bad_shape = [k for k, e in sw.items()
+                     if not e or set(e) - {"ja", "jn", "zh"}
+                     or not all(isinstance(v, str) and v for v in e.values())]
+        add("sino words: entries are non-empty {ja, jn, zh} strings", not bad_shape,
+            " ".join(bad_shape[:10]))
 
     if sino_report is not None:
         # The two property tests and the tier-2 sanity band run on build
@@ -2791,6 +2827,8 @@ def main(argv):
     download(TRANSLINGUAL_URL, TRANSLINGUAL_FILE, force)
     download(JAPANESE_URL, JAPANESE_FILE, force)
     download(KAIKKI_ZH_URL, KAIKKI_ZH_FILE, force)
+    download(KAIKKI_JA_URL, KAIKKI_JA_FILE, force)
+    download(JMDICT_URL, JMDICT_FILE, force)
     download(EXTFREQ_URL, EXTFREQ_FILE, force)
     download_small(EDU_TIER_URL, EDU_TIER_FILE, force)
     download(IDS_URL, IDS_FILE, force)
@@ -3461,9 +3499,18 @@ def main(argv):
                           for ch in unicodedata.normalize("NFC", w)))
     log("  chinese: %s lines, %s words with a Mandarin reading (%.1fs)"
         % (format(zh_lines, ","), format(len(zh_words), ","), time.time() - t_zh))
+    t_ja = time.time()
+    ja_en_words, ja_en_lines = sino.parse_ja_en_words(KAIKKI_JA_FILE)
+    log("  japanese (English Wiktionary): %s lines, %s kanji words with kana "
+        "(%.1fs)" % (format(ja_en_lines, ","), format(len(ja_en_words), ","),
+                     time.time() - t_ja))
+    t_jm = time.time()
+    jmdict = sino.parse_jmdict(JMDICT_FILE)
+    log("  jmdict: %s entries with a kanji spelling (%.1fs)"
+        % (format(len(jmdict), ","), time.time() - t_jm))
     sino_obj, sino_report = sino.build(
         chars_out, variant_map, words_out, joyo_text, unihan_readings_text,
-        unihan_text, ja_freq_text, ja_words, zh_words)
+        unihan_text, ja_freq_text, ja_words, zh_words, ja_en_words, jmdict)
     sr = sino_report
     log("  sino: joyo table %s rows (%s with on'yomi, %s kun-only, %s "
         "kyujitai mapped)" % (format(sr["joyo_rows"], ","),
@@ -3485,6 +3532,11 @@ def main(argv):
         "readings, %s chars repaired by word votes" % (
             format(sr["zh_words"], ","), format(sr["zh_words_split"], ","),
             format(sr["zh_bridged"], ",")))
+    log("  sino words: %s of %s words.json keys carry a reading (ja %s, "
+        "everyday native jn %s, zh %s)" % (
+            format(sr["word_entries"], ","), format(sr["word_total"], ","),
+            format(sr["word_ja"], ","), format(sr["word_jn"], ","),
+            format(sr["word_zh"], ",")))
 
     # ---- emit ---------------------------------------------------------
     hanja_obj = {"version": 1, "chars": chars_out}

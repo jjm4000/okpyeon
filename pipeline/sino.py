@@ -158,8 +158,104 @@ def parse_zh_words(path, canon_word):
                 if "Mandarin" in tags and "Pinyin" in tags and RE_PINYIN_WORD.match(p):
                     key = canon_word(w)
                     if key not in out:
-                        out[key] = p.replace(" ", "").replace("'", "")
+                        # kept as Wiktionary writes it (biàn'ān, Dīngmǒ):
+                        # the word line shows it; the bridge strips spaces
+                        # and apostrophes only to split it
+                        out[key] = p.strip()
                     break
+    return out, lines
+
+
+# ---------------------------------------------------------------- JMdict
+# SPEC "EVERYDAY READING FROM JMDICT" (2026-10-24): JMdict lists an entry's
+# readings in usage order and marks the ones in its frequency lists (ichi,
+# news, spec, gai, nf). That is the signal Wiktionary lacks for which reading
+# of 明日 is everyday (あした) and which is the Sino one (みょうにち).
+
+JMDICT_PRI = {"ichi1": 3, "news1": 3, "spec1": 2, "gai1": 2,
+              "ichi2": 1, "news2": 1, "spec2": 1, "gai2": 1}
+
+
+def jmdict_score(pris):
+    """0 for an unmarked reading; otherwise the best list marker plus a
+    small bonus for a high nf band (nf01 is the commonest 500 words)."""
+    best = max((JMDICT_PRI.get(p, 0) for p in pris), default=0)
+    nf = [int(p[2:]) for p in pris if p.startswith("nf") and p[2:].isdigit()]
+    if not best and not nf:
+        return 0.0
+    return best + (max(0, 49 - min(nf)) / 49.0 if nf else 0.0)
+
+
+def parse_jmdict(path):
+    """[{"kebs": [...], "reads": [(reb, score, restr or None)]}] in file
+    order, from JMdict_e.gz. Readings flagged re_nokanji never attach to a
+    kanji spelling and are dropped."""
+    import gzip
+    import xml.etree.ElementTree as ET
+    with gzip.open(path, "rb") as fh:
+        root = ET.fromstring(fh.read())
+    out = []
+    for ent in root.iter("entry"):
+        kebs = [k.findtext("keb") for k in ent.findall("k_ele") if k.findtext("keb")]
+        if not kebs:
+            continue
+        reads = []
+        for r in ent.findall("r_ele"):
+            if r.find("re_nokanji") is not None:
+                continue
+            reb = r.findtext("reb") or ""
+            restr = {x.text for x in r.findall("re_restr")} or None
+            reads.append((reb, jmdict_score([x.text for x in r.findall("re_pri")]), restr))
+        if reads:
+            out.append({"kebs": kebs, "reads": reads})
+    return out
+
+
+# --------------------------------------------- Japanese word list (English)
+# SPEC "Word-level sibling readings" (2026-10-24): English Wiktionary's
+# Japanese entries give each word's kana in its head template (ja-noun 国民
+# -> こくみん), entries in listed order, so the first reading is the everyday
+# one. Kyujitai forms on the entry (國民) are kept so the old spelling joins.
+
+RE_KANA_WORD = re.compile(r"^[\u3041-\u3096\u30a1-\u30fa\u30fc]+$")
+
+
+def parse_ja_en_words(path):
+    """spelling -> {"kana": [readings in listed order], "kyu": set()} from the
+    kaikki Japanese dump. Pure-kanji words only (words.json keys are pure
+    hanja). Positional head-template args that are kana after dropping the
+    template's syllable marks (. ^ -) are the readings."""
+    import json
+    out = {}
+    lines = 0
+    with open(path, encoding="utf-8") as fh:
+        for line in fh:
+            lines += 1
+            if '"ja-' not in line:
+                continue
+            o = json.loads(line)
+            w = o.get("word") or ""
+            if not RE_HAN_WORD.match(w) or o.get("pos") in ("character", "soft-redirect"):
+                continue
+            reads = []
+            for h in o.get("head_templates") or []:
+                if not (h.get("name") or "").startswith("ja-"):
+                    continue
+                args = h.get("args") or {}
+                for k in sorted((k for k in args if str(k).isdigit()), key=int):
+                    kana = re.sub(r"[.^\-\s]", "", str(args[k] or ""))
+                    if RE_KANA_WORD.match(kana) and kana not in reads:
+                        reads.append(kana)
+            if not reads:
+                continue
+            d = out.setdefault(w, {"kana": [], "kyu": set()})
+            for r in reads:
+                if r not in d["kana"]:
+                    d["kana"].append(r)
+            for x in o.get("forms") or []:
+                form = x.get("form") or ""
+                if "kyūjitai" in (x.get("tags") or []) and RE_HAN_WORD.match(form):
+                    d["kyu"].add(form)
     return out, lines
 
 
@@ -619,7 +715,8 @@ SINO_ZH_OVERRIDES = {
 # ---------------------------------------------------------------- build
 
 def build(chars, variants, words_ko, joyo_text, readings_text,
-          variants_text, ja_freq_text, ja_words, zh_words=None):
+          variants_text, ja_freq_text, ja_words, zh_words=None,
+          ja_en_words=None, jmdict=None):
     """-> (sino_obj, report).
 
     chars: the finished hanja.json chars dict (readings order is the card's
@@ -921,7 +1018,7 @@ def build(chars, variants, words_ko, joyo_text, readings_text,
         return pys
 
     def split_word(word, pin):
-        rest = strip_tone(pin).lower()
+        rest = strip_tone(pin).lower().replace(" ", "").replace("'", "")
         out = []
         for ch in word:
             bases = sorted({strip_tone(p).lower() for p in zh_cands(ch)},
@@ -1175,4 +1272,91 @@ def build(chars, variants, words_ko, joyo_text, readings_text,
         "p1": p1,
         "p2": p2,
     }
-    return {"version": 1, "chars": sino_chars}, report
+    # ---- word-level readings (SPEC "Word-level sibling readings") -----
+    # Per words.json key: ja the first Sino reading (one the on'yomi aligner
+    # parses, rendaku and sokuon allowed), jn the first-listed reading when
+    # that one is native (明日: あした listed first, みょうにち the first Sino
+    # one), zh the attested pinyin. Only the English dump is ordered, so only
+    # it can supply jn; the Japanese-language extract adds Sino readings.
+    def canon_word(w):
+        return "".join(variants.get(ch, ch)
+                       for ch in unicodedata.normalize("NFC", w))
+
+    ja_rows = collections.defaultdict(list)     # key -> [(kana, sino, listed)]
+    for sp, d in (ja_en_words or {}).items():
+        rows = [(k, align(sp, k) is not None) for k in d["kana"]]
+        for spelling in [sp] + sorted(d["kyu"]):
+            key = canon_word(spelling)
+            have = {r[0] for r in ja_rows[key]}
+            for k, is_sino in rows:
+                if k not in have:
+                    ja_rows[key].append((k, is_sino, True))
+                    have.add(k)
+    for w, parses in word_parse.items():
+        kanas, kyus = jaw[w]
+        for spelling in [w] + list(kyus):
+            key = canon_word(spelling)
+            have = {r[0] for r in ja_rows[key]}
+            for k in kanas:
+                if k not in have and align(w, k) is not None:
+                    ja_rows[key].append((k, True, False))
+                    have.add(k)
+
+    # JMdict entries per canonical key, each with the readings that attach
+    # to that spelling (re_restr), entries ordered by their best marker.
+    jm_by_key = collections.defaultdict(dict)       # key -> {idx: (keb, reads)}
+    for idx, ent in enumerate(jmdict or []):
+        for keb in ent["kebs"]:
+            key = canon_word(keb)
+            if key in words_ko and idx not in jm_by_key[key]:
+                reads = [(r, sc) for r, sc, restr in ent["reads"]
+                         if restr is None or keb in restr]
+                if reads:
+                    jm_by_key[key][idx] = (keb, reads)
+
+    def jm_readings(k):
+        """(ja, jn) for one key under the SPEC rule, or (None, None) when
+        JMdict has no common reading for it."""
+        ents = sorted(jm_by_key.get(k, {}).items(),
+                      key=lambda t: (-max(sc for _, sc in t[1][1]), t[0]))
+        for _, (keb, reads) in ents:
+            for r, sc in reads:
+                if sc > 0 and align(keb, r) is not None:
+                    common = [x for x, s2 in reads if s2 > 0]
+                    first = common[0]
+                    if first == r or align(keb, first) is not None:
+                        return r, None
+                    if first[:1] != r[:1]:
+                        return r, first
+                    return None, first
+        for _, (keb, reads) in ents:
+            common = [x for x, s2 in reads if s2 > 0]
+            if common:
+                return None, common[0]
+        return None, None
+
+    sino_words = {}
+    wr = collections.Counter()
+    for k in words_ko:
+        e = {}
+        ja_r, jn_r = jm_readings(k)
+        if ja_r is None and jn_r is None:
+            # fallback: Wiktionary's first Sino reading, never a jn
+            ja_r = next((r[0] for r in (ja_rows.get(k) or []) if r[1]), None)
+        if ja_r:
+            e["ja"] = ja_r
+        if jn_r:
+            e["jn"] = jn_r
+        z = (zh_words or {}).get(k)
+        if z:
+            e["zh"] = z
+        if e:
+            sino_words[k] = e
+            wr.update(e.keys())
+    report["word_ja"] = wr["ja"]
+    report["word_jn"] = wr["jn"]
+    report["word_zh"] = wr["zh"]
+    report["word_entries"] = len(sino_words)
+    report["word_total"] = len(words_ko)
+
+    return {"version": 1, "chars": sino_chars, "words": sino_words}, report
