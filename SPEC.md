@@ -3660,6 +3660,15 @@ because English Wiktionary gives them the sound alone.
   섹, 冊 and 策 without 첵, 塊 without 궤; 令 keeps 영, 六 육, 樂 낙, 年
   연; 塞 and 罷 pairings.
 
+## Test harness: one fixture file (ADDENDUM 2026-10-24)
+
+The fake service worker and its fixture data, which every harness
+addendum above calls "the fixture blocks, kept byte-identical between
+the two pages", now live in ONE file, test-page/fixture.js, loaded by
+both test-page/index.html and test-page/embed.html with a plain
+<script src> (so file:// still works). Read every earlier mention of the
+byte-identical blocks as this file. It must load before content.js.
+
 ## Verification expectations
 
 - A: after build, spot-check in the output: 國 has eumhun 나라/국 and compounds;
