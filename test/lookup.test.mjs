@@ -5841,6 +5841,50 @@ await testAsync("smoke: real native.json resolves 하늘 / 사랑 / 무리 / tog
 // No harness covers the shipped file: both pages run on a hand-written fixture.
 // Read-only, and skipped (not failed) if the file is absent.
 
+await testAsync("second pass: particles and contractions resolve to the word underneath (real data)", async () => {
+  let bundle;
+  try {
+    const rd = async (n) => JSON.parse(await readFile(join(dataDir, n), "utf8"));
+    bundle = { hanja: await rd("hanja.json"), words: await rd("words.json"),
+               variants: await rd("variants.json"), native: await rd("native.json") };
+  } catch (err) {
+    console.log(`      (skipped: data unreadable: ${err.code || err.name})`);
+    return;
+  }
+  const say = (t, native = true) => {
+    const r = lookup(t, bundle, { native });
+    return {
+      hanja: (r.matches || []).filter((m) => m.kind === "word").map((m) => m.canonical),
+      native: [...new Set((r.nativeMatches || []).map((m) => m.word))],
+      raw: r,
+    };
+  };
+  // SPEC "Second-pass resolver": a one-syllable noun before a particle.
+  assert.deepEqual(say("집에").native, ["집"]);
+  assert.deepEqual(say("돈을").native, ["돈"]);
+  // A particle comes off, so nothing is found inside it.
+  assert.deepEqual(say("엄마한테"), { hanja: [], native: ["엄마"], raw: say("엄마한테").raw });
+  assert.ok(!say("엄마한테").hanja.includes("馬韓"));
+  assert.ok(!say("일이에요").hanja.includes("一二"));
+  assert.deepEqual(say("일이에요").native, ["일"]);
+  // Contractions answer with the full form, noun and pronoun senses only.
+  assert.deepEqual(say("그건").native, ["그것"]);
+  assert.deepEqual(say("거예요").native, ["것"]);
+  assert.deepEqual(say("거죠").native, ["것"]);
+  assert.deepEqual(say("니가").native, ["너"]);
+  assert.deepEqual(say("뭐야").native, ["무엇"]);
+  assert.deepEqual(say("제게").raw.nativeMatches.map((m) => m.pos), ["pron"]);
+  // What already worked still works, and hanja words keep their cards.
+  assert.deepEqual(say("사람들이").native, ["사람"]);
+  assert.deepEqual(say("국민에게").hanja, ["國民"]);
+  assert.deepEqual(say("대학에서").hanja, ["大學"]);
+  // The verb rules still come first.
+  assert.deepEqual(say("바라보다").native, ["바라보다"]);
+  // Unflagged lookups never run it.
+  assert.deepEqual(say("집에", false).raw.matches, []);
+  assert.ok(say("엄마한테", false).raw.nativeMatches === undefined);
+});
+
 await testAsync("word parts: a tie goes to the word plus a suffix, except after a bound prefix (real data)", async () => {
   let words;
   try {

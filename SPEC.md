@@ -3707,6 +3707,55 @@ byte-identical blocks as this file. It must load before content.js.
   real bug, the word-parts tie-break above. The saved-words store and
   its export remain an in-memory fake.
 
+## Second-pass resolver: particles and contractions (ADDENDUM 2026-10-24, measured)
+
+Measured with the real lookup over the 20,000 most frequent subtitle
+tokens (native words on): a word, or a word plus one leftover
+syllable, for 86.2% of the token mass; something found but two or more
+syllables left over for 3.1%; nothing at all for 10.7%. The earlier
+estimate (2.75% for nouns before two-syllable particles) overstated
+that class: the greedy match already finds 사람 in 사람들이. The real
+gaps are a one-syllable noun before a particle (집에, 돈을, 것을, 너도,
+그는: the native pass has a two-syllable floor), contractions (그건,
+이건, 그걸, 거예요, 거죠, 뭐야, 얘기, 제가, 니가), and false matches
+inside particles (엄마한테 showed 馬韓, 일이에요 showed 一二).
+
+- Where: the flagged (native words on) path only, after the existing
+  claims (whole native headword, then conjugated form), for a hangul
+  run neither claims and that is not itself a hanja word's hangul with
+  a non-rare spelling. Unflagged responses stay byte-identical.
+- PARTICLE STRIP: the run ends in a particle from a fixed list (longest
+  first: 에게서 한테서 에게 한테 에서 까지 부터 으로 처럼 보다 마다 밖에
+  조차 마저 이랑 이나 이든 이야 이에요 예요 이죠 이지 이고 이란 이며
+  이면 께서 에는 에도 에만 들이 들은 들을 들의 들도 들과 들로 들에 들만
+  들에게 들한테 and the one-syllable 이 가 은 는 을 를 에 의 도 와 과 로
+  만 야 랑 나), and the remainder is explained whole: a remainder of two
+  syllables or more is a native headword or a hanja word's hangul, and
+  the run resolves as the remainder (엄마한테 is 엄마, no 馬韓); a
+  one-syllable remainder with a noun or pronoun entry resolves to that
+  native card (집에 is 집, 일이에요 is 일, no 一二).
+- CONTRACTIONS: a fixed table to the full form's native card: 그건 그걸
+  to 그것, 이건 이걸 to 이것, 저건 저걸 to 저것, and as a remainder before
+  a particle 거 to 것 (거예요, 거죠, 거야), 뭐 to 무엇 (뭐야, 뭐가), 얘기 to
+  이야기, 제 to 저 (제가), 내 to 나, 네 and 니 to 너 (니가).
+- As built (2026-10-24), the lists also take the plural 들 alone (애들),
+  the copula forms 입니다 인가 인데 이네 이다 (것입니다), numerals as a
+  one-syllable remainder (둘이), 뭔 as a base (뭔가), and endings after a
+  contracted base (거죠 거요 거다 거에요, 뭐지 뭐라고 뭐든, 제게). A
+  contraction answers with the noun, pronoun and numeral senses only (제게
+  is the pronoun 저, not the determiner).
+- Measured after: nothing found for 4.95% of the subtitle token mass
+  (was 10.65%). What remains is mostly one-syllable hanja nouns before a
+  particle (전에, 문을, 차를: no native entry to answer with),
+  interjections and loanwords the dictionary lacks (아뇨, 닥터, 헤이), and
+  bound-noun constructions after a verb form (하는거야 still finds 去夜).
+- Rendering is unchanged: the remainder's or full form's ordinary card,
+  with no note, the way a one-syllable particle is skipped today.
+- Tests: node (집에, 엄마한테 without 馬韓, 일이에요 without 一二, 그건,
+  거예요, 니가, 사람들이; a hanja word ending in particle-like syllables
+  keeps its card; unflagged byte-identical), and the subtitle measurement
+  rerun with the before and after shares recorded in ROADMAP.md.
+
 ## Verification expectations
 
 - A: after build, spot-check in the output: 國 has eumhun 나라/국 and compounds;

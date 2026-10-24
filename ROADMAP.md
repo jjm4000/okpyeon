@@ -6,6 +6,15 @@ current review clears.
 
 ## Since 1.4: merged on main, not yet released
 
+- **Particles and contractions.** With native words on, a one-syllable
+  noun before a particle found nothing (집에, 돈을, 것을, 너도), nor did a
+  contraction (그건, 거예요, 니가, 뭐야), and particles hid false matches
+  (엄마한테 showed 馬韓, ancient Mahan; 일이에요 showed 一二). A second
+  pass after the headword and verb-form claims now strips the particle or
+  expands the contraction and answers with the word underneath. Measured
+  on the 20,000 most frequent subtitle tokens: nothing found for 4.95% of
+  the token mass, down from 10.65%.
+
 - **Component words of three-character words.** 大學生's component row
   read 學生 and 韓國語's read 國語: a tie between the two possible splits
   always went to a bare first character. It now goes to the word plus a
@@ -536,24 +545,13 @@ correctness" bullet of 1.1, the same way 1.1.1 folded into 1.2.
   scored against Wiktionary's tags in the same pinned test as recall,
   and the note line already has the slot. A settings toggle was
   considered and rejected: it would not lower the cost of the table.
-- **Second-pass resolver: particles, contractions, compound verbs.**
-  Raised by Jesse 2026-09-05 as "the same system could also be used
-  for compound words like 갔다왔어요", measured the same day on the
-  20,000 most frequent subtitle tokens against what the extension
-  resolves today (whole word, a one-syllable josa left over, or a verb
-  form of either): 14.6% of the token mass is still unresolved. Of
-  that, noun plus a two-syllable particle or the plural 들 (사람들이,
-  너한테, 말이야, 집에서, 지금까지) is 2.75% of all mass; compound verb
-  forms with both halves verbs and a connective between (살아있는,
-  들어봐요, 알고있어, 말아주세요, 왔다갔다) is 0.07%, because subtitles
-  space them; the rest is contractions and short pronouns (그건, 이건,
-  거예요, 그걸, 뭐야, 뭔가, 제가, 니가), unmeasured but visibly the
-  largest single block. One feature, in yield order: strip the
-  particle or plural and rerun the whole resolver on the remainder;
-  a small contractions table (그건 is 그것은, 거예요 is 것이에요, 제 is
-  저); then the verb split riding the same split-and-retry code,
-  rendered as two lemma cards under a note ("갔다왔어요 → 가다 + 오다",
-  the form note's container). 갔다왔어요 itself is not in the top 20k.
+- **What the second pass leaves.** The particle and contraction pass
+  shipped (see Since 1.4). Still unresolved: compound verb forms written
+  without a space (살아있는, 들어봐요, 왔다갔다; 0.07% of subtitle mass),
+  bound-noun constructions after a verb form (하는거야 finds 去夜),
+  one-syllable hanja nouns before a particle (전에, 문을, 차를), and the
+  longest-match passes finding fragments inside loanwords and verb endings
+  (크리스토퍼 finds 크리, 사실이라면 adds 라면).
 - **Keyboard shortcut for the current selection** (Chrome's commands
   API) and **per-site disable**: one settings row each plus a little
   glue, and both come up in extension reviews constantly.

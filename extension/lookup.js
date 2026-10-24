@@ -726,7 +726,13 @@ export function buildMatches(text, data, native) {
       // claim, so the generator never runs on the unflagged path.
       let claimed = native === true ? nativeWholeLength(run.chars, bundle) : 0;
       if (native === true && claimed === 0) claimed = deconjugatedLength(run.chars, bundle);
-      const rest = claimed > 0 ? run.chars.slice(claimed) : run.chars;
+      let rest = claimed > 0 ? run.chars.slice(claimed) : run.chars;
+      // Second-pass resolver ADDENDUM: a particle comes off (rule 3b sees
+      // only the remainder), and a native answer leaves rule 3b nothing.
+      if (native === true && claimed === 0) {
+        const second = secondPass(run.chars, bundle);
+        if (second !== null) rest = second.keep || [];
+      }
       // Rule 3b: hangul reverse lookup.
       for (const span of segmentHangulRun(rest, byHangul, maxHangulLen)) {
         // Rule 3b: ALL spellings, no cap — the UI renders a selector.
@@ -970,6 +976,102 @@ function deconjugatedLength(chars, bundle) {
   return deconjugatedClaim(chars, bundle).length;
 }
 
+/* ---------------------------------------------------------------------------
+ * Second-pass resolver ADDENDUM (2026-10-24): particles and contractions.
+ *
+ * For a hangul run neither the headword claim nor the conjugated-form claim
+ * takes, on the flagged path only: a trailing particle comes off when what
+ * it leaves is a dictionary word (엄마한테 is 엄마, so rule 3b never finds
+ * 馬韓 inside it), a one-syllable noun before a particle answers with its
+ * native card (집에 is 집; the native pass's two-syllable floor missed it),
+ * and a contraction answers with its full form (그건 is 그것, 니가 is 너).
+ * Rendering is unchanged: the card of the word underneath, no note.
+ * ------------------------------------------------------------------------- */
+
+/** Particles, longest first (SPEC list). */
+const SECOND_PASS_PARTICLES = [
+  "에게서", "한테서", "들에게", "들한테", "에게", "한테", "에서", "까지", "부터",
+  "으로", "처럼", "보다", "마다", "밖에", "조차", "마저", "이랑", "이나", "이든",
+  "이야", "이에요", "예요", "이죠", "이지", "이고", "이란", "이며", "이면", "께서",
+  "에는", "에도", "에만", "들이", "들은", "들을", "들의", "들도", "들과", "들로",
+  "들에", "들만", "입니다", "인가", "인데", "이네", "이다",
+  "이", "가", "은", "는", "을", "를", "에", "의", "도", "와", "과", "로", "만", "야",
+  "랑", "나", "들",
+].sort((a, b) => b.length - a.length);
+
+/** Whole-run contractions: the run is the full form plus a fused particle. */
+const WHOLE_CONTRACTIONS = {
+  그건: "그것", 그걸: "그것", 이건: "이것", 이걸: "이것", 저건: "저것", 저걸: "저것",
+  얘기: "이야기",
+};
+
+/** Contracted remainders before a particle: 거예요 is 것 + 이에요. */
+const BASE_CONTRACTIONS = { 거: "것", 뭐: "무엇", 뭔: "무엇", 얘기: "이야기", 제: "저", 내: "나", 네: "너", 니: "너" };
+
+/** Endings a contracted base takes besides the particles: 거죠, 뭐지, 뭔데. */
+const BASE_CONTRACTION_TAILS = ["라고", "가요", "에요", "예요", "죠", "요", "다", "고", "지", "든", "게", "데", "가"];
+
+/** POS a one-syllable remainder may answer with. */
+const SECOND_PASS_SINGLE_POS = new Set(["noun", "pron", "num"]);
+
+/** The native entries of `word` with one of the given POS. */
+function entriesWithPos(nativeWords, word, posSet) {
+  return usableNativeEntries(nativeWords, word).filter((e) => posSet.has(e.pos));
+}
+
+/**
+ * The second-pass answer for one hangul run, or null.
+ * { keep: [chars] }  resolve the run as these syllables (the remainder)
+ * { word, pos }      answer with this native headword's entries (pos: a Set,
+ *                    or null for every POS)
+ */
+function secondPass(chars, bundle) {
+  if (chars.length < 2) return null;
+  const nativeWords = (bundle.native && bundle.native.words) || {};
+  const byHangul = (bundle.words && bundle.words.byHangul) || {};
+  const wordTable = (bundle.words && bundle.words.words) || {};
+  const run = chars.join("");
+  // A run that is itself a hanja word's hangul with a non-rare spelling is
+  // that word: 수가 is never 수 + 가 when 酬價 is a common word.
+  if (hasOwn(byHangul, run) && Array.isArray(byHangul[run]) && byHangul[run].some((sp) => {
+    const sense = typeof sp === "string" ? collapseEntries(wordTable[sp], run) : null;
+    return sense !== null && sense.rare !== true;
+  })) {
+    return null;
+  }
+  if (hasOwn(WHOLE_CONTRACTIONS, run) &&
+      usableNativeEntries(nativeWords, WHOLE_CONTRACTIONS[run]).length > 0) {
+    return { word: WHOLE_CONTRACTIONS[run], pos: SECOND_PASS_SINGLE_POS };
+  }
+  for (const tail of BASE_CONTRACTION_TAILS) {
+    if (!run.endsWith(tail) || run.length <= tail.length) continue;
+    const base = run.slice(0, run.length - tail.length);
+    if (hasOwn(BASE_CONTRACTIONS, base) &&
+        usableNativeEntries(nativeWords, BASE_CONTRACTIONS[base]).length > 0) {
+      return { word: BASE_CONTRACTIONS[base], pos: SECOND_PASS_SINGLE_POS };
+    }
+  }
+  for (const particle of SECOND_PASS_PARTICLES) {
+    if (!run.endsWith(particle) || run.length <= particle.length) continue;
+    const rest = run.slice(0, run.length - particle.length);
+    if (hasOwn(BASE_CONTRACTIONS, rest) &&
+        usableNativeEntries(nativeWords, BASE_CONTRACTIONS[rest]).length > 0) {
+      return { word: BASE_CONTRACTIONS[rest], pos: SECOND_PASS_SINGLE_POS };
+    }
+    const restChars = [...rest];
+    if (restChars.length === 1) {
+      if (entriesWithPos(nativeWords, rest, SECOND_PASS_SINGLE_POS).length > 0) {
+        return { word: rest, pos: SECOND_PASS_SINGLE_POS };
+      }
+      continue;
+    }
+    const explained = usableNativeEntries(nativeWords, rest).length > 0 ||
+      (hasOwn(byHangul, rest) && Array.isArray(byHangul[rest]) && byHangul[rest].length > 0);
+    if (explained) return { keep: restChars };
+  }
+  return null;
+}
+
 /**
  * The best (lowest) lemma frequency bucket among a lemma's conjugating
  * entries; absent compares as worst, the convention every f comparison here
@@ -1196,7 +1298,19 @@ export function buildNativeMatches(text, data) {
           joinForm(run.chars.slice(0, claimed).join(""), claim.lemmas);
         }
       }
-      const rest = claimed > 0 ? run.chars.slice(claimed) : run.chars;
+      let rest = claimed > 0 ? run.chars.slice(claimed) : run.chars;
+      // Second-pass resolver ADDENDUM: the same decision buildMatches made.
+      if (claimed === 0) {
+        const second = secondPass(run.chars, bundle);
+        if (second !== null && second.keep) {
+          rest = second.keep;
+        } else if (second !== null) {
+          joinEntries(second.word, second.pos === null
+            ? entriesOf(second.word)
+            : entriesWithPos(nativeWords, second.word, second.pos), undefined);
+          rest = [];
+        }
+      }
       // Hangul runs: rule 3b spans are authoritative where they exist; the
       // stretches between them get the native-only pass.
       let cursor = 0;
@@ -1326,6 +1440,9 @@ function coverageOf(hangul, data, native) {
   // and anchored, so 무시했어 measures as 무시하다's whole answer.
   let claimed = native ? nativeWholeLength(chars, bundle) : 0;
   if (native && claimed === 0) claimed = deconjugatedLength(chars, bundle);
+  // Second-pass resolver ADDENDUM: a particle or contraction answer explains
+  // the whole candidate, as the lookup answers it.
+  if (native && claimed === 0 && secondPass(chars, bundle) !== null) claimed = chars.length;
   if (claimed > 0) intervals.push([0, claimed]);
   const spans = segmentHangulRun(chars.slice(claimed), byHangul, maxHangulLenOf(bundle.words));
 
