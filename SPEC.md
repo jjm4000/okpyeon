@@ -3513,6 +3513,96 @@ store so that people can more easily find it in search".
   pipeline). Chrome and Firefox
   ship the same version number.
 
+## Word-level sibling readings (ADDENDUM 2026-10-24, design settled by mockups)
+
+The character cards' JP · CN line, on word cards: 學校 shows がっこう and
+xuéxiào. Measured first (pipeline/spike_word_readings.py): the roadmap's
+plan to build Mandarin by aligning per-character readings through the
+hangul is wrong 8 to 9% of the time where it yields anything (乘客
+shèngkè for chéngkè), so BOTH languages are attested-only, read from
+English Wiktionary's Chinese and Japanese entries via kaikki (Jesse's
+suggestion). Coverage of common words: Mandarin about 72%, Japanese 78%;
+most misses are Korean-only coinages (代身, 今方), where no line is the
+right answer. Decisions (Jesse, 2026-10-24): mockup A, and Japanese shows
+the Sino reading first with the everyday word in parentheses when the two
+differ.
+
+### Rendering (mockup A)
+
+- On every word card, lead or nested (a hybrid's 戰爭 card, a component
+  word card), one line under the head in exactly the character card's
+  sino-line idiom: marker JP then the Japanese reading, a dot, marker CN
+  then the Mandarin reading. Same two toggles (jaReadings, zhReadings),
+  same markers (marker.ja / marker.zh: JP / CN, 일 / 중 under 한국어), same
+  class and size rules as the character line. A language with no reading
+  is omitted; with neither, no line. Toggles off: byte-identical.
+- Japanese: the Sino reading in hiragana (みょうにち); when the word's
+  everyday Japanese reading is a native one, it follows in parentheses,
+  muted: みょうにち (あした). A word attested only with a native reading
+  shows it alone, without parentheses. The character line keeps katakana
+  for on'yomi; words are written in hiragana, as Japanese writes them.
+- Mandarin: the word's attested pinyin as Wiktionary writes it (dàxué,
+  biàn'ān, Dīngmǒ), one reading.
+- The line follows the selected spelling: a homograph swap (사기: 詐欺 /
+  士氣) re-renders it for the new spelling, as the rest of the body does.
+- No tooltip, no new copy. Export, saved words and the omnibox are
+  unchanged (word cards' Anki fields stay as they are; a JP/CN field for
+  word cards is a later item if wanted).
+
+### Data (pipeline, sino.json)
+
+- sino.json gains a `words` table beside `chars`, keyed by words.json
+  canonical key: `{"ja": "みょうにち", "jn": "あした", "zh": "míngrì"}`.
+  `ja` is the Sino reading, `jn` the everyday native reading when it
+  differs, `zh` the pinyin; each key is omitted when absent and a word
+  with none is omitted. It rides in the file the toggles already load,
+  so no new fetch.
+- Japanese sources: English Wiktionary's Japanese entries (kaikki
+  Japanese dump: each entry's ja-* head template kana, in the entry's
+  listed order, joined to the entry's kyūjitai forms so 国民 meets 國民),
+  then the Japanese-language extract the build already parses
+  (unordered, so it can add Sino readings but never a `jn`). Every
+  spelling is canonicalized through variants.json.
+- Sino or native is decided by the existing on'yomi aligner (the one the
+  Japanese compound bridge uses): a reading that parses into the
+  characters' on'yomi, rendaku and sokuon allowed, is Sino. `ja` is the
+  first Sino reading in listed order; `jn` is the first-listed reading
+  when that one is not Sino. 明日: あした (listed first, native), あす,
+  みょうにち (first Sino), めいじつ, so ja みょうにち, jn あした. 國民:
+  こくみん first and Sino, so ja こくみん and no jn.
+- Mandarin source: the kaikki Chinese dump the Mandarin compound bridge
+  already reads, the word's first Mandarin Pinyin, kept as written for
+  display (the bridge strips spaces and apostrophes only to split).
+- Anchors (build verify): 學校 ja がっこう zh xuéxiào; 明日 ja みょうにち jn
+  あした zh míngrì; 國民 ja こくみん, no jn; 大學 zh dàxué; 音樂 ja おんがく
+  zh yīnyuè; 代身 absent; every key is a words.json key; sino.json stays
+  under 5 MB.
+
+### Runtime
+
+- background.js: attachSino hangs the word entry on each word match as
+  `sinoWord` (keyed by the match's canonical spelling), on the same
+  flagged path that hangs `sino` on char matches, including word matches
+  inside hybrid part sub-lookups and component-word cards. guardSino
+  already spreads unknown keys through; `words` is defended like
+  `chars` (an object, else empty).
+- content.js: the word card's body renders the line from
+  `m.sinoWord` with the enabled languages, through the same helper the
+  character line uses where it can.
+
+### Tests
+
+- Build verify: the anchors above.
+- Node: attachSino hangs sinoWord on word matches by canonical key and
+  only when flagged; nested sub-lookup word matches get it too; junk
+  `words` reads as empty; unflagged responses byte-identical.
+- Harness (both pages, fixtures extended with a words table): the line
+  renders under a word card's head with each toggle alone and both; the
+  parenthesized native reading; a word with only `jn`; Korean markers;
+  a homograph swap updates it; a word with no entry renders no line;
+  toggles off byte-identical; nested word card (the hybrid's 加工) shows
+  it; English snapshots unchanged with toggles off.
+
 ## Verification expectations
 
 - A: after build, spot-check in the output: 國 has eumhun 나라/국 and compounds;
