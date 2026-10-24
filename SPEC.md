@@ -3523,9 +3523,9 @@ shèngkè for chéngkè), so BOTH languages are attested-only, read from
 English Wiktionary's Chinese and Japanese entries via kaikki (Jesse's
 suggestion). Coverage of common words: Mandarin about 72%, Japanese 78%;
 most misses are Korean-only coinages (代身, 今方), where no line is the
-right answer. Decisions (Jesse, 2026-10-24): mockup A, and Japanese shows
-the Sino reading first with the everyday word in parentheses when the two
-differ.
+right answer. Decisions (Jesse, 2026-10-24): mockup A; Japanese first
+chose the Sino reading first, then, the same day, the everyday reading
+first with the Sino reading in parentheses when the two differ.
 
 ### Rendering (mockup A)
 
@@ -3536,11 +3536,12 @@ differ.
   same markers (marker.ja / marker.zh: JP / CN, 일 / 중 under 한국어), same
   class and size rules as the character line. A language with no reading
   is omitted; with neither, no line. Toggles off: byte-identical.
-- Japanese: the Sino reading in hiragana (みょうにち); when the word's
-  everyday Japanese reading is a native one, it follows in parentheses,
-  muted: みょうにち (あした). A word attested only with a native reading
-  shows it alone, without parentheses. The character line keeps katakana
-  for on'yomi; words are written in hiragana, as Japanese writes them.
+- Japanese: the everyday reading first, in hiragana. When it is a native
+  reading and the word also has a Sino one, the Sino reading follows in
+  parentheses, muted: あした (みょうにち). When the everyday reading is
+  itself Sino (がっこう), it stands alone. A word attested only with a
+  native reading shows it alone. The character line keeps katakana for
+  on'yomi; words are written in hiragana, as Japanese writes them.
 - Mandarin: the word's attested pinyin as Wiktionary writes it (dàxué,
   biàn'ān, Dīngmǒ), one reading.
 - The line follows the selected spelling: a homograph swap (사기: 詐欺 /
@@ -3555,7 +3556,8 @@ differ.
   canonical key: `{"ja": "みょうにち", "jn": "あした", "zh": "míngrì"}`.
   `ja` is the Sino reading, `jn` the everyday native reading when it
   differs, `zh` the pinyin; each key is omitted when absent and a word
-  with none is omitted. It rides in the file the toggles already load,
+  with none is omitted. Display: `jn (ja)` when both are present,
+  otherwise whichever one is. It rides in the file the toggles already load,
   so no new fetch.
 - Japanese sources: English Wiktionary's Japanese entries (kaikki
   Japanese dump: each entry's ja-* head template kana, in the entry's
@@ -3598,7 +3600,7 @@ differ.
   `words` reads as empty; unflagged responses byte-identical.
 - Harness (both pages, fixtures extended with a words table): the line
   renders under a word card's head with each toggle alone and both; the
-  parenthesized native reading; a word with only `jn`; Korean markers;
+  everyday reading with the Sino one in parentheses (あした (みょうにち)); a word with only `jn`; Korean markers;
   a homograph swap updates it; a word with no entry renders no line;
   toggles off byte-identical; nested word card (the hybrid's 加工) shows
   it; English snapshots unchanged with toggles off.
