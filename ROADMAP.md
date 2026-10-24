@@ -6,6 +6,18 @@ current review clears.
 
 ## Since 1.4: merged on main, not yet released
 
+- **Component words of three-character words.** 大學生's component row
+  read 學生 and 韓國語's read 國語: a tie between the two possible splits
+  always went to a bare first character. It now goes to the word plus a
+  suffix, unless the first character is a bound prefix (不可能, 無關心),
+  which agrees with Wiktionary's etymologies on 128 of 144 tied words
+  instead of 25. Found by the harness change below.
+- **The test pages run the real lookup code.** Their fake worker used to
+  re-implement every lookup rule by hand, so each feature was written
+  twice. The fixture is now one shared file that answers through the
+  shipped lookup.js and background.js (860 lines of copies gone), which
+  is how the component-word bug surfaced.
+
 - **Readings follow the card; school characters get their 훈음.**
   Selecting 데 listed 大 待 臺 袋, because characters' reading lists
   carried vowel-merger spellings their cards never show (大 데, 色 섹,

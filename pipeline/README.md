@@ -914,3 +914,11 @@ Runs `test-page/index.html` and `test-page/embed.html` in headless Chrome on the
 shared CDP client in `cdp.py`, prints the check count per page and every
 failing check by name, and exits non-zero on any failure. Header docstring has
 the details.
+
+Both pages load `test-page/fixture.js`: the fixture tables plus a fake service
+worker that answers through the REAL `extension/lookup.js` and
+`extension/background.js` (`answerLookup` and the compounds, used-in and
+found-in builders), so the checks exercise the shipped lookup code. The fake
+keeps only what a fake must: the counters, the failure switches, the table
+swaps, and an in-memory saved-words store. ES modules need http, so the pages no
+longer run from `file://`.

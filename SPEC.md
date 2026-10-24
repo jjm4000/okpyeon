@@ -3690,6 +3690,22 @@ the two pages", now live in ONE file, test-page/fixture.js, loaded by
 both test-page/index.html and test-page/embed.html with a plain
 <script src> (so file:// still works). Read every earlier mention of the
 byte-identical blocks as this file. It must load before content.js.
+- Same day, second step: the file no longer re-implements the worker's
+  lookup rules. It loads extension/lookup.js and extension/background.js
+  and answers every lookup through background.js's answerLookup (the
+  worker's handleLookup minus the file loading, split out for this) and
+  the compounds, used-in and found-in requests through the real
+  builders, over the fixture tables in their file shapes. 860 lines of
+  look-alike code went (whole-word precedence, the deconjugation gate,
+  the romanized coverage collapse, hybrid parts, the sino and ko attach,
+  the keyboard and romanized interpreters). The fixture data became
+  faithful where the real code reads it differently: each char's `cw`
+  rides on its entry and is the complete index (學's gained the five
+  學生 compounds, so the pagination checks count 22), and 水 has a
+  compound so "su" ranks 수 first as in the real data. The pages need
+  http (ES modules); run_selfchecks serves them. The switch surfaced a
+  real bug, the word-parts tie-break above. The saved-words store and
+  its export remain an in-memory fake.
 
 ## Verification expectations
 

@@ -321,6 +321,8 @@
   }
 
   document.getElementById("run").addEventListener("click", async function () {
+    // The fixture answers through the real worker modules; wait for them.
+    await globalThis.__hanjaHoverTestRuntime.ready;
     var api = globalThis.__hanjaHover;                 // renderer test hooks
     var embed = globalThis.__okpyeonEmbedApi;          // the embed API itself
     var shellApi = globalThis.__okpyeonSearchShell;
@@ -1047,7 +1049,7 @@
       cpdRows().length === 5, "rows=" + cpdRows().length);
     check("show-more control renders with the remaining count",
       !!api.query(".cpd-more") &&
-      api.query(".cpd-more").textContent === "Show 5 more (13)",
+      api.query(".cpd-more").textContent === "Show 5 more (18)",
       api.query(".cpd-more") && api.query(".cpd-more").textContent);
     api.query(".cpd-more").click();
     await wait(TAIL);
@@ -1056,14 +1058,14 @@
 
     check("show-all renders beside show-more in embed",
       !!api.query(".cpd-all") &&
-      api.query(".cpd-all").textContent === "Show all (17)",
+      api.query(".cpd-all").textContent === "Show all (22)",
       api.query(".cpd-all") && api.query(".cpd-all").textContent);
     var cpdCallsBeforeAll = fake.__compoundCalls;
     api.query(".cpd-all").click();
     await wait(TAIL);
     check("show-all opens the full index as a used-in view in embed",
       !!api.query(".card.usedin") && api.viewDepth() === 2 &&
-      api.queryAll(".usedin-list > .usedin-item").length === 17 &&
+      api.queryAll(".usedin-list > .usedin-item").length === 22 &&
       fake.__compoundCalls === cpdCallsBeforeAll,
       "depth=" + api.viewDepth() + " rows=" +
       api.queryAll(".usedin-list > .usedin-item").length);
@@ -3840,8 +3842,8 @@
         api.query(".usedin-row").textContent === "더 긴 단어 6개에 쓰임" &&
         api.query(".components .label").textContent === "구성 한자" &&
         api.query(".edu-badge").textContent === "중학" &&
-        api.query(".cpd-more").textContent === "5개 더 보기 (13)" &&
-        api.query(".cpd-all").textContent === "전체 보기 (17)",
+        api.query(".cpd-more").textContent === "5개 더 보기 (18)" &&
+        api.query(".cpd-all").textContent === "전체 보기 (22)",
         api.query(".usedin-row").textContent + " | " + api.query(".cpd-more").textContent);
 
       // Korean definitions on the sidebar surface (SPEC "Korean definitions

@@ -150,6 +150,8 @@
   }
 
   document.getElementById("run").addEventListener("click", async function () {
+    // The fixture answers through the real worker modules; wait for them.
+    await globalThis.__hanjaHoverTestRuntime.ready;
     var api = globalThis.__hanjaHover;
     if (!api) { out.textContent = "FAIL: __hanjaHover test hooks missing (is chrome.runtime present?)"; return; }
     var lines = [], pass = 0, fail = 0, skipped = 0;
@@ -1293,8 +1295,8 @@
     }
 
     var hak = fake.__lookup("學").matches[0];
-    check("fixture: 學 carries cwCount 17 and 5 inline compounds",
-      hak.cwCount === 17 && hak.compounds.length === 5,
+    check("fixture: 學 carries cwCount 22 and 5 inline compounds",
+      hak.cwCount === 22 && hak.compounds.length === 5,
       "cwCount=" + hak.cwCount + " inline=" + hak.compounds.length);
     check("fixture: the 5th inline compound is hangul-only",
       !hak.compounds[4].hanja && hak.compounds[4].hangul === "학벌",
@@ -1354,7 +1356,7 @@
     // --- "Show 5 more (N)" ------------------------------------------------
     api.showAt(anchor, [hak]);                // fresh session: caches cleared
     check("pagination control renders with the remaining count",
-      moreBtnText() === "Show 5 more (13)", moreBtnText());
+      moreBtnText() === "Show 5 more (18)", moreBtnText());
     check("control sits after the compound rows, inside the card",
       api.query(".cpd-more").previousSibling === api.query(".compounds"));
 
@@ -1387,7 +1389,7 @@
       cpdRows().slice(5).every(function (r) {
         return r.classList.contains("nav") && r.getAttribute("role") === "button";
       }));
-    check("count updates to the new remaining", moreBtnText() === "Show 5 more (8)",
+    check("count updates to the new remaining", moreBtnText() === "Show 5 more (13)",
       moreBtnText());
     check("popup re-anchors inside the viewport after growing",
       api.hostRect().top >= 7.5 && api.hostRect().bottom <= vh - 7.5,
@@ -1407,12 +1409,18 @@
       ", calls " + callsBefore2 + " → " + fake.__calls);
     check("second press reveals 5 more rows locally", cpdRows().length === 15,
       "rows=" + cpdRows().length);
+    check("the count follows the second press too",
+      moreBtnText() === "Show 5 more (8)", moreBtnText());
+    api.query(".cpd-more").click();
+    await wait(90);
+    check("third press reveals 5 more rows locally", cpdRows().length === 20,
+      "rows=" + cpdRows().length);
     check("count updates again (fewer than a page left)",
       moreBtnText() === "Show 3 more (3)", moreBtnText());
 
     api.query(".cpd-more").click();
     await wait(90);
-    check("final press reveals the remainder", cpdRows().length === 18,
+    check("final press reveals the remainder", cpdRows().length === 23,
       "rows=" + cpdRows().length);
     check("control disappears once the index is exhausted",
       !api.query(".cpd-more"), moreBtnText());
@@ -1421,12 +1429,13 @@
         return cpdSpellings().indexOf(c.hanja) >= 0;
       }), cpdSpellings().join(","));
     check("the last revealed row stays in view after exhaustion",
-      inPanel(cpdRows()[17]));
+      inPanel(cpdRows()[22]));
 
     // --- rare entries get the muted treatment ----------------------------
     var rareRow = cpdRows().filter(function (r) { return r.classList.contains("rare"); });
-    check("exactly one revealed row is flagged rare", rareRow.length === 1 &&
-      /만학/.test(rareRow[0].textContent), rareRow.length + " " +
+    // The two rare cw entries in the fixture: 晩學, then 苦學生.
+    check("exactly the rare entries are flagged rare", rareRow.length === 2 &&
+      /만학/.test(rareRow[0].textContent) && /고학생/.test(rareRow[1].textContent), rareRow.length + " " +
       (rareRow[0] ? rareRow[0].textContent : ""));
     check("rare compound row is muted relative to a normal one",
       getComputedStyle(rareRow[0].querySelector(".cpd-hangul")).color !==
@@ -1516,12 +1525,12 @@
       "compoundCalls " + cpdCallsBeforeFail + " → " + fake.__compoundCalls);
     check("control survives the failure, enabled and unchanged",
       !!api.query(".cpd-more") && api.query(".cpd-more").disabled === false &&
-      moreBtnText() === "Show 5 more (13)", moreBtnText());
+      moreBtnText() === "Show 5 more (18)", moreBtnText());
     fake.__failCompounds = false;
     api.query(".cpd-more").click();
     await wait(90);
     check("retry after a failure succeeds",
-      cpdRows().length === 10 && moreBtnText() === "Show 5 more (8)",
+      cpdRows().length === 10 && moreBtnText() === "Show 5 more (13)",
       "rows=" + cpdRows().length + " btn=" + moreBtnText());
     check("the failed attempt was not cached (a second request went out)",
       fake.__compoundCalls === cpdCallsBeforeFail + 2,
@@ -1561,11 +1570,11 @@
     api.showAt(anchor, fake.__lookup("학생").matches);
     var nestedMore = api.queryAll(".component-list > .card.component .cpd-more:not(.cpd-all)");
     check("nested component char cards get the control too",
-      nestedMore.length === 1 && nestedMore[0].textContent === "Show 5 more (13)",
+      nestedMore.length === 1 && nestedMore[0].textContent === "Show 5 more (18)",
       nestedMore.map(function (b) { return b.textContent; }).join("|"));
     var nestedAll = api.queryAll(".component-list > .card.component .cpd-all");
     check("nested component char cards get show-all too",
-      nestedAll.length === 1 && nestedAll[0].textContent === "Show all (17)",
+      nestedAll.length === 1 && nestedAll[0].textContent === "Show all (22)",
       nestedAll.map(function (b) { return b.textContent; }).join("|"));
     check("nested control keeps the smaller nested scale",
       parseFloat(getComputedStyle(nestedMore[0]).fontSize) < parseFloat(topMoreSize),
@@ -1576,7 +1585,7 @@
     await wait(90);
     check("drill-down char cards get the control as well",
       api.viewDepth() === 2 && api.query(".surface").textContent === "學" &&
-      moreBtnText() === "Show 5 more (13)",
+      moreBtnText() === "Show 5 more (18)",
       "depth=" + api.viewDepth() + " btn=" + moreBtnText());
     var cpdCallsBeforeDrillPress = fake.__compoundCalls;
     api.query(".cpd-more").click();
@@ -1603,7 +1612,7 @@
 
     api.showAt(anchor, [hak]);                 // fresh session: caches cleared
     check("show-all renders beside show-more with the index total",
-      allBtnText() === "Show all (17)" &&
+      allBtnText() === "Show all (22)" &&
       api.query(".cpd-all").previousSibling === api.query(".cpd-more"),
       allBtnText());
 
@@ -1618,11 +1627,11 @@
       api.viewDepth() === depthBeforeAll + 1 && !!api.query(".card.usedin"),
       "depth=" + api.viewDepth());
     check("the view is titled with the full index count",
-      api.query(".card.usedin .reading-title").textContent === "17 words contain 學",
+      api.query(".card.usedin .reading-title").textContent === "22 words contain 學",
       JSON.stringify(api.query(".card.usedin .reading-title") &&
         api.query(".card.usedin .reading-title").textContent));
     check("every index entry renders as a row, all of them nav rows",
-      allViewRows().length === 17 && allViewRows().every(function (r) {
+      allViewRows().length === 22 && allViewRows().every(function (r) {
         return r.classList.contains("nav");
       }), "rows=" + allViewRows().length);
     check("the drill gets the cpds: key and the Used in crumb",
@@ -1674,7 +1683,7 @@
     await wait(90);
     check("show-all retry after a failure opens the view",
       api.viewDepth() === depthBeforeAllFail + 1 && !!api.query(".card.usedin") &&
-      allViewRows().length === 17,
+      allViewRows().length === 22,
       "depth=" + api.viewDepth() + " rows=" + allViewRows().length);
 
     // --- ADDENDUM: used-in disclosure (design option C) ------------------
@@ -4923,8 +4932,8 @@
         api.query(".components .label").textContent === "구성 한자" &&
         api.query(".edu-badge").textContent === "중학" &&
         api.query(".edu-badge").title === "교육부 지정 중학교용 기초 한자" &&
-        api.query(".cpd-more").textContent === "5개 더 보기 (13)" &&
-        api.query(".cpd-all").textContent === "전체 보기 (17)" &&
+        api.query(".cpd-more").textContent === "5개 더 보기 (18)" &&
+        api.query(".cpd-all").textContent === "전체 보기 (22)" &&
         api.query(".label").textContent === "구성 한자" &&
         api.query(".wiki").getAttribute("aria-label") === "학생의 Wiktionary 항목 (새 탭에서 열림)" &&
         api.query(".wiki").textContent === "Wiktionary ↗" &&

@@ -725,10 +725,6 @@ export async function handleLookup(text, interpret, native, sino, ko) {
     if (flagged) {
       bundle.native = await getNative().catch(() => guardNative(null));
     }
-    const result = lookup(text, bundle, {
-      interpret: interpret === true,
-      native: flagged,
-    });
     // The flagged tables, fetched once per request. A missing or malformed
     // sino.json degrades to an empty table: the lookup still answers, the
     // cards simply carry no readings line. The same for ko.json: the cards
@@ -736,13 +732,36 @@ export async function handleLookup(text, interpret, native, sino, ko) {
     const tables = {
       sino: sino === true ? await getSino().catch(() => guardSino(null)) : null,
       ko: ko === true ? await koForRequest() : null,
+      getFoundInIndex: () => getFoundInIndex(data),
     };
-    const attach = (response) => attachAll(response, data, () => getFoundInIndex(data), tables);
-    const joined = attach(result);
-    return flagged ? attachPartLookups(joined, bundle, attach) : joined;
+    return answerLookup(text, { interpret, native: flagged }, bundle, tables);
   } catch (err) {
     return { ok: false, error: toErrorMessage(err) };
   }
+}
+
+/**
+ * The lookup response for one request, from tables already in hand: the
+ * lookup itself, then the attach pipeline, then (flagged) the hybrid part
+ * sub-lookups. Pure and synchronous. handleLookup calls it after loading the
+ * files; the test pages call it with their fixture tables, so they exercise
+ * this code rather than a copy of it (test harness ADDENDUM 2026-10-24).
+ *
+ * @param {string} text
+ * @param {{interpret?: boolean, native?: boolean}} opts
+ * @param {object} bundle hanja, words, variants, decomp, and native when
+ *        flagged, plus an optional getReadingIndex()
+ * @param {{sino: object|null, ko: object|null, getFoundInIndex: Function}} tables
+ */
+export function answerLookup(text, opts, bundle, tables) {
+  const flagged = opts.native === true;
+  const result = lookup(text, bundle, {
+    interpret: opts.interpret === true,
+    native: flagged,
+  });
+  const attach = (response) => attachAll(response, bundle, tables.getFoundInIndex, tables);
+  const joined = attach(result);
+  return flagged ? attachPartLookups(joined, bundle, attach) : joined;
 }
 
 /**

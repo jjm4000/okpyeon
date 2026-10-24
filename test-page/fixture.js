@@ -212,7 +212,10 @@
     // rule. Seven is enough to show five and offer the rest, and it keeps the
     // preview count and the drilled-into view honest with each other — both
     // come from this one list.
-    "水": C("물", "수", "water"),
+    // 水 carries one compound so the real worker ranks 수 above 녀 for "su"
+    // (a syllable-only pair orders by its best compound count, as 水 does in
+    // the real data); the fake used to pin that order by hand.
+    "水": C("물", "수", "water", [{ hangul: "수도", hanja: "水道", gloss: "waterworks" }]),
     "手": C("손", "수", "hand"),
     "數": C("셈", "수", "number; to count"),
     "首": C("머리", "수", "head; chief"),
@@ -342,6 +345,7 @@
     "又況": [{ hangul: "우황", glosses: ["still more; much less"], rare: true }],
     "又日新": [{ hangul: "우일신", glosses: ["renewing day after day"], rare: true }],
     // --- larger words containing 學生, for the used-in disclosure ---------
+    "水道": [{ hangul: "수도", glosses: ["waterworks"] }],
     "中學生": [{ hangul: "중학생", glosses: ["middle school student"] }],
     "女學生": [{ hangul: "여학생", glosses: ["female student"] }],
     "留學生": [{ hangul: "유학생", glosses: ["an exchange student"] }],
@@ -356,11 +360,19 @@
   var CW = {
     "學": [
       "學生", "大學", "學校", "科學", "數學", "文學", "哲學", "醫學", "化學",
-      "學者", "學問", "學院", "學術", "留學", "入學", "大學生", "晩學"
+      "學者", "學問", "學院", "學術", "留學", "入學", "大學生", "晩學",
+      "中學生", "女學生", "留學生", "小學生", "苦學生"
     ],
     // Single-page rule: three entries, all rare, none curated inline.
-    "又": ["又玄", "又況", "又日新"]
+    "又": ["又玄", "又況", "又日新"],
+    // 水's one compound: the real worker ranks a syllable-only "su" by the
+    // best cw size, so 수 (水) leads 녀 (女) as it does in the real data.
+    "水": ["水道"]
   };
+  // The real worker reads each char's own cw, hanja.json's shape. 學's index
+  // carries the five 學生 compounds a hand-pinned used-in list used to name,
+  // since the worker derives used-in from the first char's cw.
+  Object.keys(CW).forEach(function (c) { if (CHARS[c]) CHARS[c].cw = CW[c]; });
 
   // ADDENDUM decomposition: rows exactly as decomp.json emits them. [g] is a
   // self-target row, [g,t] an alias row, [g,null] an inert part and
@@ -380,154 +392,11 @@
   // pins its 革 row and 靴 stays unpinned as the no-markup control.
   var PHON = { "鞠": 0 };
 
-  // The worker's join. The content script never sees hanja.json, so the click
-  // target's eumhun and gloss are resolved here, and a target with no entry
-  // degrades to an inert row.
-  function decompParts(char) {
-    var rows = (DECOMP[char] || []).map(function (row) {
-      var clickable = row.length === 1 || typeof row[1] === "string";
-      if (!clickable) {
-        var inert = { g: row[0] };
-        if (typeof row[2] === "string") inert.name = row[2];
-        return inert;
-      }
-      var target = typeof row[1] === "string" ? row[1] : row[0];
-      var d = CHARS[target];
-      if (!d) return { g: row[0] };
-      var pair = (d.eumhun || [])[0] || {};
-      return {
-        g: row[0], t: target,
-        hun: pair.hun || "", eum: pair.eum || "",
-        gloss: (d.glosses || [])[0] || ""
-      };
-    });
-    // The flag lands on the joined row at the pinned index, and only when
-    // that row came out clickable, mirroring the worker's attachDecomp.
-    var pin = PHON[char];
-    if (typeof pin === "number" && rows[pin] && typeof rows[pin].t === "string") {
-      rows[pin].phon = true;
-    }
-    return rows;
-  }
-
-  // ADDENDUM recomposition: the reverse index, DERIVED from DECOMP here exactly
-  // as the worker derives it from decomp.json. Nothing is hand-listed, so a
-  // change to DECOMP moves the Found-in lists with it. Each CLICKABLE row
-  // credits its target (an 亻 row credits 人), deduped per containing character,
-  // and a character is never found in itself.
-  var FOUND_IN = (function () {
-    var index = {};
-    Object.keys(DECOMP).forEach(function (char) {
-      var credited = {};
-      DECOMP[char].forEach(function (row) {
-        var clickable = row.length === 1 || typeof row[1] === "string";
-        if (!clickable) return;
-        var target = typeof row[1] === "string" ? row[1] : row[0];
-        if (target === char || credited[target]) return;
-        credited[target] = true;
-        (index[target] = index[target] || []).push(char);
-      });
-    });
-    return index;
-  })();
-
-  // The worker's join and ranking: cw index size descending, ties by codepoint.
-  // A containing character with no entry is dropped rather than rendered as a
-  // row that would navigate nowhere.
-  function buildFoundIn(char) {
-    var canon = canonicalize(String(char || "").normalize("NFC"));
-    return (FOUND_IN[canon] || [])
-      .filter(function (c) { return !!CHARS[c]; })
-      .sort(function (a, b) {
-        return ((CW[b] || []).length - (CW[a] || []).length) ||
-          (a.codePointAt(0) - b.codePointAt(0));
-      })
-      .map(function (c) {
-        var d = CHARS[c];
-        var pair = (d.eumhun || [])[0] || {};
-        var row = {
-          char: c, hun: pair.hun || "", eum: pair.eum || "",
-          gloss: (d.glosses || [])[0] || ""
-        };
-        if (d.lvl) row.lvl = d.lvl;   // the level chip renders on these rows too
-        return row;
-      });
-  }
-
-  // ADDENDUM used-in: the words.json spellings that STRICTLY contain a word
-  // (self excluded), ranked. The worker derives these from the first char's cw
-  // index; the fixture pins an explicit ranked list for 學生 and falls back to
-  // a scan over `words` for everything else, which is the same contract.
-  var USED_IN = {
-    "學生": ["大學生", "中學生", "女學生", "留學生", "小學生", "苦學生"]
-  };
-
-  function usedInSpellings(word) {
-    if (typeof word !== "string" || word.length < 2) return [];
-    if (USED_IN[word]) {
-      return USED_IN[word].filter(function (sp) { return !!WORDS[sp]; });
-    }
-    return Object.keys(WORDS).filter(function (sp) {
-      return sp !== word && sp.indexOf(word) >= 0;
-    });
-  }
-
-  function buildUsedIn(word) {
-    return usedInSpellings(canonicalize(String(word || "").normalize("NFC")))
-      .map(function (spelling) {
-        var sense = (WORDS[spelling] || [])[0] || {};
-        var entry = {
-          hanja: spelling,
-          hangul: sense.hangul || "",
-          gloss: (sense.glosses || [])[0] || ""
-        };
-        if (sense.rare === true) entry.rare = true;
-        if (sense.lessCommon === true) entry.lessCommon = true;
-        return entry;
-      });
-  }
-
-  // The service worker's `buildFullCompounds`: join each cw spelling against
-  // `words` (first sense: hangul, first gloss or "", rare and lessCommon
-  // only when true), preserving cw order.
-  function fullCompounds(char) {
-    var canon = canonicalize(String(char || "").normalize("NFC"));
-    return (CW[canon] || []).map(function (spelling) {
-      var sense = (WORDS[spelling] || [])[0] || {};
-      var entry = {
-        hanja: spelling,
-        hangul: sense.hangul || "",
-        gloss: (sense.glosses || [])[0] || ""
-      };
-      if (sense.rare === true) entry.rare = true;
-      if (sense.lessCommon === true) entry.lessCommon = true;
-      return entry;
-    });
-  }
-
   // byHangul: hangul spelling → every hanja spelling, no cap.
   var BY_HANGUL = {};
   Object.keys(WORDS).forEach(function (hanja) {
     WORDS[hanja].forEach(function (sense) {
       (BY_HANGUL[sense.hangul] = BY_HANGUL[sense.hangul] || []).push(hanja);
-    });
-  });
-
-  // eum → chars, derived at runtime from readings/eumhun, ranked by how many
-  // compounds the entry has (descending), exactly as the SPEC addendum says.
-  var BY_EUM = {};
-  Object.keys(CHARS).forEach(function (ch) {
-    var d = CHARS[ch];
-    var eums = {};
-    (d.readings || []).forEach(function (r) { if (r) eums[r] = true; });
-    (d.eumhun || []).forEach(function (e) { if (e && e.eum) eums[e.eum] = true; });
-    Object.keys(eums).forEach(function (eum) {
-      (BY_EUM[eum] = BY_EUM[eum] || []).push(ch);
-    });
-  });
-  Object.keys(BY_EUM).forEach(function (eum) {
-    BY_EUM[eum].sort(function (a, b) {
-      return (CHARS[b].compounds || []).length - (CHARS[a].compounds || []).length;
     });
   });
 
@@ -600,223 +469,6 @@
   };
   var nativeReads = 0;
 
-  // Whole-word precedence: the native whole-string check, as the worker
-  // makes it (nativeWholeLength). The longest native headword anchored at
-  // the run's first syllable claims the run when what it leaves is shorter
-  // than a word (a josa at most) and no hanja word anchored there reaches
-  // as far; equal length is the identity group and takes the ordinary flow.
-  function nativeWholeLength(h) {
-    if (h.length < 2) return 0;
-    var claimed = 0, len;
-    for (len = Math.min(5, h.length); len >= 2; len--) {
-      if (NATIVE[h.substr(0, len)]) { claimed = len; break; }
-    }
-    if (!claimed || h.length - claimed >= 2) return 0;
-    var sino = 0;
-    for (len = Math.min(MAX_WORD, h.length); len >= 2; len--) {
-      if (BY_HANGUL[h.substr(0, len)]) { sino = len; break; }
-    }
-    return claimed > sino ? claimed : 0;
-  }
-
-  // --- Deconjugation (SPEC ADDENDUM 2026-09-05) ---------------------------
-  // The REAL generator, imported the way the romanizer is: the module loads
-  // once, on the first flagged lookup that has a hangul run of two or more
-  // syllables, and that lookup answers with a promise (sendMessage settles
-  // both call styles either way, as it does for interpreted lookups). The
-  // fixture tables are the gate; the generator only proposes.
-  var deconjugateFn = null;
-  var deconjugatePromise = null;
-  function loadDeconjugate() {
-    if (!deconjugatePromise) {
-      deconjugatePromise = import("../extension/deconjugate.js")
-        .then(function (mod) { deconjugateFn = mod.deconjugate; return deconjugateFn; });
-    }
-    return deconjugatePromise;
-  }
-
-  function conjugates(entry) {
-    return entry.pos === "verb" || entry.pos === "adj";
-  }
-
-  // The lemmas a form resolves to: generator candidates that are fixture
-  // headwords with a verb or adj entry, ordered by the entries' `f` (absent
-  // last) and then by generator order. 사는 gives 사다 first from the
-  // generator; the buckets put 살다 ahead.
-  function lemmasFor(form) {
-    var ranked = [];
-    deconjugateFn(form).forEach(function (lemma, index) {
-      var entries = (NATIVE[lemma] || []).filter(conjugates);
-      if (!entries.length) return;
-      var f = Infinity;
-      entries.forEach(function (e) { if (typeof e.f === "number" && e.f < f) f = e.f; });
-      ranked.push({ lemma: lemma, index: index, f: f });
-    });
-    ranked.sort(function (a, b) { return a.f === b.f ? a.index - b.index : a.f - b.f; });
-    return ranked.map(function (r) { return r.lemma; });
-  }
-
-  // The gate in miniature (the worker's deconjugatedClaim), asked only when
-  // nativeWholeLength declined: the whole run, then the run minus one
-  // syllable (먹기가 finds 먹다 at 먹기 and the josa goes on). Blocked when
-  // a native headword or a hanja word with a non-rare spelling, anchored at
-  // the first syllable, reaches that length or further: 남자 is 男子, never
-  // 남다. Returns the claimed length and the lemmas, or length 0.
-  function deconjugatedClaim(h) {
-    var none = { length: 0, lemmas: [] };
-    if (h.length < 2) return none;
-    var blocked = 0, len, key;
-    for (len = Math.min(5, h.length); len >= 2; len--) {
-      if (NATIVE[h.substr(0, len)]) { blocked = len; break; }
-    }
-    for (len = Math.min(MAX_WORD, h.length); len >= 2; len--) {
-      key = h.substr(0, len);
-      if (BY_HANGUL[key] && !BY_HANGUL[key].every(isRare)) {
-        if (len > blocked) blocked = len;
-        break;
-      }
-    }
-    var lengths = [h.length];
-    if (h.length - 1 >= 2) lengths.push(h.length - 1);
-    for (var k = 0; k < lengths.length; k++) {
-      if (lengths[k] <= blocked) return none;
-      var lemmas = lemmasFor(h.substr(0, lengths[k]));
-      if (lemmas.length) return { length: lengths[k], lemmas: lemmas };
-    }
-    return none;
-  }
-
-  function deconjugatedLength(h) {
-    return deconjugatedClaim(h).length;
-  }
-
-  // Hybrid parts on the wire: {hanja?, hangul}, plus native:true on a hangul
-  // part the table holds (the row that opens a native card). Row glosses
-  // (SPEC ADDENDUM 2026-09-05): a hanja part carries the glosses of the
-  // WORDS entry whose hangul is the part's own (加工 read 가공), else the
-  // first entry's; a native part carries the first NATIVE entry's glosses
-  // and its pos (the half of the "hangul|pos" key the Korean definition
-  // hangs on). A part the tables lack (工夫, 하다) gets neither field.
-  // Hybrid card depth (SPEC ADDENDUM 2026-09-05): `lookup`, the part's
-  // sub-response. A hanja part carries the UNFLAGGED literal lookup of its
-  // hanja (the word match and the character matches exactly as typing 加工
-  // yields them; natives never join, so a sub-lookup never holds a hybrid),
-  // hung as {matches} when it found anything (工夫 finds the 工 character,
-  // 再 nothing at all). A hangul part the table holds carries its entries,
-  // every POS in table order, shaped as native matches WITHOUT parts (a
-  // native part that is itself a hybrid nests no further). The sino and
-  // ko attaches walk into these after the join, as the worker's do.
-  function nativePartsFor(entry) {
-    if (!entry.parts) return null;
-    return entry.parts.map(function (p) {
-      var out = p.hanja ? { hanja: p.hanja, hangul: p.hangul } : { hangul: p.hangul };
-      if (p.hanja) {
-        var senses = WORDS[p.hanja] || [];
-        var sense = senses.filter(function (s) { return s.hangul === p.hangul; })[0] || senses[0];
-        if (sense) out.glosses = sense.glosses.slice();
-        var sub = lookup(p.hanja, { interpret: false, native: false });
-        if (sub && sub.ok === true && sub.matches.length) out.lookup = { matches: sub.matches };
-      } else if (NATIVE[p.hangul]) {
-        out.native = true;
-        out.glosses = NATIVE[p.hangul][0].glosses.slice();
-        out.pos = NATIVE[p.hangul][0].pos;
-        out.lookup = {
-          nativeMatches: NATIVE[p.hangul].map(function (e) {
-            var m = { kind: "native", word: p.hangul, pos: e.pos, glosses: e.glosses.slice() };
-            if (e.origin) m.origin = e.origin;
-            return m;
-          })
-        };
-      }
-      return out;
-    });
-  }
-
-  // The walk the attaches below share: every part sub-response of every
-  // native match in a response (or in a sub-response, which holds none).
-  function eachPartLookup(resp, fn) {
-    (resp && resp.nativeMatches || []).forEach(function (m) {
-      (m && m.parts || []).forEach(function (p) {
-        if (p && p.lookup && typeof p.lookup === "object") fn(p.lookup);
-      });
-    });
-  }
-
-  // The worker's flagged-lookup join: native words in the text's hangul runs
-  // (greedy longest match, 2-syllable floor) plus the entry sharing any word
-  // match's hangul (how a Han-run selection carries its Same sound entry),
-  // deduped by headword in first-appearance order.
-  function nativeMatchesFor(text, matches) {
-    nativeReads++;
-    var found = [];
-    function indexOfWord(word) {
-      for (var f = 0; f < found.length; f++) if (found[f].word === word) return f;
-      return -1;
-    }
-    // A direct claim: the whole entry list, no form. A lemma reached through
-    // a form earlier keeps the direct match, as the worker's join does.
-    function claim(word) {
-      if (!NATIVE[word]) return;
-      var at = indexOfWord(word);
-      if (at < 0) found.push({ word: word, form: null });
-      else found[at].form = null;
-    }
-    // Deconjugation ADDENDUM: the lemmas a form resolved to, in gate order,
-    // each carrying the form; a lemma already reached directly stays direct.
-    function claimForm(form, lemmas) {
-      lemmas.forEach(function (lemma) {
-        if (indexOfWord(lemma) < 0) found.push({ word: lemma, form: form });
-      });
-    }
-    runs(String(text || "").normalize("NFC")).forEach(function (run) {
-      if (run.kind !== "hangul") return;
-      var h = run.s, i = nativeWholeLength(h);
-      if (i > 0) {
-        claim(h.substr(0, i));
-      } else {
-        // Failing a headword, a conjugated form claims the run for its
-        // lemmas, the same claim the lookup's hangul branch makes.
-        var formClaim = deconjugatedClaim(h);
-        if (formClaim.length > 0) {
-          claimForm(h.substr(0, formClaim.length), formClaim.lemmas);
-          i = formClaim.length;
-        }
-      }
-      while (i < h.length) {
-        var hit = null;
-        for (var len = Math.min(5, h.length - i); len >= 2; len--) {
-          if (NATIVE[h.substr(i, len)]) { hit = h.substr(i, len); break; }
-        }
-        if (hit) { claim(hit); i += hit.length; } else { i += 1; }
-      }
-    });
-    (matches || []).forEach(function (m) {
-      if (m && m.kind === "word" && m.hangul) claim(m.hangul);
-    });
-    var out = [];
-    found.forEach(function (hit) {
-      var word = hit.word;
-      // Only a verb or an adjective joins through a form (the worker's
-      // conjugatingEntries); a direct hit brings every entry.
-      var entries = hit.form ? NATIVE[word].filter(conjugates) : NATIVE[word];
-      entries.forEach(function (entry) {
-        var m = {
-          kind: "native", word: word,
-          pos: entry.pos, glosses: entry.glosses.slice()
-        };
-        // Origin markers ADDENDUM: the field rides through as written, and
-        // an entry without one carries none.
-        if (entry.origin) m.origin = entry.origin;
-        var parts = nativePartsFor(entry);
-        if (parts) m.parts = parts;
-        // Deconjugation ADDENDUM: the claimed surface, on form hits only.
-        if (hit.form) m.form = hit.form;
-        out.push(m);
-      });
-    });
-    return out;
-  }
-
   // --- Sibling Sino readings (SPEC ADDENDUM 2026-08-31) ------------------
   // sino.json in miniature: per char, per language, [reading, eum] pairs in
   // baked display order, capped at two. Consulted ONLY when a lookup carries
@@ -851,32 +503,6 @@
     "加工": { ja: "かこう", zh: "jiāgōng" }
   };
   var sinoReads = 0;
-
-  // The worker's attach: the char's entry rides WHOLE onto every char match
-  // the table knows about, after the lookup itself is done. Alignment and
-  // display order are baked at build time, so nothing here sorts or joins.
-  function attachSinoMatches(resp) {
-    sinoReads++;
-    if (!resp || resp.ok !== true) return resp;
-    return attachSinoInto(resp);
-  }
-  // One read per request: the sub-responses inside hybrid parts are walked
-  // under the same read, as the worker's attach walks them.
-  function attachSinoInto(resp) {
-    (Array.isArray(resp.matches) ? resp.matches : []).forEach(function (m) {
-      if (!m) return;
-      if (m.kind === "word") {
-        var wordEntry = SINO_WORDS[m.canonical];
-        if (wordEntry) m.sinoWord = wordEntry;
-        return;
-      }
-      if (m.kind !== "char") return;
-      var entry = SINO[m.canonical];
-      if (entry) m.sino = entry;
-    });
-    eachPartLookup(resp, attachSinoInto);
-    return resp;
-  }
 
   // --- Korean definitions (SPEC ADDENDUM 2026-09-01) ---------------------
   // ko.json in miniature: {d: senses, s: target_code} per key, three tables.
@@ -917,478 +543,81 @@
   };
   var koReads = 0;
 
-  function koFor(table, key) {
-    return (typeof key === "string" && Object.prototype.hasOwnProperty.call(table, key))
-      ? table[key] : null;
+  /* ------------------------------------------------------------------ *
+   * The real worker over these tables (test harness ADDENDUM 2026-10-24).
+   *
+   * Until 2026-10-24 this file re-implemented the worker's lookup and attach
+   * rules by hand: whole-word precedence, the deconjugation gate, the
+   * romanized coverage collapse, hybrid parts, the sino and ko attach, the
+   * compounds, used-in and found-in joins. Every feature needed a second
+   * copy. It now loads extension/lookup.js and extension/background.js and
+   * answers through background.js's answerLookup and the real builders over
+   * the tables above, so the harness exercises the shipped code. The tables
+   * go into the file shapes on every request, so a check that swaps one out
+   * (__swapSinoTable) takes effect at once. ES modules need http: serve the
+   * repo (python -m http.server) rather than opening the page from disk.
+   * ------------------------------------------------------------------ */
+  var real = null;
+  var ready = Promise.all([
+    import("../extension/lookup.js"),
+    import("../extension/background.js")
+  ]).then(function (mods) { real = { L: mods[0], B: mods[1] }; });
+
+  function needReal() {
+    if (!real) {
+      throw new Error("fixture: the real lookup modules have not loaded yet " +
+        "(await __hanjaHoverTestRuntime.ready)");
+    }
+    return real;
   }
 
-  // The worker's attachKoRows: rows keyed by hanja spelling ("word") or by
-  // char / decomposition target ("char"). A row the table lacks gets no field.
+  function dataBundle(native) {
+    var r = needReal();
+    var b = {
+      hanja: { version: 1, chars: CHARS },
+      words: { version: 1, words: WORDS, byHangul: BY_HANGUL },
+      variants: { version: 1, map: VARIANTS },
+      decomp: r.B.guardDecomp({ v: 1, parts: DECOMP, phon: PHON })
+    };
+    var readingIndex = null;
+    b.getReadingIndex = function () {
+      if (!readingIndex) readingIndex = r.L.buildReadingIndex(b.hanja);
+      return readingIndex;
+    };
+    if (native) b.native = r.B.guardNative({ version: 1, words: NATIVE });
+    return b;
+  }
+
+  function koTable() {
+    return needReal().B.guardKo({ version: 1, words: KO.words, natives: KO.natives, chars: KO.chars });
+  }
+
+  // One lookup response, exactly as the worker builds it.
+  function answerLookup(text, o) {
+    var r = needReal();
+    var b = dataBundle(o.native === true);
+    return r.B.answerLookup(String(text === null || text === undefined ? "" : text),
+      { interpret: o.interpret === true, native: o.native === true }, b, {
+        sino: o.sino === true ? r.B.guardSino({ version: 1, chars: SINO, words: SINO_WORDS }) : null,
+        ko: o.ko === true ? koTable() : null,
+        getFoundInIndex: function () { return r.B.buildFoundInIndex(b.decomp.parts); }
+      });
+  }
+
+  function fullCompounds(char) {
+    return needReal().L.buildFullCompounds(String(char || ""), dataBundle(false));
+  }
+  function buildUsedIn(word) {
+    return needReal().L.buildUsedIn(String(word || ""), dataBundle(false));
+  }
+  function buildFoundIn(char) {
+    var r = needReal(), b = dataBundle(false);
+    var n = String(char || "").normalize("NFC");
+    var canon = Object.prototype.hasOwnProperty.call(VARIANTS, n) ? VARIANTS[n] : n;
+    return r.B.buildFoundIn(canon, r.B.buildFoundInIndex(b.decomp.parts), b.hanja);
+  }
   function attachKoRows(rows, kind) {
-    (rows || []).forEach(function (row) {
-      if (!row || typeof row !== "object") return;
-      var entry = kind === "char"
-        ? koFor(KO.chars, typeof row.char === "string" ? row.char : row.t)
-        : koFor(KO.words, row.hanja);
-      if (entry) row.ko = entry;
-    });
-    return rows;
-  }
-
-  // The worker's attachKo: every match and every gloss-bearing row it
-  // carries. The inline compound rows are the fixture table's own objects
-  // and are copied, as the worker copies hanja.json's.
-  function attachKoMatches(resp) {
-    koReads++;
-    if (!resp || resp.ok !== true) return resp;
-    return attachKoInto(resp);
-  }
-  // One read per request, the hybrid parts' sub-responses walked under it
-  // (word, char and native keys alike), as the worker's attachKo walks them.
-  function attachKoInto(resp) {
-    (resp.matches || []).forEach(function (m) {
-      if (!m || typeof m !== "object") return;
-      if (m.kind === "word") {
-        var w = koFor(KO.words, m.canonical);
-        if (w) m.ko = w;
-        attachKoRows(m.parts, "word");
-      } else if (m.kind === "char") {
-        var c = koFor(KO.chars, m.canonical);
-        if (c) m.ko = c;
-        m.compounds = (m.compounds || []).map(function (row) {
-          var e = row && typeof row === "object" ? koFor(KO.words, row.hanja) : null;
-          if (!e) return row;
-          var copy = {};
-          Object.keys(row).forEach(function (k) { copy[k] = row[k]; });
-          copy.ko = e;
-          return copy;
-        });
-        attachKoRows(m.parts, "char");
-      } else if (m.kind === "reading") {
-        attachKoRows(m.candidates, "char");
-      }
-    });
-    (resp.nativeMatches || []).forEach(function (m) {
-      var n = m && m.kind === "native" ? koFor(KO.natives, m.word + "|" + m.pos) : null;
-      if (n) m.ko = n;
-      // Hybrid part rows: a hanja part keys into words by its hanja, a
-      // native part into natives by "hangul|pos"; a part the tables lack
-      // (工夫, 하다) stays bare, as the worker's attachKo leaves it.
-      attachKoRows(m && m.parts, "word");
-      (m && m.parts || []).forEach(function (p) {
-        if (!p || p.native !== true || typeof p.pos !== "string") return;
-        var e = koFor(KO.natives, p.hangul + "|" + p.pos);
-        if (e) p.ko = e;
-      });
-    });
-    eachPartLookup(resp, attachKoInto);
-    return resp;
-  }
-
-  var HAN = /\p{Script=Han}/u;
-  var HANGUL = /[가-힣]/;
-  var MAX_WORD = 6;
-
-  function runs(text) {
-    var out = [], cur = null;
-    for (var i = 0; i < text.length; i++) {
-      var ch = text.charAt(i);
-      var kind = HAN.test(ch) ? "han" : (HANGUL.test(ch) ? "hangul" : null);
-      if (!kind) { cur = null; continue; }
-      if (!cur || cur.kind !== kind) { cur = { kind: kind, s: "" }; out.push(cur); }
-      cur.s += ch;
-    }
-    return out;
-  }
-
-  function canonicalize(s) {
-    var out = "";
-    for (var i = 0; i < s.length; i++) {
-      var ch = s.charAt(i);
-      out += VARIANTS[ch] || ch;
-    }
-    return out;
-  }
-
-  // Protocol addendum: word matches ≥3 chars carry `parts` — the interior
-  // re-segmented against `words` (the full span excluded), covering it in order.
-  function computeParts(hanja) {
-    if (hanja.length < 3) return null;
-    var out = [], i = 0, sawWord = false;
-    while (i < hanja.length) {
-      var hit = null, hitLen = 0;
-      for (var len = Math.min(MAX_WORD, hanja.length - i); len >= 2; len--) {
-        if (len === hanja.length) continue;          // exclude the whole span
-        var cand = hanja.substr(i, len);
-        if (WORDS[cand]) { hit = cand; hitLen = len; break; }
-      }
-      if (hit) {
-        out.push({
-          type: "word", hanja: hit, hangul: WORDS[hit][0].hangul,
-          glosses: (WORDS[hit][0].glosses || []).slice(0, 2)
-        });
-        sawWord = true;
-        i += hitLen;
-      } else {
-        out.push({ type: "char", char: hanja.charAt(i) });
-        i += 1;
-      }
-    }
-    return sawWord ? out : null;
-  }
-
-  function isRare(hanja) {
-    return (WORDS[hanja] || [])[0] ? (WORDS[hanja][0].rare === true) : false;
-  }
-  function isLessCommon(hanja) {
-    return (WORDS[hanja] || [])[0] ? (WORDS[hanja][0].lessCommon === true) : false;
-  }
-  function isPlain(hanja) {
-    return !isRare(hanja) && !isLessCommon(hanja);
-  }
-
-  function wordMatch(surface, hanja, hangul) {
-    var m = {
-      kind: "word", surface: surface, canonical: hanja, hangul: hangul,
-      glosses: (WORDS[hanja][0] || {}).glosses || [],
-      chars: hanja.split("")
-    };
-    if (isRare(hanja)) m.rare = true;   // flags omitted when false
-    if (isLessCommon(hanja)) m.lessCommon = true;
-    // ADDENDUM used-in: how many larger words contain this spelling. Omitted
-    // when 0, so the UI knows to render no disclosure row at all.
-    var usedIn = usedInSpellings(hanja).length;
-    if (usedIn > 0) m.usedInCount = usedIn;
-    var parts = computeParts(hanja);
-    if (parts) m.parts = parts;
-    return m;
-  }
-
-  function charMatch(canon, surface) {
-    var d = CHARS[canon];
-    if (!d) return null;
-    var m = {
-      kind: "char", surface: surface, canonical: canon,
-      eumhun: d.eumhun, readings: d.readings, glosses: d.glosses,
-      compounds: d.compounds
-    };
-    // Total size of the char's cw index — the UI needs it to label
-    // "Show 5 more (N)" before it has fetched anything. Omitted when 0.
-    if (CW[canon] && CW[canon].length) m.cwCount = CW[canon].length;
-    // Character level; omitted only for pre-migration entries (see LVL).
-    if (d.lvl) m.lvl = d.lvl;
-    // Decomposition rows, joined; omitted for characters with no entry.
-    var parts = decompParts(canon);
-    if (parts.length) m.parts = parts;
-    // How many characters this one is a part of, from the derived index.
-    // Omitted when 0, so the UI renders no Found-in row at all.
-    var foundIn = (FOUND_IN[canon] || []).length;
-    if (foundIn > 0) m.foundInCount = foundIn;
-    return m;
-  }
-
-  function readingMatch(syllable) {
-    var chars = BY_EUM[syllable] || [];
-    if (!chars.length) return null;
-    return {
-      kind: "reading", surface: syllable, eum: syllable,
-      candidates: chars.map(function (ch) {
-        var d = CHARS[ch];
-        var hun = (d.eumhun && d.eumhun[0] && d.eumhun[0].hun) || "";
-        var cand = {
-          char: ch, hun: hun, eum: syllable,
-          gloss: (d.glosses && d.glosses[0]) || ""
-        };
-        if (d.lvl) cand.lvl = d.lvl;   // propagated onto reading candidates
-        return cand;
-      })
-    };
-  }
-
-  // Interpreted lookups, v2 (SPEC "Romanized search v2"): the mini rr map is
-  // gone. The keyboard side stays canned, because Node owns the Dubeolsik
-  // automaton and the harness needs only the conversions its checks type.
-  // Romanization is no longer canned at all: the REAL generator in
-  // extension/deromanize.js (rr.js rides in through its import graph)
-  // proposes hangul candidates, the fixture tables gate them, and the v2
-  // coverage collapse below decides what the interpretation claims. The
-  // module loads once, on the first interpreted lookup, so interpreted
-  // responses are promises; sendMessage settles them for both call styles.
-  var DUBEOLSIK = {
-    gkrtod: "학생",
-    su: "녀"
-  };
-
-  // Preference between two surviving interpretations is Node's business (the
-  // merge matrix is node-tested). The fixture pins the worker's decision for
-  // its one dual case; everything else takes the Dubeolsik tiebreak.
-  var DUAL_RR_FIRST = { su: true };
-
-  // The typed-channel gate, as the worker applies it: letters, with hyphens,
-  // apostrophes and internal spaces tolerated.
-  var LATIN_QUERY = /^[A-Za-z][A-Za-z' -]*$/;
-
-  var deromanizePromise = null;
-  function loadDeromanize() {
-    if (!deromanizePromise) {
-      deromanizePromise = import("../extension/deromanize.js")
-        .then(function (mod) { return mod.deromanize; });
-    }
-    return deromanizePromise;
-  }
-
-  // How many syllables of one candidate the fixture explains: rule 3b spans
-  // over BY_HANGUL first, then (flagged only) the native greedy walk over
-  // the stretches the Sino pass left, mirroring the worker.
-  function coveredSyllables(h, native) {
-    var mark = [], i, j, len;
-    var claimed = native ? nativeWholeLength(h) : 0;
-    // Deconjugation ADDENDUM: a form's claim counts as covered too, so the
-    // candidate is CLASS_WHOLE in the collapse.
-    if (native && claimed === 0) claimed = deconjugatedLength(h);
-    for (i = 0; i < claimed; i++) mark[i] = true;
-    i = claimed;
-    while (i < h.length) {
-      var hit = 0;
-      for (len = Math.min(MAX_WORD, h.length - i); len >= 2; len--) {
-        if (BY_HANGUL[h.substr(i, len)]) { hit = len; break; }
-      }
-      if (hit) { for (j = 0; j < hit; j++) mark[i + j] = true; i += hit; }
-      else { i += 1; }
-    }
-    if (native) {
-      i = 0;
-      while (i < h.length) {
-        if (mark[i]) { i += 1; continue; }
-        var end = i;
-        while (end < h.length && !mark[end]) end += 1;
-        var k = i;
-        while (k < end) {
-          var nhit = 0;
-          for (len = Math.min(5, end - k); len >= 2; len--) {
-            if (NATIVE[h.substr(k, len)]) { nhit = len; break; }
-          }
-          if (nhit) { for (j = 0; j < nhit; j++) mark[k + j] = true; k += nhit; }
-          else { k += 1; }
-        }
-        i = end;
-      }
-    }
-    var covered = 0;
-    for (i = 0; i < h.length; i++) if (mark[i]) covered += 1;
-    return covered;
-  }
-
-  // Dedupe key for merged candidate matches, per the worker's rules.
-  function matchKey(m) {
-    return m.kind + ":" + (m.canonical || m.surface || "");
-  }
-
-  // The keyboard interpretation: canned conversion, normal fixture lookup.
-  function dubeolsikInterpretation(typed, native) {
-    if (!Object.prototype.hasOwnProperty.call(DUBEOLSIK, typed)) return null;
-    var to = DUBEOLSIK[typed];
-    var matches = lookup(to, { native: native }).matches;
-    var nativeMatches = native ? nativeMatchesFor(to, matches) : [];
-    if (!matches.length && !nativeMatches.length) return null;
-    return {
-      kind: "dubeolsik", from: typed, to: to,
-      matches: matches, nativeMatches: nativeMatches
-    };
-  }
-
-  // Candidates the fake bothers to resolve. The worker's cap is larger; the
-  // fixture's queries all land their words in the first dozen candidates.
-  var RESOLVE_CAP = 64;
-
-  // The romanization interpretation, v2: real candidates, fixture gate,
-  // coverage collapse. Class A (one dictionary unit) beats class B (covered
-  // end to end) beats class C (partial); class C keeps only the candidates
-  // covering the most syllables, so a splinter can never add matches, and
-  // it roots as the TYPED text because no one hangul spelling is canonical.
-  function rrInterpretation(typed, native, deromanize) {
-    var candidates = deromanize(typed);
-    var survivors = [];
-    for (var i = 0; i < candidates.length && i < RESOLVE_CAP; i++) {
-      var hangul = candidates[i].hangul;
-      var matches = lookup(hangul, { native: native }).matches;
-      var nativeMatches = native ? nativeMatchesFor(hangul, matches) : [];
-      if (!matches.length && !nativeMatches.length) continue;
-      var whole = matches.some(function (m) {
-        return (m.kind === "word" && m.surface === hangul) || m.kind === "reading";
-      }) || nativeMatches.some(function (m) { return m.word === hangul || m.form === hangul; });
-      var covered = whole ? hangul.length : coveredSyllables(hangul, native);
-      survivors.push({
-        hangul: hangul, tier: candidates[i].tier,
-        matches: matches, nativeMatches: nativeMatches,
-        cls: whole ? 0 : (covered === hangul.length ? 1 : 2),
-        covered: covered
-      });
-    }
-    if (!survivors.length) return null;
-    var bestClass = Math.min.apply(null, survivors.map(function (s) {
-      return s.cls;
-    }));
-    var pool = survivors.filter(function (s) { return s.cls === bestClass; });
-    if (bestClass === 2) {
-      var maxCovered = Math.max.apply(null, pool.map(function (s) {
-        return s.covered;
-      }));
-      pool = pool.filter(function (s) { return s.covered === maxCovered; });
-    }
-    // Tier first; the fixture carries no `f` buckets, so the rest of the
-    // ranking is the generator's own stable order.
-    pool.sort(function (a, b) { return a.tier - b.tier; });
-    var merged = [], nativeMerged = [], seen = {}, seenNative = {};
-    pool.forEach(function (s) {
-      s.matches.forEach(function (m) {
-        var key = matchKey(m);
-        if (seen[key]) return;
-        seen[key] = true;
-        merged.push(m);
-      });
-      s.nativeMatches.forEach(function (m) {
-        var key = m.word + "|" + m.pos;
-        if (seenNative[key]) return;
-        seenNative[key] = true;
-        nativeMerged.push(m);
-      });
-    });
-    var to = bestClass === 2 ? typed : pool[0].hangul;
-    return {
-      kind: "rr", from: typed, to: to,
-      matches: merged, nativeMatches: nativeMerged
-    };
-  }
-
-  // Both interpreters, dropped when empty, flattened into the response with
-  // `start` marking where each group's matches begin. Native hits collect at
-  // the response level, deduped in preferred order, as the worker does it.
-  function interpretedLookup(typed, native) {
-    // Both modules first, so the per-candidate lookups inside stay
-    // synchronous (the gate needs the generator in hand).
-    return Promise.all([loadDeromanize(), loadDeconjugate()]).then(function (mods) {
-      var deromanize = mods[0];
-      var dub = dubeolsikInterpretation(typed, native);
-      var rr = rrInterpretation(typed, native, deromanize);
-      var interps = [dub, rr].filter(function (x) { return x !== null; });
-      if (interps.length === 2 && DUAL_RR_FIRST[typed]) interps.reverse();
-      if (!interps.length) return { ok: true, matches: [] };
-      var matches = [], descriptors = [];
-      var nativeOut = [], seenNative = {};
-      interps.forEach(function (interp) {
-        descriptors.push({
-          kind: interp.kind, from: interp.from, to: interp.to,
-          start: matches.length
-        });
-        matches = matches.concat(interp.matches);
-        interp.nativeMatches.forEach(function (m) {
-          var key = m.word + "|" + m.pos;
-          if (seenNative[key]) return;
-          seenNative[key] = true;
-          nativeOut.push(m);
-        });
-      });
-      var resp = { ok: true, matches: matches, interpretations: descriptors };
-      if (native && nativeOut.length) resp.nativeMatches = nativeOut;
-      return resp;
-    });
-  }
-
-  function lookup(text, opts) {
-    var typed = String(text === null || text === undefined ? "" : text).trim();
-    var o = opts !== null && typeof opts === "object" ? opts : {};
-    // Interpretation is gated on the flag, never on string shape alone: a
-    // literal Latin lookup falls through and matches nothing, exactly as the
-    // worker's does. The interpreted path answers with a promise.
-    if (o.interpret === true && LATIN_QUERY.test(typed)) {
-      return interpretedLookup(typed, o.native === true);
-    }
-    // Deconjugation ADDENDUM: a flagged lookup with a hangul run the gate
-    // could ask about needs the generator loaded; the first such lookup
-    // answers with a promise and every later one is synchronous again. The
-    // unflagged path never loads it, so it stays exactly as it was.
-    if (o.native === true && !deconjugateFn &&
-        runs(typed.normalize("NFC")).some(function (r) {
-          return r.kind === "hangul" && r.s.length >= 2;
-        })) {
-      return loadDeconjugate().then(function () { return lookup(text, opts); });
-    }
-
-    var words = [], chars = [], seenChar = {};
-    function pushChar(canon, surface) {
-      if (seenChar[canon]) return;
-      var m = charMatch(canon, surface);
-      if (!m) return;
-      seenChar[canon] = true;
-      chars.push(m);
-    }
-
-    var segments = runs(text.normalize("NFC"));
-
-    // 3c: the whole extracted selection is exactly one hangul syllable.
-    if (segments.length === 1 && segments[0].kind === "hangul" && segments[0].s.length === 1) {
-      var rm = readingMatch(segments[0].s);
-      return { ok: true, matches: rm ? [rm] : [] };
-    }
-
-    var hanTotal = 0;
-    segments.forEach(function (r) { if (r.kind === "han") hanTotal += r.s.length; });
-
-    segments.forEach(function (run) {
-      if (run.kind === "han") {
-        var canon = canonicalize(run.s);
-        var i = 0;
-        while (i < canon.length) {
-          var hit = null, hitLen = 0;
-          for (var len = Math.min(MAX_WORD, canon.length - i); len >= 2; len--) {
-            var cand = canon.substr(i, len);
-            if (WORDS[cand]) { hit = cand; hitLen = len; break; }
-          }
-          if (hit) {
-            words.push(wordMatch(run.s.substr(i, hitLen), hit, WORDS[hit][0].hangul));
-            // Han-char count only — hangul doesn't count toward the threshold.
-            if (hanTotal <= 4) {
-              for (var k = 0; k < hit.length; k++) pushChar(hit.charAt(k), run.s.charAt(i + k));
-            }
-            i += hitLen;
-          } else {
-            pushChar(canon.charAt(i), run.s.charAt(i));
-            i += 1;
-          }
-        }
-      } else {
-        // Whole-word precedence, flagged only: the claimed syllables are the
-        // native pass's; rule 3b starts after them. Deconjugation ADDENDUM:
-        // failing a headword, a form's claim takes the syllables the same way.
-        var h = run.s, j = o.native === true ? nativeWholeLength(h) : 0;
-        if (o.native === true && j === 0) j = deconjugatedLength(h);
-        while (j < h.length) {
-          var found = null, foundLen = 0;
-          for (var l = Math.min(MAX_WORD, h.length - j); l >= 2; l--) {
-            var c = h.substr(j, l);
-            if (BY_HANGUL[c]) { found = c; foundLen = l; break; }
-          }
-          if (!found) { j += 1; continue; }
-          // ALL hanja spellings, no cap: the UI renders a selector. Unflagged
-          // spellings order first, then lessCommon, then rare; the first of
-          // them contributes the char cards.
-          var spellings = BY_HANGUL[found].filter(isPlain)
-            .concat(BY_HANGUL[found].filter(isLessCommon))
-            .concat(BY_HANGUL[found].filter(isRare));
-          spellings.forEach(function (hanja, idx) {
-            words.push(wordMatch(found, hanja, found));
-            // Hangul-sourced matches ALWAYS get component char cards (first only).
-            if (idx === 0) {
-              for (var k2 = 0; k2 < hanja.length; k2++) pushChar(hanja.charAt(k2), hanja.charAt(k2));
-            }
-          });
-          j += foundLen;
-        }
-      }
-    });
-
-    return { ok: true, matches: words.concat(chars) };
+    return needReal().B.attachKoRows(rows, koTable(), kind);
   }
 
   /* ------------------------------------------------------------------ *
@@ -1821,7 +1050,7 @@
   // very fixture in headless Chrome. Equality with a fresh render proves the
   // English surface is byte-for-byte what it was.
   var SNAPSHOTS = {
-    word: "<div class=\"card\"><div class=\"hedge\"><\/div><div class=\"word-body\"><div class=\"head\"><div class=\"surface\">學生<\/div><div class=\"headmeta\"><div class=\"hangul\"><span class=\"rnav\" title=\"Look up 학생\" aria-label=\"Look up 학생\" role=\"button\" tabindex=\"0\">학생<\/span><\/div><\/div><button class=\"save save--unknown\" type=\"button\" aria-pressed=\"false\" aria-label=\"Save 學生\" title=\"Save\">☆<\/button><a class=\"wiki\" href=\"https://en.wiktionary.org/wiki/%ED%95%99%EC%83%9D#Korean\" target=\"_blank\" rel=\"noopener noreferrer\" aria-label=\"Wiktionary entry for 학생 (opens in a new tab)\">Wiktionary ↗<\/a><\/div><div class=\"glosses\"><div class=\"gloss\"><div class=\"clampwrap\"><span class=\"gloss-text clamp clamp-2\">Student; pupil<\/span><\/div><\/div><\/div><div class=\"chips\"><span class=\"chip nav\" aria-label=\"學 배울 학\" role=\"button\" tabindex=\"0\"><span class=\"chip-glyph\">學<\/span><span class=\"chip-text\">배울 학<\/span><\/span><span class=\"chip nav\" aria-label=\"生 날 생\" role=\"button\" tabindex=\"0\"><span class=\"chip-glyph\">生<\/span><span class=\"chip-text\">날 생<\/span><\/span><\/div><div class=\"entry-row usedin-row nav\" role=\"button\" tabindex=\"0\"><span class=\"usedin-text\">Used in <b>6<\/b> larger words<\/span><\/div><\/div><div class=\"parts\"><\/div><div class=\"components\"><div class=\"label\">Component hanja<\/div><div class=\"component-list\"><div class=\"card component\"><div class=\"head\"><div class=\"surface\">學<\/div><div class=\"headmeta\"><div class=\"eumhun\"><span class=\"hun\">배울 <\/span><span class=\"rnav\" title=\"Characters read 학\" aria-label=\"Characters read 학\" role=\"button\" tabindex=\"0\">학<\/span><span class=\"edu-badge edu-badge--lvlM\" title=\"MOE curriculum, middle school (중학교용)\" aria-label=\"MOE curriculum, middle school (중학교용)\">Middle school<\/span><\/div><\/div><button class=\"save save--unknown\" type=\"button\" aria-pressed=\"false\" aria-label=\"Save 學\" title=\"Save\">☆<\/button><a class=\"wiki\" href=\"https://en.wiktionary.org/wiki/%E5%AD%B8#Korean\" target=\"_blank\" rel=\"noopener noreferrer\" aria-label=\"Wiktionary entry for 學 (opens in a new tab)\">Wiktionary ↗<\/a><\/div><div class=\"glosses numbered\"><div class=\"gloss\"><span class=\"gloss-num\">1.<\/span><div class=\"clampwrap\"><span class=\"gloss-text clamp clamp-2\">To learn; study<\/span><\/div><\/div><div class=\"gloss\"><span class=\"gloss-num\">2.<\/span><div class=\"clampwrap\"><span class=\"gloss-text clamp clamp-2\">School; learning<\/span><\/div><\/div><\/div><div class=\"label\">Compounds<\/div><div class=\"compounds\"><div class=\"entry-row compound-row nav\" role=\"button\" tabindex=\"0\"><div class=\"clampwrap\"><span class=\"compound clamp clamp-1\"><span class=\"cpd-hangul\">학생<\/span><span class=\"cpd-hanja\"> (學生)<\/span><span class=\"cpd-gloss\">: student<\/span><\/span><\/div><\/div><div class=\"entry-row compound-row nav\" role=\"button\" tabindex=\"0\"><div class=\"clampwrap\"><span class=\"compound clamp clamp-1\"><span class=\"cpd-hangul\">대학<\/span><span class=\"cpd-hanja\"> (大學)<\/span><span class=\"cpd-gloss\">: university<\/span><\/span><\/div><\/div><div class=\"entry-row compound-row nav\" role=\"button\" tabindex=\"0\"><div class=\"clampwrap\"><span class=\"compound clamp clamp-1\"><span class=\"cpd-hangul\">학교<\/span><span class=\"cpd-hanja\"> (學校)<\/span><span class=\"cpd-gloss\">: school<\/span><\/span><\/div><\/div><div class=\"entry-row compound-row nav\" role=\"button\" tabindex=\"0\"><div class=\"clampwrap\"><span class=\"compound clamp clamp-1\"><span class=\"cpd-hangul\">과학<\/span><span class=\"cpd-hanja\"> (科學)<\/span><span class=\"cpd-gloss\">: science<\/span><\/span><\/div><\/div><div class=\"entry-row compound-row\"><div class=\"clampwrap\"><span class=\"compound clamp clamp-1\"><span class=\"cpd-hangul\">학벌<\/span><span class=\"cpd-gloss\">: academic clique<\/span><\/span><\/div><\/div><\/div><button class=\"cpd-more\" type=\"button\">Show 5 more (13)<\/button><button class=\"cpd-more cpd-all\" type=\"button\">Show all (17)<\/button><\/div><div class=\"card component\"><div class=\"head\"><div class=\"surface\">生<\/div><div class=\"headmeta\"><div class=\"eumhun\"><span class=\"hun\">날 <\/span><span class=\"rnav\" title=\"Characters read 생\" aria-label=\"Characters read 생\" role=\"button\" tabindex=\"0\">생<\/span><span class=\"edu-badge edu-badge--lvlM\" title=\"MOE curriculum, middle school (중학교용)\" aria-label=\"MOE curriculum, middle school (중학교용)\">Middle school<\/span><\/div><\/div><button class=\"save save--unknown\" type=\"button\" aria-pressed=\"false\" aria-label=\"Save 生\" title=\"Save\">☆<\/button><a class=\"wiki\" href=\"https://en.wiktionary.org/wiki/%E7%94%9F#Korean\" target=\"_blank\" rel=\"noopener noreferrer\" aria-label=\"Wiktionary entry for 生 (opens in a new tab)\">Wiktionary ↗<\/a><\/div><div class=\"glosses numbered\"><div class=\"gloss\"><span class=\"gloss-num\">1.<\/span><div class=\"clampwrap\"><span class=\"gloss-text clamp clamp-2\">To be born; to live<\/span><\/div><\/div><div class=\"gloss\"><span class=\"gloss-num\">2.<\/span><div class=\"clampwrap\"><span class=\"gloss-text clamp clamp-2\">Raw; fresh<\/span><\/div><\/div><\/div><div class=\"label\">Compounds<\/div><div class=\"compounds\"><div class=\"entry-row compound-row nav\" role=\"button\" tabindex=\"0\"><div class=\"clampwrap\"><span class=\"compound clamp clamp-1\"><span class=\"cpd-hangul\">학생<\/span><span class=\"cpd-hanja\"> (學生)<\/span><span class=\"cpd-gloss\">: student<\/span><\/span><\/div><\/div><div class=\"entry-row compound-row nav\" role=\"button\" tabindex=\"0\"><div class=\"clampwrap\"><span class=\"compound clamp clamp-1\"><span class=\"cpd-hangul\">생일<\/span><span class=\"cpd-hanja\"> (生日)<\/span><span class=\"cpd-gloss\">: birthday<\/span><\/span><\/div><\/div><\/div><\/div><\/div><\/div><\/div>",
+    word: "<div class=\"card\"><div class=\"hedge\"><\/div><div class=\"word-body\"><div class=\"head\"><div class=\"surface\">學生<\/div><div class=\"headmeta\"><div class=\"hangul\"><span class=\"rnav\" title=\"Look up 학생\" aria-label=\"Look up 학생\" role=\"button\" tabindex=\"0\">학생<\/span><\/div><\/div><button class=\"save save--unknown\" type=\"button\" aria-pressed=\"false\" aria-label=\"Save 學生\" title=\"Save\">☆<\/button><a class=\"wiki\" href=\"https://en.wiktionary.org/wiki/%ED%95%99%EC%83%9D#Korean\" target=\"_blank\" rel=\"noopener noreferrer\" aria-label=\"Wiktionary entry for 학생 (opens in a new tab)\">Wiktionary ↗<\/a><\/div><div class=\"glosses\"><div class=\"gloss\"><div class=\"clampwrap\"><span class=\"gloss-text clamp clamp-2\">Student; pupil<\/span><\/div><\/div><\/div><div class=\"chips\"><span class=\"chip nav\" aria-label=\"學 배울 학\" role=\"button\" tabindex=\"0\"><span class=\"chip-glyph\">學<\/span><span class=\"chip-text\">배울 학<\/span><\/span><span class=\"chip nav\" aria-label=\"生 날 생\" role=\"button\" tabindex=\"0\"><span class=\"chip-glyph\">生<\/span><span class=\"chip-text\">날 생<\/span><\/span><\/div><div class=\"entry-row usedin-row nav\" role=\"button\" tabindex=\"0\"><span class=\"usedin-text\">Used in <b>6<\/b> larger words<\/span><\/div><\/div><div class=\"parts\"><\/div><div class=\"components\"><div class=\"label\">Component hanja<\/div><div class=\"component-list\"><div class=\"card component\"><div class=\"head\"><div class=\"surface\">學<\/div><div class=\"headmeta\"><div class=\"eumhun\"><span class=\"hun\">배울 <\/span><span class=\"rnav\" title=\"Characters read 학\" aria-label=\"Characters read 학\" role=\"button\" tabindex=\"0\">학<\/span><span class=\"edu-badge edu-badge--lvlM\" title=\"MOE curriculum, middle school (중학교용)\" aria-label=\"MOE curriculum, middle school (중학교용)\">Middle school<\/span><\/div><\/div><button class=\"save save--unknown\" type=\"button\" aria-pressed=\"false\" aria-label=\"Save 學\" title=\"Save\">☆<\/button><a class=\"wiki\" href=\"https://en.wiktionary.org/wiki/%E5%AD%B8#Korean\" target=\"_blank\" rel=\"noopener noreferrer\" aria-label=\"Wiktionary entry for 學 (opens in a new tab)\">Wiktionary ↗<\/a><\/div><div class=\"glosses numbered\"><div class=\"gloss\"><span class=\"gloss-num\">1.<\/span><div class=\"clampwrap\"><span class=\"gloss-text clamp clamp-2\">To learn; study<\/span><\/div><\/div><div class=\"gloss\"><span class=\"gloss-num\">2.<\/span><div class=\"clampwrap\"><span class=\"gloss-text clamp clamp-2\">School; learning<\/span><\/div><\/div><\/div><div class=\"label\">Compounds<\/div><div class=\"compounds\"><div class=\"entry-row compound-row nav\" role=\"button\" tabindex=\"0\"><div class=\"clampwrap\"><span class=\"compound clamp clamp-1\"><span class=\"cpd-hangul\">학생<\/span><span class=\"cpd-hanja\"> (學生)<\/span><span class=\"cpd-gloss\">: student<\/span><\/span><\/div><\/div><div class=\"entry-row compound-row nav\" role=\"button\" tabindex=\"0\"><div class=\"clampwrap\"><span class=\"compound clamp clamp-1\"><span class=\"cpd-hangul\">대학<\/span><span class=\"cpd-hanja\"> (大學)<\/span><span class=\"cpd-gloss\">: university<\/span><\/span><\/div><\/div><div class=\"entry-row compound-row nav\" role=\"button\" tabindex=\"0\"><div class=\"clampwrap\"><span class=\"compound clamp clamp-1\"><span class=\"cpd-hangul\">학교<\/span><span class=\"cpd-hanja\"> (學校)<\/span><span class=\"cpd-gloss\">: school<\/span><\/span><\/div><\/div><div class=\"entry-row compound-row nav\" role=\"button\" tabindex=\"0\"><div class=\"clampwrap\"><span class=\"compound clamp clamp-1\"><span class=\"cpd-hangul\">과학<\/span><span class=\"cpd-hanja\"> (科學)<\/span><span class=\"cpd-gloss\">: science<\/span><\/span><\/div><\/div><div class=\"entry-row compound-row\"><div class=\"clampwrap\"><span class=\"compound clamp clamp-1\"><span class=\"cpd-hangul\">학벌<\/span><span class=\"cpd-gloss\">: academic clique<\/span><\/span><\/div><\/div><\/div><button class=\"cpd-more\" type=\"button\">Show 5 more (18)<\/button><button class=\"cpd-more cpd-all\" type=\"button\">Show all (22)<\/button><\/div><div class=\"card component\"><div class=\"head\"><div class=\"surface\">生<\/div><div class=\"headmeta\"><div class=\"eumhun\"><span class=\"hun\">날 <\/span><span class=\"rnav\" title=\"Characters read 생\" aria-label=\"Characters read 생\" role=\"button\" tabindex=\"0\">생<\/span><span class=\"edu-badge edu-badge--lvlM\" title=\"MOE curriculum, middle school (중학교용)\" aria-label=\"MOE curriculum, middle school (중학교용)\">Middle school<\/span><\/div><\/div><button class=\"save save--unknown\" type=\"button\" aria-pressed=\"false\" aria-label=\"Save 生\" title=\"Save\">☆<\/button><a class=\"wiki\" href=\"https://en.wiktionary.org/wiki/%E7%94%9F#Korean\" target=\"_blank\" rel=\"noopener noreferrer\" aria-label=\"Wiktionary entry for 生 (opens in a new tab)\">Wiktionary ↗<\/a><\/div><div class=\"glosses numbered\"><div class=\"gloss\"><span class=\"gloss-num\">1.<\/span><div class=\"clampwrap\"><span class=\"gloss-text clamp clamp-2\">To be born; to live<\/span><\/div><\/div><div class=\"gloss\"><span class=\"gloss-num\">2.<\/span><div class=\"clampwrap\"><span class=\"gloss-text clamp clamp-2\">Raw; fresh<\/span><\/div><\/div><\/div><div class=\"label\">Compounds<\/div><div class=\"compounds\"><div class=\"entry-row compound-row nav\" role=\"button\" tabindex=\"0\"><div class=\"clampwrap\"><span class=\"compound clamp clamp-1\"><span class=\"cpd-hangul\">학생<\/span><span class=\"cpd-hanja\"> (學生)<\/span><span class=\"cpd-gloss\">: student<\/span><\/span><\/div><\/div><div class=\"entry-row compound-row nav\" role=\"button\" tabindex=\"0\"><div class=\"clampwrap\"><span class=\"compound clamp clamp-1\"><span class=\"cpd-hangul\">생일<\/span><span class=\"cpd-hanja\"> (生日)<\/span><span class=\"cpd-gloss\">: birthday<\/span><\/span><\/div><\/div><\/div><\/div><\/div><\/div><\/div>",
     char: "<div class=\"card\"><div class=\"head\"><div class=\"surface\">靴<\/div><div class=\"headmeta\"><div class=\"eumhun\"><span class=\"hun\">신 <\/span><span class=\"rnav\" title=\"Characters read 화\" aria-label=\"Characters read 화\" role=\"button\" tabindex=\"0\">화<\/span><span class=\"edu-badge edu-badge--lvlR\" title=\"Archaic, specialist, or reading-only (Okpyeon's classification)\" aria-label=\"Archaic, specialist, or reading-only (Okpyeon's classification)\">Rare<\/span><\/div><\/div><button class=\"save save--unknown\" type=\"button\" aria-pressed=\"false\" aria-label=\"Save 靴\" title=\"Save\">☆<\/button><a class=\"wiki\" href=\"https://en.wiktionary.org/wiki/%E9%9D%B4#Korean\" target=\"_blank\" rel=\"noopener noreferrer\" aria-label=\"Wiktionary entry for 靴 (opens in a new tab)\">Wiktionary ↗<\/a><\/div><div class=\"glosses\"><div class=\"gloss\"><div class=\"clampwrap\"><span class=\"gloss-text clamp clamp-2\">Shoe; boot<\/span><\/div><\/div><\/div><div class=\"madeof\"><div class=\"entry-row madeof-row nav\" aria-expanded=\"false\" role=\"button\" tabindex=\"0\"><div class=\"clampwrap\"><span class=\"madeof-text clamp clamp-1\">Made of <span class=\"madeof-glyph\">革<\/span> + <span class=\"madeof-glyph\">亻<\/span> + <span class=\"madeof-glyph\">乚<\/span> + <span class=\"madeof-glyph\">㇒<\/span><\/span><\/div><\/div><div class=\"madeof-list\" hidden=\"\"><div class=\"entry-row madeof-part nav\" role=\"button\" tabindex=\"0\"><span class=\"r-glyph\">革<\/span><div class=\"clampwrap\"><span class=\"r-text clamp clamp-1\"><span class=\"r-eumhun\">가죽 혁<\/span><span class=\"r-gloss\">  leather; hide<\/span><\/span><\/div><\/div><div class=\"entry-row madeof-part nav\" role=\"button\" tabindex=\"0\"><span class=\"r-glyph\">亻<\/span><div class=\"clampwrap\"><span class=\"r-text clamp clamp-1\"><span class=\"r-eumhun\">사람 인<\/span><span class=\"r-gloss\">  person; human being<\/span><\/span><\/div><\/div><div class=\"entry-row madeof-part inert\"><span class=\"r-glyph\">乚<\/span><div class=\"clampwrap\"><span class=\"r-text clamp clamp-1\"><span class=\"madeof-name\">hidden<\/span><\/span><\/div><\/div><div class=\"entry-row madeof-part inert\"><span class=\"r-glyph\">㇒<\/span><div class=\"clampwrap\"><span class=\"r-text clamp clamp-1\"><\/span><\/div><\/div><\/div><\/div><div class=\"label\">Compounds<\/div><div class=\"compounds\"><div class=\"entry-row compound-row nav\" role=\"button\" tabindex=\"0\"><div class=\"clampwrap\"><span class=\"compound clamp clamp-1\"><span class=\"cpd-hangul\">군화<\/span><span class=\"cpd-hanja\"> (軍靴)<\/span><span class=\"cpd-gloss\">: military boots<\/span><\/span><\/div><\/div><\/div><\/div>",
     reading: "<div class=\"card reading\"><div class=\"reading-title\">5 hanja read <b>국<\/b><\/div><div class=\"reading-list\"><div class=\"reading-row\" role=\"button\" tabindex=\"0\"><span class=\"r-glyph\">國<\/span><span class=\"r-text\"><span class=\"r-eumhun\">나라 국<\/span><span class=\"edu-badge edu-badge--lvlM\" title=\"MOE curriculum, middle school (중학교용)\" aria-label=\"MOE curriculum, middle school (중학교용)\">Middle school<\/span><span class=\"r-gloss\">  country; state; nation<\/span><\/span><\/div><div class=\"reading-row\" role=\"button\" tabindex=\"0\"><span class=\"r-glyph\">局<\/span><span class=\"r-text\"><span class=\"r-eumhun\">판 국<\/span><span class=\"edu-badge edu-badge--lvlH\" title=\"MOE curriculum, high school (고등학교용)\" aria-label=\"MOE curriculum, high school (고등학교용)\">High school<\/span><span class=\"r-gloss\">  bureau; office; situation<\/span><\/span><\/div><div class=\"reading-row\" role=\"button\" tabindex=\"0\"><span class=\"r-glyph\">菊<\/span><span class=\"r-text\"><span class=\"r-eumhun\">국화 국<\/span><span class=\"edu-badge edu-badge--lvlA\" title=\"Beyond the school curriculum; attested in real vocabulary (Okpyeon's classification)\" aria-label=\"Beyond the school curriculum; attested in real vocabulary (Okpyeon's classification)\">Advanced<\/span><span class=\"r-gloss\">  chrysanthemum<\/span><\/span><\/div><div class=\"reading-row\" role=\"button\" tabindex=\"0\"><span class=\"r-glyph\">鞠<\/span><span class=\"r-text\"><span class=\"r-eumhun\">공 국<\/span><span class=\"edu-badge edu-badge--lvlR\" title=\"Archaic, specialist, or reading-only (Okpyeon's classification)\" aria-label=\"Archaic, specialist, or reading-only (Okpyeon's classification)\">Rare<\/span><span class=\"r-gloss\">  leather ball; to rear<\/span><\/span><\/div><div class=\"reading-row\" role=\"button\" tabindex=\"0\"><span class=\"r-glyph\">麴<\/span><span class=\"r-text\"><span class=\"r-eumhun\">누룩 국<\/span><span class=\"edu-badge edu-badge--lvlR\" title=\"Archaic, specialist, or reading-only (Okpyeon's classification)\" aria-label=\"Archaic, specialist, or reading-only (Okpyeon's classification)\">Rare<\/span><span class=\"r-gloss\">  yeast; malt<\/span><\/span><\/div><\/div><\/div>"
   };
@@ -1868,6 +1097,14 @@
     // the packaged files; see messagesTable.
     __messagesCalls: 0,
     sendMessage: function (msg, cb) {
+      // Before the real modules load, every dictionary request waits for
+      // them (the messages table and the saved store need no modules).
+      if (!real && msg && msg.type !== "messagesGet" && SAVED_TYPES[msg.type] !== 1) {
+        var self = this;
+        var later = ready.then(function () { return self.sendMessage(msg); });
+        if (typeof cb === "function") { later.then(function (r) { cb(r); }); return undefined; }
+        return later;
+      }
       // Dictionary traffic only. The saved store keeps its own counters, so
       // every "this view was served from cache" proof stays a statement about
       // LOOKUPS and does not quietly start counting savedCheck round-trips.
@@ -1881,41 +1118,17 @@
           this.__lastInterpret = msg.interpret === true;
           if (msg.interpret === true) this.__interpretCalls++;
           this.__lastNative = msg.native === true;
-          if (msg.native === true) this.__nativeCalls++;
+          if (msg.native === true) { this.__nativeCalls++; nativeReads++; }
           this.__lastSino = msg.sino === true;
-          if (msg.sino === true) this.__sinoCalls++;
-          resp = lookup(String(msg.text || ""),
-            { interpret: msg.interpret === true, native: msg.native === true });
-          // SPEC gate: only flagged requests may touch the native table. An
-          // interpreted response is a promise and already carries its own
-          // native hits, collected per candidate inside the interpreters.
-          // Deconjugation ADDENDUM: a literal flagged lookup may answer with
-          // a promise too (the generator loading), so the join lands after
-          // it settles; a synchronous answer is joined synchronously as
-          // before.
-          if (msg.native === true && resp &&
-              !(msg.interpret === true && LATIN_QUERY.test(String(msg.text || "").trim()))) {
-            var joinNative = function (r) {
-              if (r && r.ok === true) {
-                var nm = nativeMatchesFor(String(msg.text || ""), r.matches);
-                if (nm.length) r.nativeMatches = nm;
-              }
-              return r;
-            };
-            resp = typeof resp.then === "function" ? resp.then(joinNative) : joinNative(resp);
-          }
-          // Same gate for the sino table. The attach lands AFTER the lookup
-          // settles, so interpreted (promise) responses carry their per-char
-          // entries too, exactly like the worker's post-join attach.
-          if (msg.sino === true) {
-            resp = Promise.resolve(resp).then(attachSinoMatches);
-          }
-          // And for the ko table, last of all, like the worker's attach.
+          if (msg.sino === true) { this.__sinoCalls++; sinoReads++; }
           this.__lastKo = msg.ko === true;
-          if (msg.ko === true) {
-            this.__koCalls++;
-            resp = Promise.resolve(resp).then(attachKoMatches);
-          }
+          if (msg.ko === true) { this.__koCalls++; koReads++; }
+          // The worker's answer, flags and all (SPEC gate: only a flagged
+          // request touches the native, sino or ko table).
+          resp = answerLookup(String(msg.text || ""), {
+            interpret: msg.interpret === true, native: msg.native === true,
+            sino: msg.sino === true, ko: msg.ko === true
+          });
         } else if (msg && msg.type === "compounds") {
           this.__compoundCalls++;
           this.__lastChar = msg.char;
@@ -1977,7 +1190,15 @@
       if (typeof cb === "function") { settled.then(function (r) { cb(r); }); return undefined; }
       return settled;
     },
-    __lookup: lookup,
+    // A literal lookup through the real worker, unflagged unless asked;
+    // synchronous once `ready` has settled.
+    __lookup: function (text, opts) {
+      var o = opts !== null && typeof opts === "object" ? opts : {};
+      return answerLookup(text, o);
+    },
+    // Settles once the real lookup modules have loaded; the check runners
+    // await it before their first lookup.
+    ready: ready,
     // How often the native table has been consulted, and a stand-in for
     // native.json being absent: checks swap the table out to prove renders
     // are byte-identical, then put it back.

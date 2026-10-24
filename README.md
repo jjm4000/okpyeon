@@ -135,7 +135,10 @@ UI self-checks, headless:
 python pipeline/run_selfchecks.py
 ```
 
-Or open `test-page/index.html` in a browser and press "Run self-checks".
+Or serve the repo (`python -m http.server` from the repo root), open
+`http://localhost:8000/test-page/index.html`, and press "Run self-checks". The
+pages answer through the real lookup modules, which browsers will not load from
+`file://`.
 
 ## Licenses
 
