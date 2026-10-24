@@ -50,9 +50,15 @@ back at the join (the first unparseable line; the end of the first gzip
 stream), and words.json, native.json, decomp.json, sino.json, variants.json
 and ko.json then rebuilt byte-identical. hanja.json rebuilt with one
 difference, the order of 綠汁機 and 搾汁機 in the compound lists of 綠, 汁,
-搾 and 機: those two words are the last entries of the recovered Korean
-dump, so the end of the old file is the one part the recovery cannot vouch
-for. The committed hanja.json was kept. Unihan is pinned to a Unicode
+搾 and 機, explained on 2026-10-24: the Korean dump had been spliced TWICE.
+A build in early September already appended a newer dump's tail (15 KB)
+onto the August file, so the file September's data was built from held
+a nine-entry block twice (즐거이 through 公領, the juicer words among
+them), and the duplicates inflated those words' scores. Rebuilding from
+the reconstructed September file (the first 198,689,756 bytes of the
+spliced copy) reproduces every committed data file byte for byte, which
+confirms it. The recovered file is the clean August download, so its
+order is the correct one, and hanja.json was rebuilt from it. Unihan is pinned to a Unicode
 release (17.0.0) for the same reason: `latest` moved to 18.0, which changes
 three output files, and moving is a deliberate data change.
 
