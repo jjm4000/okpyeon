@@ -595,6 +595,9 @@
     "}",
     ".sino-dot { color: var(--faint); margin: 0 4px; }",
     ".sino-sep { color: var(--faint); margin: 0 8px; }",
+    // Word-level sibling readings ADDENDUM: the Sino reading after an
+    // everyday Japanese one (あした (みょうにち)).
+    ".sino-alt { color: var(--faint); margin-left: 4px; }",
     // A step smaller inside a nested component card, the house pattern.
     ".card.component .sino-line { font-size: 11px; }",
     /* ---- decomposition: the collapsed "Made of" row and its part rows ---- */
@@ -2486,6 +2489,8 @@
 
     appendWordHead(body, m);
 
+    appendWordSinoLine(body, m);
+
     appendDefinitions(body, m, m.glosses);
 
     appendCharChips(body, m);
@@ -3539,6 +3544,37 @@
     }
     if (showZh.length) appendSegment(t("marker.zh"), showZh, false);
     card.appendChild(line);
+  }
+
+  // Word-level sibling readings ADDENDUM: the character line's idiom on a
+  // word card, fed by the `sinoWord` entry the worker hangs on flagged
+  // requests. Japanese shows the everyday reading, with the Sino one in
+  // parentheses when the two differ (明日: あした (みょうにち)), or whichever
+  // one exists; Mandarin the attested pinyin. Same toggles and markers as
+  // the character line, no tooltips. A word with no entry gets no line.
+  function appendWordSinoLine(body, m) {
+    var langs = sinoLangs();
+    if (!langs.ja && !langs.zh) return;
+    var entry = m && m.sinoWord && typeof m.sinoWord === "object" ? m.sinoWord : null;
+    if (!entry) return;
+    var ja = nonEmptyString(entry.ja);
+    var jn = nonEmptyString(entry.jn);
+    var zh = nonEmptyString(entry.zh);
+    var showJa = langs.ja && !!(ja || jn);
+    var showZh = langs.zh && !!zh;
+    if (!showJa && !showZh) return;
+    var line = el("div", "sino-line word-sino");
+    if (showJa) {
+      line.appendChild(el("span", "sino-marker", t("marker.ja")));
+      line.appendChild(el("span", "sino-reading", jn || ja));
+      if (jn && ja) line.appendChild(el("span", "sino-alt", "(" + ja + ")"));
+    }
+    if (showJa && showZh) line.appendChild(el("span", "sino-sep", "·"));
+    if (showZh) {
+      line.appendChild(el("span", "sino-marker", t("marker.zh")));
+      line.appendChild(el("span", "sino-reading", zh));
+    }
+    body.appendChild(line);
   }
 
   function buildCharCard(m) {

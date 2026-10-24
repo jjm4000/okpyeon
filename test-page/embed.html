@@ -438,6 +438,10 @@
     // 해외대학생활 → 大學生活 → 大學生 → 大學
     "海外": [{ hangul: "해외", glosses: ["overseas; abroad"] }],
     "大學": [{ hangul: "대학", glosses: ["university; college"] }],
+    // Word-level sibling readings (SPEC ADDENDUM 2026-10-24): 明日 has an
+    // everyday Japanese reading beside its Sino one, 場所 only an everyday one.
+    "明日": [{ hangul: "명일", glosses: ["tomorrow"] }],
+    "場所": [{ hangul: "장소", glosses: ["place; location"] }],
     "大學生": [{ hangul: "대학생", glosses: ["a university student"] }],
     "大學生活": [{ hangul: "대학생활", glosses: ["university life"] }],
     "海外大學生活": [{ hangul: "해외대학생활", glosses: ["university life abroad"] }],
@@ -956,6 +960,21 @@
     "國": { zh: [["guó", "국"]] },
     "工": { zh: [["gōng", "공"]] }
   };
+  // Word-level sibling readings (SPEC ADDENDUM 2026-10-24): sino.json's words
+  // table in miniature, keyed by canonical spelling. 大學 carries both
+  // languages; 明日 the everyday Japanese reading with a Sino one (あした
+  // (みょうにち)); 場所 only an everyday one; 詐欺 and 士氣 share the hangul
+  // 사기, so a spelling swap swaps the line, and 沙器 has none; 加工 is
+  // reached inside a hybrid part's sub-lookup. 國民 and 學生 stay absent on
+  // purpose: the character-line checks count lines on those lookups.
+  var SINO_WORDS = {
+    "大學": { ja: "だいがく", zh: "dàxué" },
+    "明日": { ja: "みょうにち", jn: "あした", zh: "míngrì" },
+    "場所": { jn: "ばしょ", zh: "chǎngsuǒ" },
+    "詐欺": { ja: "さぎ", zh: "zhàqī" },
+    "士氣": { ja: "しき", zh: "shìqì" },
+    "加工": { ja: "かこう", zh: "jiāgōng" }
+  };
   var sinoReads = 0;
 
   // The worker's attach: the char's entry rides WHOLE onto every char match
@@ -970,7 +989,13 @@
   // under the same read, as the worker's attach walks them.
   function attachSinoInto(resp) {
     (Array.isArray(resp.matches) ? resp.matches : []).forEach(function (m) {
-      if (!m || m.kind !== "char") return;
+      if (!m) return;
+      if (m.kind === "word") {
+        var wordEntry = SINO_WORDS[m.canonical];
+        if (wordEntry) m.sinoWord = wordEntry;
+        return;
+      }
+      if (m.kind !== "char") return;
       var entry = SINO[m.canonical];
       if (entry) m.sino = entry;
     });
@@ -2094,6 +2119,11 @@
       SINO = table || {};
       return prev;
     },
+    __swapSinoWords: function (table) {
+      var prev = SINO_WORDS;
+      SINO_WORDS = table || {};
+      return prev;
+    },
     // The ko twins.
     __koReads: function () { return koReads; },
     __swapKoTable: function (table) {
@@ -2877,6 +2907,24 @@
       snMarkers().join(",") === "CN" && snReadings().join(",") === "xué" &&
       !api.query(".sino-sep"),
       snMarkers().join(",") + " | " + snReadings().join(","));
+
+    // --- word-level readings (SPEC ADDENDUM 2026-10-24) -------------------
+    function snWordText() {
+      var line = api.query(".word-sino");
+      return line ? Array.prototype.map.call(line.children,
+        function (c) { return c.textContent; }).join(" ") : null;
+    }
+    await embed.searchFor("明日", { sino: true });
+    await wait(TAIL);
+    check("a word card carries the word line: everyday reading, Sino one in parentheses",
+      snWordText() === "JP あした (みょうにち) · CN míngrì", snWordText());
+    await embed.searchFor("明日", { sino: { zh: true } });
+    await wait(TAIL);
+    check("{zh: true} gives the word line its Mandarin half alone",
+      snWordText() === "CN míngrì", snWordText());
+    await embed.searchFor("明日");
+    await wait(TAIL);
+    check("an unflagged search renders no word line", snWordText() === null, snWordText());
 
     // --- absent option is off, and clear() resets the session -------------
     await embed.searchFor("學");

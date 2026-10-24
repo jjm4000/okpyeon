@@ -435,6 +435,10 @@
     // 해외대학생활 → 大學生活 → 大學生 → 大學
     "海外": [{ hangul: "해외", glosses: ["overseas; abroad"] }],
     "大學": [{ hangul: "대학", glosses: ["university; college"] }],
+    // Word-level sibling readings (SPEC ADDENDUM 2026-10-24): 明日 has an
+    // everyday Japanese reading beside its Sino one, 場所 only an everyday one.
+    "明日": [{ hangul: "명일", glosses: ["tomorrow"] }],
+    "場所": [{ hangul: "장소", glosses: ["place; location"] }],
     "大學生": [{ hangul: "대학생", glosses: ["a university student"] }],
     "大學生活": [{ hangul: "대학생활", glosses: ["university life"] }],
     "海外大學生活": [{ hangul: "해외대학생활", glosses: ["university life abroad"] }],
@@ -953,6 +957,21 @@
     "國": { zh: [["guó", "국"]] },
     "工": { zh: [["gōng", "공"]] }
   };
+  // Word-level sibling readings (SPEC ADDENDUM 2026-10-24): sino.json's words
+  // table in miniature, keyed by canonical spelling. 大學 carries both
+  // languages; 明日 the everyday Japanese reading with a Sino one (あした
+  // (みょうにち)); 場所 only an everyday one; 詐欺 and 士氣 share the hangul
+  // 사기, so a spelling swap swaps the line, and 沙器 has none; 加工 is
+  // reached inside a hybrid part's sub-lookup. 國民 and 學生 stay absent on
+  // purpose: the character-line checks count lines on those lookups.
+  var SINO_WORDS = {
+    "大學": { ja: "だいがく", zh: "dàxué" },
+    "明日": { ja: "みょうにち", jn: "あした", zh: "míngrì" },
+    "場所": { jn: "ばしょ", zh: "chǎngsuǒ" },
+    "詐欺": { ja: "さぎ", zh: "zhàqī" },
+    "士氣": { ja: "しき", zh: "shìqì" },
+    "加工": { ja: "かこう", zh: "jiāgōng" }
+  };
   var sinoReads = 0;
 
   // The worker's attach: the char's entry rides WHOLE onto every char match
@@ -967,7 +986,13 @@
   // under the same read, as the worker's attach walks them.
   function attachSinoInto(resp) {
     (Array.isArray(resp.matches) ? resp.matches : []).forEach(function (m) {
-      if (!m || m.kind !== "char") return;
+      if (!m) return;
+      if (m.kind === "word") {
+        var wordEntry = SINO_WORDS[m.canonical];
+        if (wordEntry) m.sinoWord = wordEntry;
+        return;
+      }
+      if (m.kind !== "char") return;
       var entry = SINO[m.canonical];
       if (entry) m.sino = entry;
     });
@@ -2089,6 +2114,11 @@
     __swapSinoTable: function (table) {
       var prev = SINO;
       SINO = table || {};
+      return prev;
+    },
+    __swapSinoWords: function (table) {
+      var prev = SINO_WORDS;
+      SINO_WORDS = table || {};
       return prev;
     },
     // The ko twins.
@@ -6679,6 +6709,101 @@
     }
 
     /* ==================================================================
+     * Word-level sibling readings (SPEC ADDENDUM 2026-10-24): the character
+     * line's idiom on word cards, fed by the words table. Japanese shows the
+     * everyday reading with the Sino one in parentheses when they differ.
+     * ================================================================== */
+    function wordSinoText(scope) {
+      var line = scope ? scope.querySelector(".word-sino") : api.query(".word-sino");
+      if (!line) return null;
+      return Array.prototype.map.call(line.children, function (c) { return c.textContent; }).join(" ");
+    }
+    api.setSettings(null);
+    var wsDae = await sendSino("대학");
+    var wsDaeWord = wsDae.matches.filter(function (m) { return m.kind === "word"; })[0];
+    check("word readings: a flagged lookup hangs the words entry on the word match",
+      !!wsDaeWord && JSON.stringify(wsDaeWord.sinoWord) === JSON.stringify({ ja: "だいがく", zh: "dàxué" }) &&
+      wsDae.matches.filter(function (m) { return m.kind === "char"; })
+        .every(function (m) { return !("sinoWord" in m); }),
+      JSON.stringify(wsDaeWord));
+    var wsOffHtml;
+    api.showAt(anchor, fake.__lookup("대학").matches);
+    await wait(60);
+    wsOffHtml = viewHtml();
+    api.showAt(anchor, wsDae.matches);
+    await wait(60);
+    check("word readings: toggles off ignore the entry, byte for byte",
+      viewHtml() === wsOffHtml && !api.query(".word-sino"), "len=" + viewHtml().length);
+    api.setSettings({ jaReadings: true, zhReadings: true });
+    api.showAt(anchor, wsDae.matches);
+    await wait(60);
+    var wsLine = api.query(".word-sino");
+    check("word readings: both on, the line sits under the word head: JP then CN",
+      wordSinoText() === "JP だいがく · CN dàxué" &&
+      !!wsLine && !!wsLine.parentElement && wsLine.parentElement.classList.contains("word-body") &&
+      wsLine.classList.contains("sino-line"),
+      wordSinoText());
+    api.setSettings({ jaReadings: true });
+    api.showAt(anchor, wsDae.matches);
+    await wait(60);
+    check("word readings: ja alone", wordSinoText() === "JP だいがく", wordSinoText());
+    api.setSettings({ zhReadings: true });
+    api.showAt(anchor, wsDae.matches);
+    await wait(60);
+    check("word readings: zh alone", wordSinoText() === "CN dàxué", wordSinoText());
+    api.setSettings({ jaReadings: true, zhReadings: true });
+    var wsTomorrow = await sendSino("明日");
+    api.showAt(anchor, wsTomorrow.matches);
+    await wait(60);
+    check("word readings: the everyday reading leads, the Sino one in parentheses",
+      wordSinoText() === "JP あした (みょうにち) · CN míngrì" &&
+      api.query(".word-sino .sino-alt").textContent === "(みょうにち)",
+      wordSinoText());
+    var wsPlace = await sendSino("場所");
+    api.showAt(anchor, wsPlace.matches);
+    await wait(60);
+    check("word readings: an everyday reading with no Sino one stands alone",
+      wordSinoText() === "JP ばしょ · CN chǎngsuǒ" && !api.query(".word-sino .sino-alt"),
+      wordSinoText());
+    var wsSagi = await sendSino("사기");
+    api.showAt(anchor, wsSagi.matches);
+    await wait(60);
+    var wsChips = api.queryAll(".spell-chip");
+    var wsFirst = wordSinoText();
+    wsChips[1].click();
+    await wait(60);
+    var wsSecond = wordSinoText();
+    wsChips[2].click();
+    await wait(60);
+    check("word readings: a spelling swap swaps the line, and a spelling with no entry has none",
+      wsChips.length === 3 && wsFirst === "JP さぎ · CN zhàqī" &&
+      wsSecond === "JP しき · CN shìqì" && wordSinoText() === null,
+      [wsChips.length, wsFirst, wsSecond, wordSinoText()].join(" | "));
+    var wsGukga = await sendSino("국가");
+    api.showAt(anchor, wsGukga.matches);
+    await wait(60);
+    check("word readings: a word the table lacks renders no word line",
+      !api.query(".word-sino"), wordSinoText());
+    var wsSaved = fake.__swapSinoWords(null);
+    var wsBare = await sendSino("대학");
+    api.showAt(anchor, wsBare.matches);
+    await wait(60);
+    check("word readings: with the words table absent, no word line and no field",
+      !api.query(".word-sino") &&
+      wsBare.matches.every(function (m) { return !("sinoWord" in m); }),
+      wordSinoText());
+    fake.__swapSinoWords(wsSaved);
+    var wsHybrid = await fake.sendMessage({ type: "lookup", text: "가공되다", native: true, sino: true });
+    api.setSettings({ jaReadings: true, zhReadings: true, nativeWords: true });
+    api.showAt(anchor, wsHybrid.matches, "가공되다", undefined, wsHybrid.nativeMatches);
+    await wait(60);
+    var wsNested = api.query(".card.native .hybrid-word");
+    check("word readings: the hybrid's nested 加工 word card carries its line",
+      !!wsNested && wordSinoText(wsNested) === "JP かこう · CN jiāgōng",
+      wsNested ? wordSinoText(wsNested) : "no nested word card");
+    api.setSettings(null);
+
+    /* ==================================================================
      * Korean language mode (SPEC ADDENDUM 2026-09-01): every string on a
      * card comes through the message table. Two proofs. English renders
      * byte-for-byte what it did before the port (snapshots captured from
@@ -6925,6 +7050,15 @@
         api.query(".sino-line .sino-reading").title === "학 ↔ ガク ↔ xué",
         sinoMarkers().join(",") + " | " + api.query(".sino-line .sino-reading").title);
       sweepView("學 sino");
+      var koTomorrow = await sendSino("明日");
+      api.showAt(anchor, koTomorrow.matches);
+      await wait(60);
+      check("KO: the word line's markers read 일 / 중",
+        !!api.query(".word-sino") &&
+        Array.prototype.map.call(api.queryAll(".word-sino .sino-marker"),
+          function (m) { return m.textContent; }).join(",") === "일,중",
+        (api.query(".word-sino") || {}).textContent);
+      sweepView("明日 word readings");
       api.setSettings({ language: "ko" });
 
       // The save bubble, both of its states, and the star's own labels.

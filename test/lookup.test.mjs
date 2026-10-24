@@ -4363,14 +4363,21 @@ const sino = {
     生: { ja: [["セイ", "생"], ["ショウ", ""]], zh: [["shēng", "생"]] },
     思: { zh: [["sī", "사"], ["sāi", ""]] },
   },
+  // Word-level sibling readings ADDENDUM: the words table, keyed by
+  // canonical spelling. 國民 deliberately carries only ja and jn shapes the
+  // renderer must handle; 國家 is absent (a word the table lacks).
+  words: {
+    學生: { ja: "がくせい", zh: "xuéshēng" },
+    國民: { ja: "こくみん", jn: "くにたみ" },
+  },
 };
 
 await testAsync("sino: guardSino shapes junk and SPREADS every field through", async () => {
   const { guardSino } = await import("../extension/background.js");
-  assert.deepEqual(guardSino(null), { version: 1, chars: {} });
-  assert.deepEqual(guardSino("nonsense"), { version: 1, chars: {} });
-  assert.deepEqual(guardSino({ chars: null }), { version: 1, chars: {} });
-  assert.deepEqual(guardSino({ chars: 7 }), { version: 1, chars: {} });
+  assert.deepEqual(guardSino(null), { version: 1, chars: {}, words: {} });
+  assert.deepEqual(guardSino("nonsense"), { version: 1, chars: {}, words: {} });
+  assert.deepEqual(guardSino({ chars: null }), { version: 1, chars: {}, words: {} });
+  assert.deepEqual(guardSino({ chars: 7 }), { version: 1, chars: {}, words: {} });
   // Pass-through: the guarded record IS the schema record, per-char entries
   // untouched (same objects, not lookalike rebuilds).
   const guarded = guardSino(sino);
@@ -4381,6 +4388,11 @@ await testAsync("sino: guardSino shapes junk and SPREADS every field through", a
   // taught about still survives, because the raw record is spread, not
   // rebuilt field by field.
   assert.equal(guardSino({ version: 1, chars: {}, future: 7 }).future, 7);
+  // The words table is defended like chars: junk reads as empty, a real
+  // table passes through as the same object.
+  assert.deepEqual(guardSino({ chars: {}, words: [1, 2] }).words, {});
+  assert.deepEqual(guardSino({ chars: {}, words: "x" }).words, {});
+  assert.equal(guarded.words, sino.words);
 });
 
 await testAsync("sino: entries ride whole onto char matches, lookup driven through the guarded shape", async () => {
@@ -4401,8 +4413,14 @@ await testAsync("sino: entries ride whole onto char matches, lookup driven throu
     ja: [["セイ", "생"], ["ショウ", ""]],
     zh: [["shēng", "생"]],
   });
-  // Word matches never carry the field.
+  // Word matches never carry the char field.
   assert.ok(res.matches.filter((m) => m.kind === "word").every((m) => !("sino" in m)));
+  // Word-level sibling readings ADDENDUM: word matches carry the words
+  // table's entry as sinoWord, whole, by canonical spelling; char matches
+  // never do.
+  const hakseng = res.matches.find((m) => m.kind === "word" && m.canonical === "學生");
+  assert.equal(hakseng.sinoWord, guarded.words.學生);
+  assert.ok(res.matches.filter((m) => m.kind === "char").every((m) => !("sinoWord" in m)));
 
   // A ja-only char attaches exactly its one language; a char the table lacks
   // gets NO field at all, not an empty one.
@@ -4411,6 +4429,8 @@ await testAsync("sino: entries ride whole onto char matches, lookup driven throu
   assert.deepEqual(min.sino, { ja: [["ミン", "민"]] });
   const guk = gukmin.matches.find((m) => m.kind === "char" && m.canonical === "國");
   assert.equal("sino" in guk, false);
+  const gukminWord = gukmin.matches.find((m) => m.kind === "word" && m.canonical === "國民");
+  assert.deepEqual(gukminWord.sinoWord, { ja: "こくみん", jn: "くにたみ" });
 
   // A variant surface attaches on the canonical, like every other join.
   const viaVariant = attachSino(lookup("学", data), guarded);
@@ -4423,6 +4443,10 @@ await testAsync("sino: entries ride whole onto char matches, lookup driven throu
   assert.equal(attachSino(null, guarded), null);
   const bare = attachSino(lookup("學生", data), guardSino(null));
   assert.ok(bare.matches.every((m) => !("sino" in m)));
+  assert.ok(bare.matches.every((m) => !("sinoWord" in m)));
+  // A word the table lacks gets no field at all.
+  const gukga = attachSino(lookup("國家", data), guarded);
+  assert.ok(gukga.matches.every((m) => !("sinoWord" in m)));
 });
 
 test("sino: no lookup semantics, a sino table on the bundle is never read", () => {

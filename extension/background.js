@@ -112,7 +112,11 @@ export function guardNative(raw) {
 export function guardSino(raw) {
   const s = raw !== null && typeof raw === "object" ? raw : {};
   const chars = s.chars !== null && typeof s.chars === "object" ? s.chars : {};
-  return { ...s, version: 1, chars };
+  // Word-level sibling readings ADDENDUM: the `words` table is defended the
+  // way `chars` is, so junk there costs only the word lines.
+  const words = s.words !== null && typeof s.words === "object" && !Array.isArray(s.words)
+    ? s.words : {};
+  return { ...s, version: 1, chars, words };
 }
 
 /**
@@ -244,8 +248,25 @@ export function attachSino(result, sino) {
     sino.chars !== null && typeof sino.chars === "object"
       ? sino.chars
       : {};
+  // Word-level sibling readings ADDENDUM: word matches get the words
+  // table's entry ({ja, jn, zh}) as `sinoWord`, keyed by the canonical
+  // spelling, on the same flagged path. A homograph group's matches each
+  // carry their own spelling's entry, so a spelling swap swaps the line.
+  const words =
+    sino !== null && typeof sino === "object" &&
+    sino.words !== null && typeof sino.words === "object"
+      ? sino.words
+      : {};
   for (const match of result.matches) {
-    if (!match || match.kind !== "char") continue;
+    if (!match) continue;
+    if (match.kind === "word") {
+      const key = typeof match.canonical === "string" ? match.canonical : "";
+      if (!key || !hasOwn(words, key)) continue;
+      const entry = words[key];
+      if (entry && typeof entry === "object") match.sinoWord = entry;
+      continue;
+    }
+    if (match.kind !== "char") continue;
     const char = typeof match.canonical === "string" ? match.canonical : "";
     if (!char || !hasOwn(table, char)) continue;
     const entry = table[char];

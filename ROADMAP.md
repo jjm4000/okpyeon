@@ -19,6 +19,19 @@ current review clears.
   pairing. Curated overrides still win; every existing anchor holds.
   New source: the kaikki Chinese dump, 1.2 GB, pinned in the cache.
 
+- **Word-level Japanese and Mandarin readings.** Word cards get the
+  character cards' JP · CN line (mockup A): 學校 がっこう · xuéxiào. Both
+  languages are attested, never synthesized: aligning per-character
+  readings, the original plan, was wrong 8 to 9% of the time. Mandarin
+  comes from English Wiktionary's Chinese entries, Japanese from JMdict
+  (which reading is everyday) plus English Wiktionary (Sino readings
+  JMdict lacks). Japanese shows the everyday reading first with the
+  Sino one in parentheses when they differ (明日 あした (みょうにち)),
+  Jesse's call after first choosing Sino first. 19,484 of 27,620 words
+  carry a reading; Korean-only words (代身) correctly get none. Same
+  toggles and markers as the character line; nested word cards (a
+  hybrid's 加工) carry it too.
+
 ## 1.4: packaged, not yet uploaded
 
 The manifest reads 1.4.0; the packages are okpyeon-1.4.0.zip (Chrome)
@@ -491,33 +504,6 @@ correctness" bullet of 1.1, the same way 1.1.1 folded into 1.2.
 
 ## Later / unscheduled
 
-- **Word-level sibling pronunciations** (음악 -> おんがく / yīnyuè), a
-  follow-up to the char-level sino line, analysis recorded 2026-08-31:
-  the two languages are asymmetric in opposite directions. Mandarin is
-  nearly free and mostly correct BECAUSE of the eum alignment: naive
-  per-char pinyin fails on polyphones (音樂 needs yuè, not lè), but the
-  word's hangul names each char's eum and sino.json's aligned pairs
-  select the right pinyin per position; unmodeled tone sandhi is a
-  nicety, not an error. Japanese is the hard side: real readings
-  involve rendaku and sokuon (がっこう), so synthesis from on'yomi is
-  wrong too often to ship; attested kana exist for the ~11k
-  shared-spelling words the bridge corpus already parses, partial
-  coverage with no honest synthesis fallback. Ship shape when
-  designed: zh broadly via alignment, ja attested-only.
-  REVISED by measurement 2026-10-24 (pipeline/spike_word_readings.py):
-  alignment is wrong for Mandarin too. Where it produces a word
-  reading at all, it disagrees with the attested one 8 to 9% of the
-  time (乘客 shèngkè for chéngkè, 佛陀 fútuó for fótuó), because
-  polyphones often share one Korean reading. Both languages are
-  therefore attested-only, from English Wiktionary's Chinese and
-  Japanese entries via kaikki (Jesse's suggestion: read each word's
-  Wiktionary page). Coverage of common words (f0 to f6): Mandarin
-  about 72%, Japanese 78% when the English dump and the Japanese-language
-  one are combined; overall 53% and 59%. The misses are mostly
-  Korean-only coinages (代身, 今方, 但只), where no reading is the right
-  answer. Open design question for the mockups: Japanese counterparts
-  read with native readings (明日 is あした, not みょうにち), against the
-  character line's on'yomi-only rule.
 - **Grammar labels on the form note.** Deconjugation itself is done
   (Since 1.3). Mockup C from that round: "먹었어 → form of 먹다 ·
   past, casual" (한국어 "과거, 해체").
@@ -625,6 +611,15 @@ short forms.
   (rows kept, root's body under them) as the most consistent with how
   a word card nests its characters. B had been the recommendation for
   cost; A won on shape.
+
+- **Word-level readings** (on main since 1.4): mockup A over B (inline
+  in the head) and C (per character, ruby style). The roadmap's plan of
+  aligning per-character readings measured wrong 8 to 9% of the time,
+  so both languages are attested-only; pipeline/spike_word_readings.py
+  is the record. Japanese order: Sino first was chosen, then reversed
+  the same day to the everyday reading first. Wiktionary cannot say
+  which reading is everyday (it orders by etymology: 相對 lists あいたい
+  first), so JMdict decides.
 
 ## Settled questions, kept so they are not relitigated
 
