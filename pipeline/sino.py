@@ -689,7 +689,8 @@ SINO_ZH_OVERRIDES = {
     "券": {"권": "quàn"},                 # xuàn (arched) has no Korean sibling
     "堤": {"제": "dī"},                   # 제방 堤防 dīfáng
     "宿": {"숙": "sù", "수": "xiù"},      # 별자리 수 = xiù, the star lodge
-    "尺": {"척": "chǐ"},                  # chě is the gongche note
+    # 尺 left this table on 2026-10-24: with its card readings settled
+    # (SPEC "Readings follow the card"), the scorer pairs it unaided.
     "巷": {"항": "xiàng"},                # one MC source; xiàng is the live one
     "思": {"사": "sī"},                   # sāi (cheek) has no Korean sibling
     "折": {"절": "zhé"},                  # 절 = the break morpheme zhé/shé
@@ -703,10 +704,18 @@ SINO_ZH_OVERRIDES = {
     "若": {"약": "ruò", "야": "rě"},      # 반야 般若 bōrě
     "莫": {"막": "mò", "모": "mù"},       # 저물 모 = the 暮 sense mù
     "著": {"저": "zhù"},                  # 저자 著者 zhùzhě
-    "行": {"행": "xíng", "항": "háng"},   # the bridge cannot place 항 either:
-                                          # both its eums use コウ in Japanese
+    # 行 left this table on 2026-10-24: once its vowel-merger spelling 헹
+    # left the readings (SPEC "Readings follow the card"), the scorer pairs
+    # 행 xíng and 항 háng unaided.
+    "罷": {"파": "bà"},                   # 파업 罷業 / 파면 罷免 bàmiǎn: with 피 off
+                                          # the card, the scorer ties bà and pí
+    "塞": {"새": "sài", "색": "sè"},       # 요새 要塞 yàosài / 경색 梗塞 gěngsè:
+                                          # two votes for 새, one short of the
+                                          # bridge's threshold (2026-10-24)
     "誰": {"수": "shuí"},
-    "趣": {"취": "qù", "축": "cù"},       # 축 = the 促-like cù
+    "趣": {"취": "qù"},                  # 축 left the readings on 2026-10-24:
+                                          # the card shows only 취 (SPEC "Readings
+                                          # follow the card")
     "食": {"식": "shí", "사": "sì", "이": "yì"},   # 簞食 사 / 酈食其 이
     "鳥": {"조": "niǎo"},                 # diǎo is the vulgar homophone
 }

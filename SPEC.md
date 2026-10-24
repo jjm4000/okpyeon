@@ -2086,7 +2086,8 @@ Korean. Two independent default-off toggles; off is byte-identical.
   樂 aligned in eum order (악↔ガク via 音樂, 락↔ラク via 娛樂 /
   악↔yuè, 락↔lè); 惡 (악↔アク↔è, 오↔オ↔wù); 讀 (독↔ドク↔dú,
   두↔トウ↔dòu); 說 (설↔セツ↔shuō, 세↔ゼイ); 車 (차↔chē, 거↔jū on
-  the zh side; ja follows the data); 行 via curated override
+  the zh side; ja follows the data); 行 (via curated override until
+  2026-10-24, scorer-resolved since; same pairing)
   (행↔xíng, 항↔háng; the bridge alone cannot place 항, both its eums
   use コウ in Japanese); 串 has no ja entry. Property tests: the
   corpus's top reading is a jōyō reading for at least 95% of
@@ -3620,6 +3621,44 @@ first with the Sino reading in parentheses when the two differ.
   a homograph swap updates it; a word with no entry renders no line;
   toggles off byte-identical; nested word card (the hybrid's 加工) shows
   it; English snapshots unchanged with toggles off.
+
+## Readings follow the card, and school characters' eumhun (ADDENDUM 2026-10-24, measured)
+
+Found in the cleanup survey Jesse asked for. Selecting the single
+syllable 데 listed 大 待 臺 袋 as hanja read 데; 섹 listed 色, 첵 listed
+冊. A character's `readings` carried 160 spellings its card never
+showed, on 142 characters: about half are word-initial forms that
+belong there (令 영 for 령, 年 연, 樂 낙), the rest spellings that merge
+vowels the standard keeps apart (大 데, 色 섹, 冊 첵, 塊 궤, 戲 희 as 히)
+plus junk (酉 닭, a hun). The same survey found 401 school-level
+characters with no eumhun at all (互 showed only 호, never 서로 호),
+because English Wiktionary gives them the sound alone.
+
+- SCHOOL EUMHUN: Korean Wiktionary's appendix of the 1,800 school
+  characters (부록:한문 교육용 기초 한자 1800, CC BY-SA, cached like the
+  curriculum table) gives each its 훈음. A character with no eumhun takes
+  the appendix's (互 서로 호, 仰 우러를 앙, 策 꾀 책); two huns written
+  with one sound ("지날, 글 경") both take it. An existing eumhun is never
+  overridden: where both exist, the sound agrees on 1,390 of 1,391. 407
+  characters filled; no school-level character is left without eumhun.
+- READINGS FOLLOW THE CARD: a character whose card shows eumhun emits
+  only those readings and their word-initial forms (두음법칙: ㄹ to ㅇ
+  before ㅣ and the y-vowels, ㄹ to ㄴ elsewhere, ㄴ to ㅇ before ㅣ and
+  the y-vowels), so browse-by-sound still finds 令 under 영. A character
+  without eumhun shows the list itself, minus a merged-vowel spelling of
+  an earlier reading (策's 책 and 첵 kept 책 before 策 got its eumhun).
+  The phonetic-component pass still reads the full list (兌 gives 銳 its
+  sound through 예, which 兌's card does not show).
+- Knock-on, reviewed by hand: the Mandarin pairing now names the eum
+  the card shows (昭 zhāo 소, not 조; 異 yì 이, not 리). Secondary
+  pairings with readings the card does not show go unpaired (徵 zhǐ, 革
+  jí). Curated overrides: 行 and 尺 retired (the scorer now pairs them
+  unaided, same result), 趣 keeps only 취 qù, 塞 (새 sài, 색 sè) and 罷
+  (파 bà) added where the scorer ties.
+- Anchors (build verify): 互 서로 호, 仰 우러를 앙, 策 꾀 책, 侵 침노할 침;
+  every school-level character has eumhun; 大 without 데, 色 without
+  섹, 冊 and 策 without 첵, 塊 without 궤; 令 keeps 영, 六 육, 樂 낙, 年
+  연; 塞 and 罷 pairings.
 
 ## Verification expectations
 

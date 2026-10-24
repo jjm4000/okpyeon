@@ -82,6 +82,7 @@ three output files, and moving is a deliberate data change.
 | `cache/JMdict_e.gz`              | `http://ftp.edrdg.org/pub/Nihongo/JMdict_e.gz` (EDRDG, CC BY-SA 4.0) | ~10 MB (gz) |
 | `cache/ja-extract.jsonl.gz`      | `https://kaikki.org/dictionary/downloads/ja/ja-extract.jsonl.gz` | ~62 MB (gz) |
 | `cache/ko_full_opensubtitles.txt`| `https://raw.githubusercontent.com/hermitdave/FrequencyWords/master/content/2018/ko/ko_full.txt` | ~11 MB |
+| `cache/ko-wikt-edu-1800.wikitext` | `https://ko.wiktionary.org/w/index.php?title=부록:한문_교육용_기초_한자_1800&action=raw` (percent-encoded in `build.py`) | ~110 KB |
 | `cache/ko-wiki-edu-tier.wikitext` | `https://ko.wikipedia.org/w/index.php?title=대한민국_중고등학교_기초한자_목록&action=raw` (percent-encoded in `build.py`) | ~22 KB |
 | `cache/babelstone-ids.txt`       | `https://www.babelstone.co.uk/CJK/IDS.TXT`                           | ~3 MB   |
 | `cache/urimalsaem/*.xml.gz`      | `https://raw.githubusercontent.com/spellcheck-ko/korean-dict-nikl/master/opendict/<name>.xml` (25 chunks, listed via the GitHub contents API) | ~182 MB (gz) |

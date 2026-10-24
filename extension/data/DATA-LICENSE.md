@@ -27,6 +27,9 @@ compiled from the following sources by `pipeline/build.py`:
   used under the Unicode License (https://www.unicode.org/license.txt) for
   variant mappings, supplementary definitions, and readings (including the
   Japanese and Mandarin readings behind `sino.json`).
+- **Korean Wiktionary** (https://ko.wiktionary.org), appendix
+  「부록:한문 교육용 기초 한자 1800」, under CC BY-SA: the 훈음 of school
+  characters English Wiktionary gives only a sound (互 서로 호).
 - **Korean Wikipedia**, article 「대한민국 중고등학교 기초한자 목록」
   (https://ko.wikipedia.org/wiki/대한민국_중고등학교_기초한자_목록), used under
   the **Creative Commons Attribution-ShareAlike 4.0 International License**

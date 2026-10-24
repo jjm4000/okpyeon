@@ -137,6 +137,15 @@ JMDICT_URL = "http://ftp.edrdg.org/pub/Nihongo/JMdict_e.gz"
 JMDICT_FILE = os.path.join(CACHE, "JMdict_e.gz")
 EXTFREQ_FILE = os.path.join(CACHE, "ko_full_opensubtitles.txt")
 EDU_TIER_FILE = os.path.join(CACHE, "ko-wiki-edu-tier.wikitext")
+# SPEC "School characters' eumhun" (2026-10-24): Korean Wiktionary's appendix
+# of the same 1,800 characters gives each one's 훈음 ([[互]] <small>([[서로]]
+# 호)</small>). English Wiktionary lacks the hun for about 400 of them.
+# 부록:한문_교육용_기초_한자_1800
+EDU_HUN_URL = (
+    "https://ko.wiktionary.org/w/index.php?title="
+    "%EB%B6%80%EB%A1%9D:%ED%95%9C%EB%AC%B8_%EA%B5%90%EC%9C%A1%EC%9A%A9_"
+    "%EA%B8%B0%EC%B4%88_%ED%95%9C%EC%9E%90_1800&action=raw")
+EDU_HUN_FILE = os.path.join(CACHE, "ko-wikt-edu-1800.wikitext")
 IDS_FILE = os.path.join(CACHE, "babelstone-ids.txt")
 JA_JOYO_FILE = os.path.join(CACHE, "ja-wiki-joyo-kanji.wikitext")
 JA_EXTFREQ_FILE = os.path.join(CACHE, "ja_full_opensubtitles.txt")
@@ -350,6 +359,67 @@ def clean_gloss(text) -> str:
     if RE_GLOSS_ARTIFACT.match(s) or len(s) > GLOSS_MAX_CHARS:
         return ""
     return s
+
+
+# Card readings (SPEC "Readings follow the card", 2026-10-24). Wiktionary's
+# pronunciation block and form-of senses also carry spellings of a reading
+# that merge vowels the standard keeps apart (大 데 for 대, 色 섹 for 색, 冊 첵
+# for 책, 塊 궤 for 괴, 戲 히 for 희). Those fed browse-by-sound, so selecting
+# 데 listed 大 待 臺 袋. A character whose card shows eumhun keeps only those
+# readings and their word-initial forms (두음법칙: 령 is 영 at the start of a
+# word, 락 is 낙, 년 is 연), which browse-by-sound must keep: 영장 is 令狀.
+_L_N, _L_R, _L_O = 2, 5, 11                      # ㄴ ㄹ ㅇ initial indices
+_IY = {2, 3, 6, 7, 12, 17, 20}                  # ㅑ ㅒ ㅕ ㅖ ㅛ ㅠ ㅣ
+
+
+def initial_sound_forms(eum):
+    """The forms a reading takes at the start of a word: ㄹ becomes ㅇ before
+    ㅣ and the y-vowels (력 역, 류 유) and ㄴ elsewhere (락 낙, 로 노); ㄴ becomes
+    ㅇ before ㅣ and the y-vowels (녀 여, 년 연)."""
+    if len(eum) != 1 or not ("가" <= eum <= "힣"):
+        return set()
+    o = ord(eum) - 0xAC00
+    lead, vowel, tail = o // 588, (o % 588) // 28, o % 28
+    comp = lambda l: chr(0xAC00 + l * 588 + vowel * 28 + tail)
+    if lead == _L_R:
+        return {comp(_L_O if vowel in _IY else _L_N)}
+    if lead == _L_N and vowel in _IY:
+        return {comp(_L_O)}
+    return set()
+
+
+# Vowel pairs Korean speech merges, so dictionaries and Wiktionary sometimes
+# spell a reading both ways (책 / 첵, 괴 / 궤, 희 / 히, 계 / 게).
+_MERGED_VOWELS = [{1, 5}, {7, 5}, {11, 10, 15}, {19, 20}]   # ㅐㅔ ㅖㅔ ㅚㅙㅞ ㅢㅣ
+
+
+def _merger_variant(a, b):
+    """True when two syllables differ only by a merged vowel pair."""
+    if len(a) != 1 or len(b) != 1 or a == b or not ("가" <= a <= "힣" and "가" <= b <= "힣"):
+        return False
+    oa, ob = ord(a) - 0xAC00, ord(b) - 0xAC00
+    if oa // 588 != ob // 588 or oa % 28 != ob % 28:
+        return False
+    va, vb = (oa % 588) // 28, (ob % 588) // 28
+    return any(va in g and vb in g for g in _MERGED_VOWELS)
+
+
+def card_readings(readings, eumhun):
+    """readings, filtered to what the card shows. With eumhun: the eumhun
+    readings and their word-initial forms. Without (the card then shows the
+    list itself): the list, minus a merged-vowel spelling of an earlier
+    reading (策 책 첵 keeps 책)."""
+    eums = [x["eum"] for x in eumhun if x.get("eum")]
+    if not eums:
+        out = []
+        for r in readings:
+            if not any(_merger_variant(r, k) for k in out):
+                out.append(r)
+        return out
+    keep = set(eums)
+    for e in eums:
+        keep |= initial_sound_forms(e)
+    return [r for r in readings if r in keep]
 
 
 def push_unique(lst, v, maxlen):
@@ -1489,6 +1559,37 @@ RE_WIKI_TAG = re.compile(r"<[^>]*>")
 RE_EDU_TIER_ROW = re.compile(r"^\|\s*([가-힣]+)\s*\|\|(.*)$")
 
 
+RE_EDU_HUN_ITEM = re.compile(r"\[\[([^\]|])\]\]\s*<small>\((.*?)\)</small>")
+RE_WIKILINK = re.compile(r"\[\[([^\]|]*)\|?([^\]]*)\]\]")
+
+
+def parse_edu_hun(path):
+    """char -> [(hun, eum), ...] from the Korean Wiktionary 1,800-character
+    appendix. Links render as their display text ([[우러르다|우러를]] is
+    우러를). Two huns can share one sound, written "지날, 글 경": a bare hun
+    takes the sound of the next complete pair, so 經 is 지날 경 and 글 경."""
+    with io.open(path, encoding="utf-8") as fh:
+        text = fh.read()
+    out = {}
+    for m in RE_EDU_HUN_ITEM.finditer(text):
+        c = m.group(1)
+        inner = RE_WIKILINK.sub(lambda x: x.group(2) or x.group(1), m.group(2)).strip()
+        pairs, pending = [], []
+        for part in re.split(r"\s*[,/·]\s*", inner):
+            bits = part.split()
+            if len(bits) >= 2 and len(bits[-1]) == 1 and is_hangul(bits[-1]):
+                eum = bits[-1]
+                for h in pending:
+                    pairs.append((h, eum))
+                pending = []
+                pairs.append((" ".join(bits[:-1]), eum))
+            elif bits:
+                pending.append(" ".join(bits))
+        if pairs and c not in out:
+            out[c] = pairs
+    return out
+
+
 def parse_edu_tiers(path):
     """Korean Wikipedia 기초한자 목록 wikitable -> {char: "m" | "h"}.
 
@@ -2413,15 +2514,17 @@ def verify(hanja_obj, words_obj, variants_obj, decomp_obj=None,
             ("說", "zh", [["shuō", "설"]]),
             ("車", "ja", [["シャ", "차"]]),   # ja follows the data
             ("車", "zh", [["chē", "차"], ["jū", "거"]]),
-            # 行 via curated override: the bridge alone cannot place 항,
-            # both its eums use コウ in Japanese
+            # 行: scorer-resolved since 2026-10-24 (its curated override
+            # retired when 헹 left the readings); the pairing is unchanged
             ("行", "zh", [["xíng", "행"], ["háng", "항"]]),
+            ("塞", "zh", [["sài", "새"], ["sè", "색"]]),   # curated override
+            ("罷", "zh", [["bà", "파"], ["pí", ""]]),      # curated override
         ]
         bad = ["%s.%s = %s (want %s)"
                % (c, lang, json.dumps(s_get(c, lang), ensure_ascii=False),
                   json.dumps(want, ensure_ascii=False))
                for c, lang, want in s_anchors if s_get(c, lang) != want]
-        add("sino anchors (學 樂 惡 讀 說 車 行-via-override)", not bad,
+        add("sino anchors (學 樂 惡 讀 說 車 行)", not bad,
             "%d/%d pass%s" % (len(s_anchors) - len(bad), len(s_anchors),
                               "" if not bad else "; FAILED "
                               + "; ".join(bad)))
@@ -2448,6 +2551,24 @@ def verify(hanja_obj, words_obj, variants_obj, decomp_obj=None,
                          if p[1] and p[1] not in shown]
         add("sino zh bridge: no Mandarin pair names an eum the card does not show",
             not off_card, " ".join(off_card[:10]))
+        # Readings follow the card, school eumhun (SPEC 2026-10-24).
+        for c, want in (("互", ("서로", "호")), ("仰", ("우러를", "앙")),
+                        ("策", ("꾀", "책")), ("侵", ("침노할", "침"))):
+            got = [(x["hun"], x["eum"]) for x in chars_out.get(c, {}).get("eumhun") or []]
+            add("school eumhun: %s is %s %s" % (c, want[0], want[1]), want in got,
+                json.dumps(got, ensure_ascii=False))
+        bare = [c for c, e in chars_out.items()
+                if e.get("lvl") in ("m", "h") and not e.get("eumhun")]
+        add("school eumhun: every school-level char has eumhun", not bare,
+            " ".join(bare[:10]))
+        for c, gone in (("大", "데"), ("色", "섹"), ("冊", "첵"), ("策", "첵"), ("塊", "궤")):
+            add("readings follow the card: %s does not list %s" % (c, gone),
+                gone not in (chars_out.get(c, {}).get("readings") or []),
+                json.dumps(chars_out.get(c, {}).get("readings"), ensure_ascii=False))
+        for c, kept in (("令", "영"), ("六", "육"), ("樂", "낙"), ("年", "연")):
+            add("readings follow the card: %s keeps its word-initial %s" % (c, kept),
+                kept in (chars_out.get(c, {}).get("readings") or []),
+                json.dumps(chars_out.get(c, {}).get("readings"), ensure_ascii=False))
         # Word-level readings (SPEC "Word-level sibling readings").
         sw = sino_obj.get("words") or {}
         for k, want in (("學校", {"ja": "がっこう"}), ("明日", {"ja": "みょうにち", "jn": "あした"}),
@@ -2831,6 +2952,7 @@ def main(argv):
     download(JMDICT_URL, JMDICT_FILE, force)
     download(EXTFREQ_URL, EXTFREQ_FILE, force)
     download_small(EDU_TIER_URL, EDU_TIER_FILE, force)
+    download_small(EDU_HUN_URL, EDU_HUN_FILE, force)
     download(IDS_URL, IDS_FILE, force)
     download_small(JA_JOYO_URL, JA_JOYO_FILE, force)
     download(JA_EXTFREQ_URL, JA_EXTFREQ_FILE, force)
@@ -3328,6 +3450,24 @@ def main(argv):
                 + 1.0 * cross_derived.get(sp, 0)
                 - 2.0 * (len(sp) - 2))
 
+    # School characters' eumhun (SPEC 2026-10-24): a character English
+    # Wiktionary gives no 훈음 (互 has only the sound 호) takes the Korean
+    # Wiktionary appendix's (서로 호). Never overrides an existing eumhun;
+    # the sound is also kept in the readings so browse-by-sound finds it.
+    edu_hun = parse_edu_hun(EDU_HUN_FILE)
+    n_hun_filled = 0
+    for c0, pairs in edu_hun.items():
+        c = c0 if c0 in chars else variant_map.get(c0)
+        if c not in chars or chars[c]["eumhun"]:
+            continue
+        for hun, eum in pairs:
+            add_eumhun(chars[c], hun, eum)
+            push_unique(chars[c]["readings"], eum, 8)
+        if chars[c]["eumhun"]:
+            n_hun_filled += 1
+    log("  school eumhun: %s appendix chars, %s given a 훈음 English Wiktionary lacks"
+        % (format(len(edu_hun), ","), format(n_hun_filled, ",")))
+
     chars_out = {}
     for c, e in chars.items():
         cand = {}
@@ -3378,7 +3518,7 @@ def main(argv):
             continue
         chars_out[c] = {
             "eumhun": eumhun,
-            "readings": e["readings"][:8],
+            "readings": card_readings(e["readings"], eumhun)[:8],
             "glosses": e["glosses"][:6],
             "compounds": compounds,
         }
@@ -3474,7 +3614,12 @@ def main(argv):
     with zipfile.ZipFile(UNIHAN_FILE) as z:
         kphonetic = phonetic.parse_kphonetic(
             z.read("Unihan_DictionaryLikeData.txt").decode("utf-8"))
-    phon_map, phon_stats = phonetic.build(decomp_obj["parts"], chars_out,
+    # The phonetic match reads each character's FULL reading list: 兌 gives
+    # 銳 its sound through 예, a reading 兌's card does not show (SPEC
+    # "Readings follow the card" filters only what ships).
+    phon_chars = {c: dict(v, readings=chars[c]["readings"]) if c in chars else v
+                  for c, v in chars_out.items()}
+    phon_map, phon_stats = phonetic.build(decomp_obj["parts"], phon_chars,
                                           kphonetic, uni_strokes)
     decomp_obj["phon"] = phon_map
     log("  decomp: %s phonetic pins (%s series, %s exact), %s ambiguous "

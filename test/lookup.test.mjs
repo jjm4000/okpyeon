@@ -5937,7 +5937,8 @@ await testAsync("smoke: real decomp.json decomposes 依 / 學 / 疑 and stays cl
   const { attachDecomp, guardDecomp } = await import("../extension/background.js");
   const hanjaFile = JSON.parse(await readFile(join(dataDir, "hanja.json"), "utf8"));
   const joined = attachDecomp(
-    { ok: true, matches: [{ kind: "char", canonical: "依" }, { kind: "char", canonical: "國" }] },
+    { ok: true, matches: [{ kind: "char", canonical: "依" }, { kind: "char", canonical: "國" },
+      { kind: "char", canonical: "漢" }] },
     { decomp: guardDecomp(decomp), hanja: hanjaFile }
   );
   const uy = joined.matches[0].parts;
@@ -5948,13 +5949,20 @@ await testAsync("smoke: real decomp.json decomposes 依 / 學 / 疑 and stays cl
   assert.equal(uy[1].t, "衣");
   assert.equal(uy[1].eum, "의");
 
-  // 或 has readings but no eumhun pair, so its row rides the readings fallback.
-  // Without it the row would render as a bare gloss.
+  // 或's row carries its eumhun (혹 혹, filled from the 1,800-character
+  // appendix on 2026-10-24; it used to have readings only).
   const guk = joined.matches[1].parts;
   assert.deepEqual(guk.map((p) => p.g), ["囗", "或"], "國 = 囗 + 或");
-  assert.equal(hanjaFile.chars["或"].eumhun.length, 0, "或 has no eumhun pair");
-  assert.equal(guk[1].eum, "혹", "the 或 row must fall back to readings[0]");
-  assert.equal(guk[1].hun, "");
+  assert.equal(guk[1].eum, "혹");
+  // 艸 has readings but no eumhun pair, so 漢's 艹 row rides the readings
+  // fallback. Without it the row would render as a bare gloss.
+  const han = joined.matches[2].parts;
+  const grass = han.find((p) => p.g === "艹");
+  assert.ok(grass, "漢 has a 艹 row");
+  assert.equal(grass.t, "艸", "艹 aliases to 艸");
+  assert.equal(hanjaFile.chars["艸"].eumhun.length, 0, "艸 has no eumhun pair");
+  assert.equal(grass.eum, "초", "the 艸 row must fall back to readings[0]");
+  assert.equal(grass.hun, "");
 });
 
 // --- recomposition against the real emitted decomp.json ------------------

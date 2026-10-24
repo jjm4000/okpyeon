@@ -6,6 +6,15 @@ current review clears.
 
 ## Since 1.4: merged on main, not yet released
 
+- **Readings follow the card; school characters get their 훈음.**
+  Selecting 데 listed 大 待 臺 袋, because characters' reading lists
+  carried vowel-merger spellings their cards never show (大 데, 色 섹,
+  冊 첵). Those left the lists; word-initial forms (令 영, 年 연) stay.
+  And 401 school-level characters had no eumhun at all (互 showed only
+  호): Korean Wiktionary's 1,800-character appendix now supplies it, 407
+  characters filled, the sound agreeing with existing data on 1,390 of
+  1,391. Found in the cleanup survey of 2026-10-24.
+
 - **Mandarin readings on character cards, corrected.** The Mandarin line
   paired readings with the card's Korean readings by phonetic scoring
   alone, which cannot tell dà from dài under 대, so 大 showed dài
