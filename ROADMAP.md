@@ -4,6 +4,21 @@ Working list of planned changes. Ordering within a release is not priority
 order. The next store upload ships whatever is merged and verified when the
 current review clears.
 
+## Since 1.4: merged on main, not yet released
+
+- **Mandarin readings on character cards, corrected.** The Mandarin line
+  paired readings with the card's Korean readings by phonetic scoring
+  alone, which cannot tell dà from dài under 대, so 大 showed dài
+  first, 和 huó, 傳 zhuàn, 其 jī, 校 jiào. Found while measuring
+  word-level readings (2026-10-24). Mandarin now has the compound bridge
+  Japanese always had: English Wiktionary's Chinese entries (128,031
+  words with a Mandarin reading) are split per character, and the
+  Sino-Korean words they attest vote on the pairing. 71 characters are
+  repaired, 36 school-level ones change their first reading, and a
+  dialect reading the card never shows (大's 데) can no longer take a
+  pairing. Curated overrides still win; every existing anchor holds.
+  New source: the kaikki Chinese dump, 1.2 GB, pinned in the cache.
+
 ## 1.4: packaged, not yet uploaded
 
 The manifest reads 1.4.0; the packages are okpyeon-1.4.0.zip (Chrome)
@@ -489,6 +504,20 @@ correctness" bullet of 1.1, the same way 1.1.1 folded into 1.2.
   shared-spelling words the bridge corpus already parses, partial
   coverage with no honest synthesis fallback. Ship shape when
   designed: zh broadly via alignment, ja attested-only.
+  REVISED by measurement 2026-10-24 (pipeline/spike_word_readings.py):
+  alignment is wrong for Mandarin too. Where it produces a word
+  reading at all, it disagrees with the attested one 8 to 9% of the
+  time (乘客 shèngkè for chéngkè, 佛陀 fútuó for fótuó), because
+  polyphones often share one Korean reading. Both languages are
+  therefore attested-only, from English Wiktionary's Chinese and
+  Japanese entries via kaikki (Jesse's suggestion: read each word's
+  Wiktionary page). Coverage of common words (f0 to f6): Mandarin
+  about 72%, Japanese 78% when the English dump and the Japanese-language
+  one are combined; overall 53% and 59%. The misses are mostly
+  Korean-only coinages (代身, 今方, 但只), where no reading is the right
+  answer. Open design question for the mockups: Japanese counterparts
+  read with native readings (明日 is あした, not みょうにち), against the
+  character line's on'yomi-only rule.
 - **Grammar labels on the form note.** Deconjugation itself is done
   (Since 1.3). Mockup C from that round: "먹었어 → form of 먹다 ·
   past, casual" (한국어 "과거, 해체").

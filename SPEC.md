@@ -2051,6 +2051,27 @@ Korean. Two independent default-off toggles; off is byte-identical.
   - Within a language: aligned readings first in eum order, then
     unaligned by corpus weight, then source order (jōyō table order /
     kMandarin first). Cap applies after ordering.
+  - MANDARIN COMPOUND BRIDGE (ADDENDUM 2026-10-24, measured): the
+    scorer cannot hear a polyphone whose readings share one Korean
+    sound (大 dà and dài are both 대; 和 hé and huó both 화), so it
+    often picked the rare one: 159 chars, 48 of them school-level,
+    showed the less-used reading first (大 dài, used in 4 attested
+    words, ahead of dà, used in 1,897). Mandarin now gets the bridge
+    Japanese has: the Chinese entries of English Wiktionary (kaikki
+    Chinese dump; each word's Mandarin Pinyin, canonicalized through
+    variants.json) are split into per-char readings, and every
+    words.json word they attest votes (eum at that position, reading
+    at that position). An eum takes the reading it votes for when
+    the winner has at least 3 votes and at least twice the runner-
+    up; otherwise the scorer's pairing stands. Precedence: curated
+    override, then the bridge, then the scorer. Unaligned readings
+    order by attested usage across all Chinese words before corpus
+    weight. An eum the card does not show (hanja.json readings carry
+    dialect forms such as 大's 데 and 色's 섹 beside the eumhun) never
+    takes a pairing: that is how 大 came to show dà aligned to 데.
+    Anchors: 大 [dà 대] first; 和 hé first; 傳 chuán first; 樂
+    unchanged (악 yuè, 락 lè); no zh pair names an eum outside the
+    char's eumhun.
 - Bridge and scorer expectations (spike-measured): 273 jōyō chars
   carry 2+ on'yomi (152 excluding restricted readings), of which 223
   are single-eum so pairing is trivial and only display order

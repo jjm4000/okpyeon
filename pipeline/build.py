@@ -123,6 +123,10 @@ KAIKKI_FILE = os.path.join(CACHE, "kaikki-Korean.jsonl")
 UNIHAN_FILE = os.path.join(CACHE, "Unihan.zip")
 TRANSLINGUAL_FILE = os.path.join(CACHE, "kaikki-Translingual.jsonl")
 JAPANESE_FILE = os.path.join(CACHE, "ja-extract.jsonl.gz")
+# SPEC "MANDARIN COMPOUND BRIDGE" (2026-10-24): English Wiktionary's Chinese
+# entries, for word-level Mandarin readings (~1.2 GB, pinned like the rest).
+KAIKKI_ZH_URL = "https://kaikki.org/dictionary/Chinese/kaikki.org-dictionary-Chinese.jsonl"
+KAIKKI_ZH_FILE = os.path.join(CACHE, "kaikki-Chinese.jsonl")
 EXTFREQ_FILE = os.path.join(CACHE, "ko_full_opensubtitles.txt")
 EDU_TIER_FILE = os.path.join(CACHE, "ko-wiki-edu-tier.wikitext")
 IDS_FILE = os.path.join(CACHE, "babelstone-ids.txt")
@@ -2417,6 +2421,25 @@ def verify(hanja_obj, words_obj, variants_obj, decomp_obj=None,
         add("sino: 串 has no ja entry (kun-only joyo char)",
             "ja" not in (sc.get("串") or {}),
             json.dumps(sc.get("串"), ensure_ascii=False))
+        # Mandarin compound bridge (SPEC 2026-10-24): attested words decide
+        # which reading a single-eum polyphone shows first.
+        for c, want in (("大", ["dà", "대"]), ("和", ["hé", "화"]),
+                        ("傳", ["chuán", "전"]), ("色", ["sè", "색"])):
+            got = ((sc.get(c) or {}).get("zh") or [None])[0]
+            add("sino zh bridge: %s shows %s first" % (c, want[0]), got == want,
+                json.dumps((sc.get(c) or {}).get("zh"), ensure_ascii=False))
+        hz = chars_out
+        off_card = []
+        for c, e in sc.items():
+            rs = set(hz.get(c, {}).get("readings") or [])
+            shown = {sino.norm_eum(x.get("eum") or "", rs)
+                     for x in hz.get(c, {}).get("eumhun") or [] if x.get("eum")}
+            if not shown:
+                continue
+            off_card += ["%s:%s" % (c, p[1]) for p in e.get("zh") or []
+                         if p[1] and p[1] not in shown]
+        add("sino zh bridge: no Mandarin pair names an eum the card does not show",
+            not off_card, " ".join(off_card[:10]))
 
     if sino_report is not None:
         # The two property tests and the tier-2 sanity band run on build
@@ -2767,6 +2790,7 @@ def main(argv):
     download(KAIKKI_URL, KAIKKI_FILE, force)
     download(TRANSLINGUAL_URL, TRANSLINGUAL_FILE, force)
     download(JAPANESE_URL, JAPANESE_FILE, force)
+    download(KAIKKI_ZH_URL, KAIKKI_ZH_FILE, force)
     download(EXTFREQ_URL, EXTFREQ_FILE, force)
     download_small(EDU_TIER_URL, EDU_TIER_FILE, force)
     download(IDS_URL, IDS_FILE, force)
@@ -3430,9 +3454,16 @@ def main(argv):
     # emitted words.json keys.
     with io.open(JA_EXTFREQ_FILE, encoding="utf-8", errors="replace") as fh:
         ja_freq_text = fh.read()
+    t_zh = time.time()
+    zh_words, zh_lines = sino.parse_zh_words(
+        KAIKKI_ZH_FILE,
+        lambda w: "".join(variant_map.get(ch, ch)
+                          for ch in unicodedata.normalize("NFC", w)))
+    log("  chinese: %s lines, %s words with a Mandarin reading (%.1fs)"
+        % (format(zh_lines, ","), format(len(zh_words), ","), time.time() - t_zh))
     sino_obj, sino_report = sino.build(
         chars_out, variant_map, words_out, joyo_text, unihan_readings_text,
-        unihan_text, ja_freq_text, ja_words)
+        unihan_text, ja_freq_text, ja_words, zh_words)
     sr = sino_report
     log("  sino: joyo table %s rows (%s with on'yomi, %s kun-only, %s "
         "kyujitai mapped)" % (format(sr["joyo_rows"], ","),
@@ -3450,6 +3481,10 @@ def main(argv):
                     for k, v in sorted(sr["tier2_lvl"].items())),
            format(sr["zh_chars"], ","), sr["ja_cov_m"], sr["ja_cov_h"]))
     log("  sino: %d curated zh overrides fired" % sr["overrides"])
+    log("  sino: Mandarin bridge: %s Chinese words, %s split into per-char "
+        "readings, %s chars repaired by word votes" % (
+            format(sr["zh_words"], ","), format(sr["zh_words_split"], ","),
+            format(sr["zh_bridged"], ",")))
 
     # ---- emit ---------------------------------------------------------
     hanja_obj = {"version": 1, "chars": chars_out}

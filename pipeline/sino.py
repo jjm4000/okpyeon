@@ -124,6 +124,45 @@ def collect_ja_word(o, words):
     d["kyu"] |= kyu
 
 
+# ------------------------------------------------------ Chinese word list
+# SPEC "MANDARIN COMPOUND BRIDGE" (2026-10-24): the Chinese entries of English
+# Wiktionary carry each word's Mandarin reading (大學 dàxué, 學校 xuéxiào). The
+# bridge splits those into per-character readings so real words, not the
+# correspondence scorer, decide which Mandarin reading pairs with which eum.
+
+RE_PINYIN_WORD = re.compile(r"^[a-zāáǎàēéěèīíǐìōóǒòūúǔùǖǘǚǜüê' ]+$", re.I)
+RE_HAN_WORD = re.compile(r"^[㐀-鿿豈-﫿\U00020000-\U0002FFFF]{2,8}$")
+
+
+def parse_zh_words(path, canon_word):
+    """canonical word -> its first Mandarin Pinyin (no spaces), from the
+    kaikki Chinese dump. canon_word maps a spelling to its words.json key
+    form (NFC, then variants.json per character), so 大学 and 大學 meet.
+    Only lines naming a Pinyin pronunciation are parsed, which keeps the
+    1.2 GB pass to a couple of minutes."""
+    import json
+    out = {}
+    lines = 0
+    with open(path, encoding="utf-8") as fh:
+        for line in fh:
+            lines += 1
+            if '"Pinyin"' not in line:
+                continue
+            o = json.loads(line)
+            w = o.get("word") or ""
+            if not RE_HAN_WORD.match(w):
+                continue
+            for s in o.get("sounds") or []:
+                tags = s.get("tags") or []
+                p = s.get("zh_pron") or ""
+                if "Mandarin" in tags and "Pinyin" in tags and RE_PINYIN_WORD.match(p):
+                    key = canon_word(w)
+                    if key not in out:
+                        out[key] = p.replace(" ", "").replace("'", "")
+                    break
+    return out, lines
+
+
 # ---------------------------------------------------------------- joyo table
 
 RE_JOYO_WIKT = re.compile(r"\[\[wikt:([^#|\]]+)#Japanese")
@@ -580,14 +619,16 @@ SINO_ZH_OVERRIDES = {
 # ---------------------------------------------------------------- build
 
 def build(chars, variants, words_ko, joyo_text, readings_text,
-          variants_text, ja_freq_text, ja_words):
+          variants_text, ja_freq_text, ja_words, zh_words=None):
     """-> (sino_obj, report).
 
     chars: the finished hanja.json chars dict (readings order is the card's
     eum order, the master the SPEC aligns everything to). variants: the
     variants.json map. words_ko: the finished words.json words dict (the
     compound bridge's Korean side). ja_words: the harvest collect_ja_word
-    gathered on build.py's ja-extract pass.
+    gathered on build.py's ja-extract pass. zh_words: parse_zh_words over
+    the kaikki Chinese dump (the Mandarin compound bridge); None or empty
+    leaves Mandarin on the scorer alone, as before 2026-10-24.
     """
     joyo_on, joyo_restricted, old2new, joyo_rows = parse_joyo(joyo_text)
     unihan_on, kmandarin, kxhc, pinlu = parse_readings(readings_text)
@@ -865,6 +906,65 @@ def build(chars, variants, words_ko, joyo_text, readings_text,
         ordered = sorted(base, key=key)[:CAP]
         return [[r, assign.get(r, "")] for r in ordered]
 
+    # ---- Mandarin compound bridge (SPEC 2026-10-24) -------------------
+    # Split each attested Chinese word's pinyin into per-char readings by
+    # matching the chars' own candidate readings (toneless, longest first).
+    # zh_use counts, per char, how many Chinese words use each reading;
+    # zh_vote counts, per char and eum, the words.json words that pair that
+    # eum with that reading at the same position (음악 音樂 yīnyuè: 악 votes
+    # for yuè on 樂).
+    def zh_cands(cc):
+        pys = list(kmandarin.get(cc, []))
+        for r in kxhc.get(cc, []):
+            if r not in pys:
+                pys.append(r)
+        return pys
+
+    def split_word(word, pin):
+        rest = strip_tone(pin).lower()
+        out = []
+        for ch in word:
+            bases = sorted({strip_tone(p).lower() for p in zh_cands(ch)},
+                           key=len, reverse=True)
+            hit = next((b for b in bases if b and rest.startswith(b)), None)
+            if hit is None:
+                return None
+            out.append(hit)
+            rest = rest[len(hit):]
+        return out if rest == "" else None
+
+    zh_use = collections.defaultdict(collections.Counter)
+    zh_vote = collections.defaultdict(lambda: collections.defaultdict(collections.Counter))
+    zh_split = 0
+    for w, pin in (zh_words or {}).items():
+        parts = split_word(w, pin)
+        if parts is None:
+            continue
+        zh_split += 1
+        for ch, b in zip(w, parts):
+            zh_use[ch][b] += 1
+        raw = words_ko.get(w)
+        if raw is None:
+            continue
+        senses = raw if isinstance(raw, list) else [raw]
+        for h in {s.get("hangul") for s in senses if isinstance(s, dict)}:
+            if not h or len(h) != len(w):
+                continue
+            for ch, b, syl in zip(w, parts, h):
+                if ch in chars:
+                    zh_vote[ch][norm_eum(syl, set(eums_of(ch)))][b] += 1
+
+    def shown_eums(cc):
+        """The eums the card displays (eumhun), normalized like norm_eums.
+        hanja.json's readings also carry dialect forms (大's 데, 色's 섹)
+        that never appear on the card and must not take a pairing."""
+        rs = set(eums_of(cc))
+        shown = {norm_eum(x.get("eum") or "", rs)
+                 for x in chars[cc].get("eumhun") or [] if x.get("eum")}
+        return shown or set(norm_eums(cc))
+
+    bridged = []
+
     # ---- per-char zh entry ------------------------------------------
     fired = collections.defaultdict(set)
     dead = []
@@ -902,14 +1002,49 @@ def build(chars, variants, words_ko, joyo_text, readings_text,
             rep_pos = {rep: i for i, rep in enumerate(reps)}
             for eum, rep in pairs:
                 assign[rep_pos[rep]] = eum
+        # Mandarin compound bridge: an eum takes the reading its words vote
+        # for (3+ votes, at least twice the runner-up), displacing the
+        # scorer's pairing for that eum and that reading. Curated overrides
+        # keep precedence.
+        # An earlier eum's claim holds: card order is evidence too, so 車's
+        # 거 (人力車 rénlìchē) cannot take chē from 차 (自動車 zìdòngchē).
+        base_of = [strip_tone(rep).lower() for rep in reps]
+        votes = zh_vote.get(cc, {})
+        claimed = {g for g, e in assign.items() if ov is not None and e in ov}
+        for eum in eums:
+            if ov is not None and eum in ov:
+                continue
+            ranked = votes.get(eum, collections.Counter()).most_common(2)
+            if not ranked:
+                continue
+            best, n1 = ranked[0]
+            n2 = ranked[1][1] if len(ranked) > 1 else 0
+            if n1 < 3 or n1 < 2 * n2 or best not in base_of:
+                continue
+            gi = base_of.index(best)
+            if gi in claimed:
+                continue
+            claimed.add(gi)
+            if assign.get(gi) == eum:
+                continue
+            for g in [g for g, e in assign.items() if e == eum or g == gi]:
+                del assign[g]
+            assign[gi] = eum
+            bridged.append(cc)
+        # only an eum the card shows may carry a pairing
+        shown = shown_eums(cc)
+        for g in [g for g, e in assign.items() if e not in shown]:
+            del assign[g]
         pos = {e: i for i, e in enumerate(eums)}
         gwgt = [max((pinlu.get(cc, {}).get(p, 0) for p in members),
                     default=0) for _, members in groups]
+        guse = [zh_use.get(cc, {}).get(b, 0) for b in base_of]
 
         def key(gi):
             e = assign.get(gi)
             return (0 if e is not None else 1,
                     pos.get(e, 0),
+                    -guse[gi],
                     -gwgt[gi],
                     gi)
 
@@ -1030,6 +1165,9 @@ def build(chars, variants, words_ko, joyo_text, readings_text,
         "tier2_lvl": dict(tier2_lvl),
         "ja_chars": n_ja,
         "zh_chars": n_zh,
+        "zh_words": len(zh_words or {}),
+        "zh_words_split": zh_split,
+        "zh_bridged": len(set(bridged)),
         "chars": len(sino_chars),
         "ja_cov_m": 100.0 * lvl_ja["m"] / max(lvl_total["m"], 1),
         "ja_cov_h": 100.0 * lvl_ja["h"] / max(lvl_total["h"], 1),

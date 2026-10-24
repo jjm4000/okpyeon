@@ -9,7 +9,9 @@ compiled from the following sources by `pipeline/build.py`:
   machine-readable extracts published by **kaikki.org** (https://kaikki.org),
   themselves produced by the wiktextract project. Wiktionary text is
   dual-licensed under the **Creative Commons Attribution-ShareAlike License
-  (CC BY-SA)** and the GNU Free Documentation License. The Japanese extract
+  (CC BY-SA)** and the GNU Free Documentation License. English Wiktionary's
+  Chinese entries (also via kaikki.org) decide the order and pairing of the
+  Mandarin readings in `sino.json`. The Japanese extract
   supplies variant links plus the word-reading evidence that attests and
   aligns the Japanese readings in `sino.json`.
 - **The Unicode Unihan Database** (https://www.unicode.org/charts/unihan.html),

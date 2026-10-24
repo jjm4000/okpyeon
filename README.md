@@ -114,8 +114,8 @@ SPEC.md        the internal spec the implementation follows
 python pipeline/build.py
 ```
 
-Downloads the source corpora into `pipeline/cache/` on first run (~600 MB:
-kaikki.org Wiktionary extracts for Korean/Translingual/Japanese, Unicode
+Downloads the source corpora into `pipeline/cache/` on first run (~1.8 GB:
+kaikki.org Wiktionary extracts for Korean/Translingual/Japanese/Chinese, Unicode
 Unihan, a subtitle-derived frequency list, and the 우리말샘 XML, which is
 preprocessed once into a small intermediate file), then builds
 `extension/data/*.json` from a warm cache and verifies the output against a
