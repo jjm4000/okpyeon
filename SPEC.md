@@ -3660,6 +3660,28 @@ because English Wiktionary gives them the sound alone.
   섹, 冊 and 策 without 첵, 塊 without 궤; 令 keeps 영, 六 육, 樂 낙, 年
   연; 塞 and 罷 pairings.
 
+## Word-parts tie-break (ADDENDUM 2026-10-24, measured)
+
+Found when the test pages moved onto the real lookup code: the word
+parts of a three-character word are a tie whenever both of its
+two-character pieces are glossed words (大學生: 大學 + 生, or 大 + 學生),
+and the dynamic program resolved every such tie toward the bare first
+character, so 大學生's component row read 學生 and 韓國語's read 國語.
+364 words.json words tie this way. Wiktionary's etymologies name the
+split for 144 of them: the word plus a suffix for 119 (韓國語, 日本人,
+月曜日, 中國語), a prefix plus a word for 25 (不可能, 無關心, 未完成).
+
+- Rule: in a three-character word, a tie between a word here and a
+  bare character here goes to the word, unless the character is a
+  bound prefix: 不 無 未 非 再 反 一. Measured agreement with the 144:
+  128 (the old tie-break: 25). 354 words change their parts.
+- Longer words keep the old tie-break, which serves them better
+  (三民 + 主義 and 人海 + 戰術 were broken by the general rule), and the
+  measurement covered only three characters.
+- Node test (real data): 大學生 大學+生, 韓國語 韓國+語, 中學生 中學+生,
+  地下水 地下+水; 不可能 不+可能, 無關心 無+關心, 再放送 再+放送, 一部分
+  一+部分; 三民主義 三+民+主義 and 人海戰術 人+海+戰術 unchanged.
+
 ## Test harness: one fixture file (ADDENDUM 2026-10-24)
 
 The fake service worker and its fixture data, which every harness

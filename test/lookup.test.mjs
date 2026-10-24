@@ -5841,6 +5841,31 @@ await testAsync("smoke: real native.json resolves 하늘 / 사랑 / 무리 / tog
 // No harness covers the shipped file: both pages run on a hand-written fixture.
 // Read-only, and skipped (not failed) if the file is absent.
 
+await testAsync("word parts: a tie goes to the word plus a suffix, except after a bound prefix (real data)", async () => {
+  let words;
+  try {
+    words = JSON.parse(await readFile(join(dataDir, "words.json"), "utf8")).words;
+  } catch (err) {
+    console.log(`      (skipped: words.json unreadable: ${err.code || err.name})`);
+    return;
+  }
+  const split = (w) => (buildWordParts(w, words) || []).map((p) => p.hanja || p.char).join("+");
+  // Word-parts tie-break ADDENDUM (2026-10-24): Wiktionary's etymologies
+  // name the word-plus-suffix shape for 119 of 144 tied three-char words.
+  assert.equal(split("大學生"), "大學+生");
+  assert.equal(split("韓國語"), "韓國+語");
+  assert.equal(split("中學生"), "中學+生");
+  assert.equal(split("地下水"), "地下+水");
+  // A bound prefix stands alone in front of a word.
+  assert.equal(split("不可能"), "不+可能");
+  assert.equal(split("無關心"), "無+關心");
+  assert.equal(split("再放送"), "再+放送");
+  assert.equal(split("一部分"), "一+部分");
+  // Longer words keep the old tie-break, which serves them better.
+  assert.equal(split("三民主義"), "三+民+主義");
+  assert.equal(split("人海戰術"), "人+海+戰術");
+});
+
 await testAsync("smoke: real decomp.json decomposes 依 / 學 / 疑 and stays clickable", async () => {
   let decomp, chars;
   try {

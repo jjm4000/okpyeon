@@ -247,6 +247,24 @@ function isBetterSegmentation(a, b) {
 }
 
 /**
+ * Word-parts tie-break ADDENDUM (2026-10-24, measured): when a word at this
+ * position and a bare character here explain the rest equally well (大學生
+ * as 大學 + 生 or 大 + 學生), the word wins, so the split is the word plus a
+ * suffix: Wiktionary's etymologies give that shape for 119 of the 144 tied
+ * three-character words they name (韓國語, 日本人, 月曜日). The exception is a
+ * bound prefix, which stands alone in front of a word (不可能, 無關心, 再放送,
+ * 一部分). With it the rule matches 128 of 144; the old tie-break, which kept
+ * the bare character, matched 25. Three-character words only: inside longer
+ * words the old tie-break is the better one (三民 + 主義, 人海 + 戰術), and
+ * the measurement covered only three characters.
+ */
+const BOUND_PREFIXES = new Set(["不", "無", "未", "非", "再", "反", "一"]);
+
+function isTiedSegmentation(a, b) {
+  return a.glossed === b.glossed && a.covered === b.covered && a.segs === b.segs;
+}
+
+/**
  * Word-parts addendum: re-segment the interior of a word's canonical spelling.
  *
  * NOT greedy longest-match (unlike rules 3/3b). A small dynamic program over
@@ -290,7 +308,11 @@ export function buildWordParts(canonical, wordTable, maxLen = MAX_WORD_LEN) {
         len,
         isWord,
       };
-      if (best === null || isBetterSegmentation(candidate, best)) best = candidate;
+      if (best === null || isBetterSegmentation(candidate, best) ||
+          (total === 3 && isWord && !best.isWord && best.len === 1 &&
+           isTiedSegmentation(candidate, best) && !BOUND_PREFIXES.has(chars[i]))) {
+        best = candidate;
+      }
     };
 
     // Leaving the char uncovered is always an option; considered first so that
