@@ -213,7 +213,25 @@
     "language_en": "English",
     "language_ko": "한국어",
     "toggle_enabled": "Enabled",
-    "settings_unavailable": "Settings are not available in this browser session."
+    "settings_unavailable": "Settings are not available in this browser session.",
+    "site_off": "Turn off on $HOST$",
+    "site_offDone": "Okpyeon is off on $HOST$.",
+    "site_offSub": "Selecting text on this site no longer opens the popup. The sidebar still works here. To turn it back on, use Settings.",
+    "site_undo": "Undo",
+    "group_sites": "Sites",
+    "sites_label": "Popup off on these sites",
+    "sites_sub": "Selecting text on these sites does nothing. The sidebar still works everywhere.",
+    "sites_empty": "None yet. The line at the bottom of the popup turns it off on a site.",
+    "sites_add_placeholder": "Add a site, like example.com",
+    "sites_add": "Add",
+    "sites_on": "Turn back on",
+    "sites_invalid": "That is not a site name.",
+    "recentLookups_label": "Recent lookups",
+    "recentLookups_sub": "Keeps your last 20 lookups on this computer and lists them when the search box is empty. Nothing is sent anywhere.",
+    "recent_clearNow": "Clear now",
+    "recent_cleared": "Cleared",
+    "recent_heading": "Recent",
+    "recent_clear": "Clear"
   };
 
   var tables = { en: EN };

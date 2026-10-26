@@ -639,7 +639,10 @@
   var SAVED_TYPES = {
     savedGet: 1, savedToggle: 1, savedCheck: 1, savedRemove: 1, savedMove: 1,
     folderCreate: 1, folderRename: 1, folderDelete: 1,
-    settingsGet: 1, settingsSet: 1, savedExport: 1
+    settingsGet: 1, settingsSet: 1, savedExport: 1,
+    // Popup off per site and recent lookups ADDENDUM (2026-10-26): storage
+    // traffic too, never counted as lookups.
+    siteSet: 1, recentAdd: 1, recentGet: 1, recentClear: 1
   };
 
   // Test harness ADDENDUM (2026-10-25): every answer below goes through
@@ -648,7 +651,8 @@
   // stays here is that glue, with two in-memory records standing in for
   // chrome.storage.local. Until 2026-10-25 this block re-implemented the
   // store, the join and both exporters by hand.
-  var savedRecord, settingsRecord, savedCheckCalls, savedLastCheckKeys, savedFail;
+  var savedRecord, settingsRecord, recentRecord, savedCheckCalls, savedLastCheckKeys, savedFail;
+  var siteSetCalls, recentAddCalls;
   var savedLastGetKo = null;   // whether the last savedGet carried ko:true
 
   function resetSaved() {
@@ -665,11 +669,16 @@
         charFront: "char", charBack: ["eumhun", "defs"]
       }
     };
+    recentRecord = { v: 1, items: [] };
     savedCheckCalls = 0;
     savedLastCheckKeys = null;
     savedFail = { all: false, check: false, toggle: false };
+    siteSetCalls = [];
+    recentAddCalls = [];
   }
   resetSaved();
+  // The entry stamps, fixed and increasing, so the order is the call order.
+  var recentClock = SAVED_ADDED_AT;
 
   function savedLib() { return needReal().S; }
 
@@ -766,9 +775,41 @@
     if (msg.type === "settingsGet") return { ok: true, settings: readSettings(state) };
 
     if (msg.type === "settingsSet") {
-      var merged = needReal().B.mergeSettings(readSettings(state), msg.patch);
+      var before = readSettings(state);
+      var merged = needReal().B.mergeSettings(before, msg.patch);
       settingsRecord = S.normalizeSettings(merged, state);
+      // The worker's rule: turning recent lookups off clears the list.
+      if (settingsRecord.recentLookups === false && before.recentLookups !== false) {
+        recentRecord = S.normalizeRecent(null);
+      }
       return { ok: true, settings: settingsRecord };
+    }
+
+    if (msg.type === "siteSet") {
+      siteSetCalls.push({ site: msg.site, off: msg.off === true });
+      var site = S.withSite(readSettings(state), msg.site, msg.off === true);
+      if (site.settings === null) return { ok: false, error: "not a site" };
+      settingsRecord = S.normalizeSettings(site.settings, state);
+      return { ok: true, settings: settingsRecord, site: site.site };
+    }
+
+    if (msg.type === "recentAdd") {
+      recentAddCalls.push(msg.entry);
+      if (readSettings(state).recentLookups === false) return { ok: true, added: false };
+      if (S.normalizeRecentEntry(msg.entry) === null) return { ok: true, added: false };
+      recentClock += 1000;
+      recentRecord = S.addRecent(recentRecord, msg.entry, recentClock);
+      return { ok: true, added: true };
+    }
+
+    if (msg.type === "recentGet") {
+      if (readSettings(state).recentLookups === false) return { ok: true, items: [] };
+      return { ok: true, items: S.normalizeRecent(recentRecord).items };
+    }
+
+    if (msg.type === "recentClear") {
+      recentRecord = S.normalizeRecent(null);
+      return { ok: true };
     }
 
     if (msg.type === "savedExport") {
@@ -806,8 +847,15 @@
       return savedLastCheckKeys ? savedLastCheckKeys.slice() : null;
     },
     lastGetKo: function () { return savedLastGetKo; },
-    fail: function (which, on) { savedFail[which] = on !== false; }
+    fail: function (which, on) { savedFail[which] = on !== false; },
+    // Popup off per site and recent lookups ADDENDUM: what the surfaces sent,
+    // and the recent record as the worker would hold it.
+    siteSetCalls: function () { return siteSetCalls.slice(); },
+    recentAddCalls: function () { return recentAddCalls.slice(); },
+    recent: function () { return S_recentItems(); },
+    setRecent: function (items) { recentRecord = { v: 1, items: items || [] }; }
   };
+  function S_recentItems() { return savedLib().normalizeRecent(recentRecord).items; }
 
   /* ---- Korean language mode ADDENDUM: the message tables ------------------ *
    * The worker's messagesGet, answered from the packaged files themselves so

@@ -53,6 +53,11 @@ export const DEFAULT_SETTINGS = Object.freeze({
   // byte-identical on every surface.
   jaReadings: false,
   zhReadings: false,
+  // Popup off per site ADDENDUM (2026-10-26): host names the page popup
+  // stays off on, each covering its subdomains.
+  offSites: Object.freeze([]),
+  // Recent lookups ADDENDUM (2026-10-26): on by default.
+  recentLookups: true,
   anki: Object.freeze({
     wordFront: "hanja",
     wordBack: Object.freeze(["hangul", "defs"]),
@@ -242,6 +247,9 @@ export function normalizeSettings(raw, savedState) {
     // The readings toggles read on the same rule, independently.
     jaReadings: src.jaReadings === true,
     zhReadings: src.zhReadings === true,
+    offSites: normalizeSites(src.offSites),
+    // Anything but an explicit false reads as the default, on.
+    recentLookups: src.recentLookups !== false,
     anki: {
       wordFront: oneOf(anki.wordFront, WORD_FIELDS, DEFAULT_SETTINGS.anki.wordFront),
       wordBack: manyOf(anki.wordBack, WORD_FIELDS, DEFAULT_SETTINGS.anki.wordBack),
@@ -249,6 +257,138 @@ export function normalizeSettings(raw, savedState) {
       charBack: manyOf(anki.charBack, CHAR_FIELDS, DEFAULT_SETTINGS.anki.charBack),
     },
   };
+}
+
+/* ---------------------------------------------------------------------------
+ * Popup off per site ADDENDUM (2026-10-26).
+ * ------------------------------------------------------------------------- */
+
+/** How many sites the list keeps. */
+export const SITES_CAP = 500;
+
+const HOST_NAME = /^[a-z0-9-]+(\.[a-z0-9-]+)*$/;
+const HOST_IPV6 = /^\[[0-9a-f:.]+\]$/;
+
+/**
+ * A typed site or URL as a bare host name, or "" when it is not one.
+ * `https://www.Example.com/a`, `www.example.com` and `www.example.com:8080`
+ * all give `www.example.com`. The URL parser decides, so a Korean domain
+ * comes out in punycode, the form location.hostname has.
+ */
+export function normalizeSite(text) {
+  if (typeof text !== "string") return "";
+  let raw = text.trim().toLowerCase();
+  if (raw === "" || /\s/.test(raw)) return "";
+  if (!/^[a-z][a-z0-9+.-]*:\/\//.test(raw)) raw = `http://${raw}`;
+  let host;
+  try {
+    host = new URL(raw).hostname;
+  } catch {
+    return "";
+  }
+  host = host.replace(/\.$/, "");
+  return HOST_NAME.test(host) || HOST_IPV6.test(host) ? host : "";
+}
+
+/** A stored list, cleaned: usable hosts only, no duplicates, capped. */
+export function normalizeSites(list) {
+  const out = [];
+  for (const entry of Array.isArray(list) ? list : []) {
+    const host = normalizeSite(entry);
+    if (host === "" || out.includes(host)) continue;
+    out.push(host);
+    if (out.length >= SITES_CAP) break;
+  }
+  return out;
+}
+
+/** True when a listed site covers `hostname`: the host itself or a parent of it. */
+export function siteIsOff(sites, hostname) {
+  const host = typeof hostname === "string" ? hostname.toLowerCase() : "";
+  if (host === "") return false;
+  return (Array.isArray(sites) ? sites : []).some(
+    (site) => typeof site === "string" && site !== "" &&
+      (host === site || host.endsWith(`.${site}`))
+  );
+}
+
+/**
+ * Settings with `site` turned off (added to the list) or back on (removed).
+ * Turning a site back on removes the entry that names it exactly.
+ * @returns {{settings:object|null, site:string}} settings null when `site` is
+ *   not a site name
+ */
+export function withSite(settings, site, off) {
+  const host = normalizeSite(site);
+  const current = normalizeSettings(settings);
+  if (host === "") return { settings: null, site: "" };
+  const sites = current.offSites.filter((entry) => entry !== host);
+  if (off === true) sites.push(host);
+  return { settings: { ...current, offSites: sites }, site: host };
+}
+
+/* ---------------------------------------------------------------------------
+ * Recent lookups ADDENDUM (2026-10-26).
+ * ------------------------------------------------------------------------- */
+
+/** Schema version of the `okpRecent` record. */
+export const RECENT_VERSION = 1;
+/** How many entries the record keeps. */
+export const RECENT_CAP = 20;
+/** How many the empty sidebar lists. */
+export const RECENT_SHOWN = 8;
+/** The kinds an entry can be. */
+export const RECENT_KINDS = ["word", "char", "native"];
+
+function shortText(value, limit) {
+  return typeof value === "string" ? value.trim().slice(0, limit) : "";
+}
+
+/** One entry, cleaned, or null when it has no usable kind or query. */
+export function normalizeRecentEntry(raw) {
+  if (raw === null || typeof raw !== "object") return null;
+  if (!RECENT_KINDS.includes(raw.kind)) return null;
+  const q = shortText(raw.q, 64).normalize("NFC");
+  if (q === "") return null;
+  return {
+    kind: raw.kind,
+    q,
+    head: shortText(raw.head, 64) || q,
+    sub: shortText(raw.sub, 120),
+    gloss: shortText(raw.gloss, 240),
+    at: Number.isFinite(raw.at) && raw.at >= 0 ? raw.at : 0,
+  };
+}
+
+/** Anything into a valid record: usable entries, newest first, no repeats, capped. */
+export function normalizeRecent(raw) {
+  const src = raw !== null && typeof raw === "object" ? raw : {};
+  const items = [];
+  const seen = new Set();
+  for (const entry of Array.isArray(src.items) ? src.items : []) {
+    const clean = normalizeRecentEntry(entry);
+    if (clean === null) continue;
+    const identity = `${clean.kind}:${clean.q}`;
+    if (seen.has(identity)) continue;
+    seen.add(identity);
+    items.push(clean);
+    if (items.length >= RECENT_CAP) break;
+  }
+  return { v: RECENT_VERSION, items };
+}
+
+/**
+ * The record with `entry` at the top, stamped `now`. A repeat (same kind and
+ * q) moves up instead of appearing twice; the oldest fall off past the cap.
+ * An unusable entry leaves the record as it was.
+ */
+export function addRecent(state, entry, now) {
+  const current = normalizeRecent(state);
+  const clean = normalizeRecentEntry(entry);
+  if (clean === null) return current;
+  clean.at = Number.isFinite(now) && now >= 0 ? now : 0;
+  const rest = current.items.filter((item) => item.kind !== clean.kind || item.q !== clean.q);
+  return { v: RECENT_VERSION, items: [clean, ...rest].slice(0, RECENT_CAP) };
 }
 
 /**

@@ -856,5 +856,69 @@
   },
   "settings_unavailable": {
     "message": "Settings are not available in this browser session."
+  },
+  "site_off": {
+    "message": "Turn off on $HOST$",
+    "placeholders": {
+      "host": {
+        "content": "$1"
+      }
+    }
+  },
+  "site_offDone": {
+    "message": "Okpyeon is off on $HOST$.",
+    "placeholders": {
+      "host": {
+        "content": "$1"
+      }
+    }
+  },
+  "site_offSub": {
+    "message": "Selecting text on this site no longer opens the popup. The sidebar still works here. To turn it back on, use Settings."
+  },
+  "site_undo": {
+    "message": "Undo"
+  },
+  "group_sites": {
+    "message": "Sites"
+  },
+  "sites_label": {
+    "message": "Popup off on these sites"
+  },
+  "sites_sub": {
+    "message": "Selecting text on these sites does nothing. The sidebar still works everywhere."
+  },
+  "sites_empty": {
+    "message": "None yet. The line at the bottom of the popup turns it off on a site."
+  },
+  "sites_add_placeholder": {
+    "message": "Add a site, like example.com"
+  },
+  "sites_add": {
+    "message": "Add"
+  },
+  "sites_on": {
+    "message": "Turn back on"
+  },
+  "sites_invalid": {
+    "message": "That is not a site name."
+  },
+  "recentLookups_label": {
+    "message": "Recent lookups"
+  },
+  "recentLookups_sub": {
+    "message": "Keeps your last 20 lookups on this computer and lists them when the search box is empty. Nothing is sent anywhere."
+  },
+  "recent_clearNow": {
+    "message": "Clear now"
+  },
+  "recent_cleared": {
+    "message": "Cleared"
+  },
+  "recent_heading": {
+    "message": "Recent"
+  },
+  "recent_clear": {
+    "message": "Clear"
   }
 }

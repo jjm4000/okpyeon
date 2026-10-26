@@ -780,5 +780,69 @@
   },
   "settings_unavailable": {
     "message": "이 브라우저 세션에서는 설정을 사용할 수 없습니다."
+  },
+  "site_off": {
+    "message": "$HOST$에서 끄기",
+    "placeholders": {
+      "host": {
+        "content": "$1"
+      }
+    }
+  },
+  "site_offDone": {
+    "message": "$HOST$에서 옥편을 껐습니다.",
+    "placeholders": {
+      "host": {
+        "content": "$1"
+      }
+    }
+  },
+  "site_offSub": {
+    "message": "이 사이트에서는 글자를 선택해도 팝업이 뜨지 않습니다. 사이드바는 여기서도 쓸 수 있습니다. 다시 켜려면 설정에서 바꾸세요."
+  },
+  "site_undo": {
+    "message": "되돌리기"
+  },
+  "group_sites": {
+    "message": "사이트"
+  },
+  "sites_label": {
+    "message": "팝업을 끈 사이트"
+  },
+  "sites_sub": {
+    "message": "이 사이트에서는 글자를 선택해도 아무 일도 일어나지 않습니다. 사이드바는 어디서나 쓸 수 있습니다."
+  },
+  "sites_empty": {
+    "message": "아직 없습니다. 팝업 맨 아래 줄에서 사이트별로 끌 수 있습니다."
+  },
+  "sites_add_placeholder": {
+    "message": "사이트 추가 (예: example.com)"
+  },
+  "sites_add": {
+    "message": "추가"
+  },
+  "sites_on": {
+    "message": "다시 켜기"
+  },
+  "sites_invalid": {
+    "message": "사이트 주소가 아닙니다."
+  },
+  "recentLookups_label": {
+    "message": "최근 찾아본 항목"
+  },
+  "recentLookups_sub": {
+    "message": "최근에 찾아본 20개를 이 컴퓨터에만 저장해 두고, 검색창이 비어 있을 때 보여 줍니다. 어디로도 전송되지 않습니다."
+  },
+  "recent_clearNow": {
+    "message": "지금 지우기"
+  },
+  "recent_cleared": {
+    "message": "지웠습니다"
+  },
+  "recent_heading": {
+    "message": "최근"
+  },
+  "recent_clear": {
+    "message": "지우기"
   }
 }

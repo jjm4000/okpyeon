@@ -295,6 +295,56 @@
     "@keyframes hh-view-in { from { opacity: 0; } to { opacity: 1; } }",
     ".view { animation: hh-view-in 120ms ease-out; }",
     "@media (prefers-reduced-motion: reduce) { .view { animation: none; } }",
+    /* ---- Popup off per site ADDENDUM: the footer line and its notice ----
+     * Chrome outside the view, sticky at the panel's bottom edge, so it
+     * stays put while the cards scroll and survives navigation. The right
+     * inset clears the resize grip in the corner. */
+    ".sitebar {",
+    "  position: sticky;",
+    "  bottom: 0;",
+    "  z-index: 1;",
+    "  display: flex;",
+    "  align-items: center;",
+    "  justify-content: space-between;",
+    "  gap: 8px;",
+    "  padding: 6px 30px 7px 12px;",
+    "  border-top: 1px solid var(--rule);",
+    "  background: var(--bg);",
+    "  font-size: 12px;",
+    "  line-height: 1.3;",
+    "  color: var(--faint);",
+    "}",
+    ".sitebar-brand { flex: none; }",
+    ".sitebar-off {",
+    "  font: inherit;",
+    "  color: var(--muted);",
+    "  background: none;",
+    "  border: 0;",
+    "  margin: 0;",
+    "  padding: 2px 0;",
+    "  min-width: 0;",
+    "  overflow: hidden;",
+    "  text-overflow: ellipsis;",
+    "  white-space: nowrap;",
+    "  cursor: pointer;",
+    "}",
+    ".sitebar-off b { font-weight: 600; color: var(--fg-soft); }",
+    ".sitebar-off:hover, .sitebar-off:hover b { color: var(--accent); }",
+    ".sitebar-off:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-radius: 3px; }",
+    ".siteoff { padding: 12px 14px 13px 12px; }",
+    ".siteoff p { margin: 0 0 7px; }",
+    ".siteoff-sub { color: var(--muted); font-size: 12.5px; }",
+    ".siteoff-undo {",
+    "  font: inherit;",
+    "  font-size: 12.5px;",
+    "  padding: 3px 12px;",
+    "  border-radius: 6px;",
+    "  border: 1px solid var(--edge);",
+    "  background: var(--chip-bg);",
+    "  color: var(--fg);",
+    "  cursor: pointer;",
+    "}",
+    ".siteoff-undo:hover { background: var(--hover); }",
     /* ---- top-level cards: word cards and the independent-char list ---- */
     ".view > .card, .top-chars > .card { padding: 10px 12px 11px; }",
     ".view > .card + .card, .top-chars > .card + .card,",
@@ -1437,6 +1487,145 @@
       renderCurrentView();
       refreshLayout();
     });
+  }
+
+  /* ---- Popup off per site (SPEC ADDENDUM 2026-10-26) --------------------- *
+   * The reader can turn the page popup off on a site from the popup's own
+   * footer line; Settings lists the sites to turn back on. On a covered
+   * site, selecting text does nothing. The sidebar is never gated.
+   * -------------------------------------------------------------------- */
+
+  // The page's host name, lowercased; "" where there is none (a local file).
+  function pageHost() {
+    try {
+      var host = typeof location !== "undefined" && location ? location.hostname : "";
+      return typeof host === "string" ? host.toLowerCase() : "";
+    } catch (e) {
+      return "";
+    }
+  }
+
+  // saved.js's siteIsOff, copied: a classic script cannot import it. A listed
+  // site covers itself and its subdomains.
+  function siteIsOff(sites, host) {
+    if (!host) return false;
+    return asArray(sites).some(function (site) {
+      return typeof site === "string" && site !== "" &&
+        (host === site || host.slice(-(site.length + 1)) === "." + site);
+    });
+  }
+
+  function popupOffHere() {
+    if (IS_EMBED) return false;
+    var settings = sectionSettings();
+    return !!settings && siteIsOff(settings.offSites, pageHost());
+  }
+
+  // The worker answers siteSet with the stored record; taking it at once
+  // means the gate holds before the storage event arrives.
+  function adoptSettings(record) {
+    if (record && typeof record === "object") settingsCache = record;
+  }
+
+  // The footer line: the wordmark, and "Turn off on <host>".
+  function buildSiteBar() {
+    var host = IS_EMBED ? "" : pageHost();
+    if (!host) return null;
+    var bar = el("div", "sitebar");
+    var brand = el("span", "sitebar-brand", "玉篇");
+    brand.setAttribute("aria-hidden", "true");
+    bar.appendChild(brand);
+    var button = el("button", "sitebar-off");
+    button.type = "button";
+    tRender(button, "site.off", { HOST: host }, { HOST: bold });
+    button.addEventListener("click", function () { turnSiteOff(host); });
+    bar.appendChild(button);
+    return bar;
+  }
+
+  function turnSiteOff(host) {
+    sendToWorker({ type: "siteSet", site: host, off: true }).then(function (res) {
+      if (!res || res.ok !== true) return;
+      adoptSettings(res.settings);
+      showSiteOffNotice(host);
+    });
+  }
+
+  // In place of the cards: what just happened, and Undo, which turns the
+  // site back on and brings the cards back.
+  function showSiteOffNotice(host) {
+    if (!visible || !panel) return;
+    closeSaveBubble();
+    clearNode(panel);
+    panel.scrollTop = 0;
+    var box = el("div", "siteoff");
+    box.setAttribute("role", "status");
+    tRender(box.appendChild(el("p", "siteoff-main")), "site.offDone", { HOST: host }, { HOST: bold });
+    box.appendChild(el("p", "siteoff-sub", t("site.offSub")));
+    var undo = el("button", "siteoff-undo", t("site.undo"));
+    undo.type = "button";
+    undo.addEventListener("click", function () {
+      sendToWorker({ type: "siteSet", site: host, off: false }).then(function (res) {
+        if (!res || res.ok !== true) return;
+        adoptSettings(res.settings);
+        if (!visible) return;
+        renderCurrentView();
+        refreshLayout();
+      });
+    });
+    box.appendChild(undo);
+    panel.appendChild(box);
+    refreshLayout();
+  }
+
+  /* ---- Recent lookups (SPEC ADDENDUM 2026-10-26) ------------------------- *
+   * Every new root view, popup or sidebar, records ONE entry for its first
+   * card, with the definition that card shows. The worker keeps the list
+   * and skips the write while the setting is off.
+   * -------------------------------------------------------------------- */
+
+  function firstGloss(glosses) {
+    var list = asArray(glosses).map(nonEmptyString).filter(Boolean);
+    return list.length ? list[0] : "";
+  }
+
+  function nativeRecentEntry(entry) {
+    if (!entry || !nonEmptyString(entry.word)) return null;
+    return {
+      kind: "native", q: entry.word, head: entry.word, sub: "",
+      gloss: rowGloss(entry, firstGloss(entry.glosses))
+    };
+  }
+
+  function recentEntryFor(view) {
+    if (!view) return null;
+    if (view.nativeLead === true) return nativeRecentEntry(asArray(view.native)[0]);
+    var list = asArray(view.matches);
+    if (list.length) {
+      var m = list[0];
+      var key = nonEmptyString(m.canonical);
+      if (m.kind === "word" && key) {
+        return {
+          kind: "word", q: key, head: key, sub: nonEmptyString(m.hangul),
+          gloss: rowGloss(m, firstGloss(m.glosses))
+        };
+      }
+      if (m.kind === "char" && key) {
+        return {
+          kind: "char", q: key, head: key, sub: formatEumhun(m.eumhun),
+          gloss: charRowGloss(m, hasHun(m), firstGloss(m.glosses))
+        };
+      }
+      return null;   // a reading list leads: nothing to record
+    }
+    return nativeRecentEntry(asArray(view.native)[0]);
+  }
+
+  function recordRecent(view) {
+    var settings = sectionSettings();
+    if (settings && settings.recentLookups === false) return;
+    var entry = recentEntryFor(view);
+    if (entry) sendToWorker({ type: "recentAdd", entry: entry });
   }
 
   /* ---- Native Korean words (SPEC ADDENDUM 2026-08-31) ------------------- *
@@ -4650,6 +4839,9 @@
     panel.scrollTop = 0;
     viewRoot = el("div", "view");
     panel.appendChild(viewRoot);
+    // Popup off per site ADDENDUM: the footer line, page popup only.
+    var siteBar = buildSiteBar();
+    if (siteBar) panel.appendChild(siteBar);
 
     if (viewStack.length > 1) viewRoot.appendChild(buildCrumbs());
 
@@ -5023,6 +5215,8 @@
     if (!IS_EMBED) positionAt(rect);
     host.style.setProperty("visibility", "visible", "important");
     visible = true;
+    // Recent lookups ADDENDUM: the root view's first card.
+    recordRecent(viewStack[0]);
     return true;
   }
 
@@ -5195,6 +5389,9 @@
   }
 
   function handleSelection() {
+    // Popup off per site ADDENDUM: on a site the reader turned off, selecting
+    // text does nothing at all, not even a lookup.
+    if (popupOffHere()) return;
     var sel = readSelection();
     if (!sel) {
       hide();
@@ -5527,7 +5724,21 @@
       formatEumhun: formatEumhun,
       isVisible: function () { return visible; },
       hostRect: function () { ensureHost(); return host.getBoundingClientRect(); },
-      panelText: function () { ensureHost(); return panel.textContent; },
+      // The cards' text: the footer line is chrome and is left out, so a
+      // check about card content reads the same on every page.
+      panelText: function () {
+        ensureHost();
+        var text = "";
+        for (var i = 0; i < panel.childNodes.length; i++) {
+          var node = panel.childNodes[i];
+          if (node.nodeType === 1 && node.classList.contains("sitebar")) continue;
+          text += node.textContent;
+        }
+        return text;
+      },
+      siteBar: function () { ensureHost(); return panel.querySelector(".sitebar"); },
+      recentEntryFor: recentEntryFor,
+      currentRootView: function () { return viewStack[0] || null; },
       panelStyle: function (prop) {
         ensureHost();
         return getComputedStyle(panel).getPropertyValue(prop);

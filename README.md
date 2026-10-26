@@ -36,6 +36,11 @@ typing `hj` in the address bar searches from anywhere.
   both.
 - **Saved words.** The star on any card saves the entry into a folder; the
   Saved view manages folders with batch move and delete.
+- **Recent lookups.** The empty sidebar lists the last few entries you
+  looked up, on a page or in the search box. They stay on your computer, and
+  Settings turns the list off or clears it.
+- **Off on a site.** The line at the bottom of the popup turns it off on that
+  site. Settings lists those sites and turns them back on.
 - **Export.** Saved words export as an Anki text file or as CSV. Settings
   picks the Anki card fields and the default folder, and folder names become
   Anki tags.

@@ -328,6 +328,122 @@
    * trail exactly as they were.
    * ------------------------------------------------------------------ */
 
+  /* ------------------------------------------------------------------ *
+   * Recent lookups (SPEC ADDENDUM 2026-10-26)
+   *
+   * In the empty search state, under the hint line: a "Recent" heading with
+   * Clear, then the newest entries as rows in the Saved view's row style.
+   * Clicking one searches it, the way a saved row opens. Hidden while
+   * anything else shows, and when there is nothing to list (the worker
+   * answers an empty list while the setting is off).
+   * ------------------------------------------------------------------ */
+
+  var RECENT_SHOWN = 8;
+
+  var recent = (function () {
+    var box = null;
+    var showing = false;
+    var seq = 0;
+
+    function attach(after) {
+      if (!after || !after.parentNode) return;
+      box = document.createElement("div");
+      box.id = "okp-recent";
+      box.className = "recent";
+      box.hidden = true;
+      after.parentNode.insertBefore(box, after.nextSibling);
+    }
+
+    function open(q) {
+      var input = document.getElementById("okp-input");
+      if (input) input.value = q;
+      var shell = globalThis.__okpyeonSearchShell;
+      var controller = shell && typeof shell.controller === "function" ? shell.controller() : null;
+      if (controller) {
+        try { controller.search(q); } catch (e) { /* the shell reports its own errors */ }
+      }
+    }
+
+    function render(items) {
+      while (box.firstChild) box.removeChild(box.firstChild);
+      var list = items.slice(0, RECENT_SHOWN);
+      if (!showing || !list.length) {
+        box.hidden = true;
+        return 0;
+      }
+      var head = document.createElement("div");
+      head.className = "recent-head";
+      var heading = document.createElement("h2");
+      heading.className = "recent-heading";
+      heading.textContent = t("recent.heading");
+      var clear = document.createElement("button");
+      clear.type = "button";
+      clear.className = "recent-clear";
+      clear.textContent = t("recent.clear");
+      clear.addEventListener("click", function () {
+        sendToWorker({ type: "recentClear" }).then(refresh);
+      });
+      head.appendChild(heading);
+      head.appendChild(clear);
+      box.appendChild(head);
+      list.forEach(function (item) {
+        var row = document.createElement("div");
+        row.className = "saved-row recent-row";
+        row.setAttribute("role", "button");
+        row.tabIndex = 0;
+        row.setAttribute("data-q", item.q);
+        row.setAttribute("data-kind", item.kind);
+        var text = document.createElement("div");
+        text.className = "saved-text";
+        [["saved-primary", item.head || item.q], ["saved-secondary", item.sub],
+          ["saved-gloss", item.gloss]].forEach(function (part) {
+          if (typeof part[1] !== "string" || part[1] === "") return;
+          var span = document.createElement("span");
+          span.className = part[0];
+          span.textContent = part[1];
+          text.appendChild(span);
+        });
+        row.appendChild(text);
+        row.addEventListener("click", function () { open(item.q); });
+        row.addEventListener("keydown", function (e) {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            open(item.q);
+          }
+        });
+        box.appendChild(row);
+      });
+      box.hidden = false;
+      return list.length;
+    }
+
+    function refresh() {
+      if (!box) return Promise.resolve(0);
+      var mine = ++seq;
+      if (!showing) {
+        box.hidden = true;
+        return Promise.resolve(0);
+      }
+      return sendToWorker({ type: "recentGet" }).then(function (res) {
+        if (mine !== seq) return 0;
+        return render(res && res.ok === true && Array.isArray(res.items) ? res.items : []);
+      });
+    }
+
+    function onState(state) {
+      showing = state === "empty";
+      return refresh();
+    }
+
+    return {
+      attach: attach,
+      onState: onState,
+      refresh: refresh,
+      showing: function () { return showing; },
+      box: function () { return box; }
+    };
+  })();
+
   SIDEBAR_VIEWS.push({
     key: "search",
     labelKey: "tab.search",
@@ -379,6 +495,7 @@
         window.addEventListener("resize", scheduleSeal);
       }
       scheduleSeal();
+      recent.attach(container.querySelector("#okp-status"));
       ctx.shell.init({
         input: document.getElementById("okp-input"),
         results: container.querySelector("#okp-results"),
@@ -388,7 +505,10 @@
         sinoEnabled: bootSino,
         koEnabled: bootKo,
         initialScope: bootScope,
-        onState: function () { scheduleSeal(); },
+        onState: function (state) {
+          scheduleSeal();
+          recent.onState(state);
+        },
         // Focus rules: the input is focused ONLY on an empty boot — the
         // icon-click open, where typing into the panel is the next thing the
         // user does. A boot that already has a query came from somewhere the
@@ -756,6 +876,11 @@
    * ------------------------------------------------------------------ */
 
   function handleStorageChanged(changes, area) {
+    // Recent lookups ADDENDUM: a lookup on a page, Clear, or the setting
+    // changing all show at once while the list is up.
+    if (area === "local" && changes && (changes.okpRecent || changes.okpSettings)) {
+      recent.refresh();
+    }
     if (area !== "local" || !changes || !changes.okpSettings) {
       return Promise.resolve(false);
     }
@@ -803,6 +928,7 @@
     I18N.onChange(function () {
       renderNav();
       renderChrome();
+      recent.refresh();
     });
   }
 
@@ -820,6 +946,7 @@
     handleWorkerMessage: handleWorkerMessage,
     handleStorageChanged: handleStorageChanged,
     renderChrome: renderChrome,
+    recent: recent,
     ready: ready
   };
 })();

@@ -2745,38 +2745,48 @@
     }
 
     var settingsOk = await settingsView.render();
-    check("the shipped schema is the SPEC's nine entries, in its five groups",
+    // Popup off per site and recent lookups ADDENDUM (2026-10-26): eleven
+    // entries in six groups, Sites last.
+    check("the shipped schema is the SPEC's eleven entries, in its six groups",
       settingsOk === true &&
       settingsView.schema.map(function (e) { return e.group + "/" + e.key + ":" + e.type; })
         .join(" ") === "Language / 언어/language:segmented Search/nativeWords:toggle " +
+        "Search/recentLookups:toggle " +
         "Character cards/jaReadings:toggle Character cards/zhReadings:toggle " +
         "Saving/defaultFolderId:folder-select " +
         "Anki export/anki.wordFront:select Anki export/anki.wordBack:checkset " +
-        "Anki export/anki.charFront:select Anki export/anki.charBack:checkset",
+        "Anki export/anki.charFront:select Anki export/anki.charBack:checkset " +
+        "Sites/offSites:site-list",
       settingsView.schema.map(function (e) { return e.key; }).join(","));
-    check("the native word search row carries the SPEC's exact copy, default off",
-      settingsView.schema[1].label === "Native Korean word search" &&
-      settingsView.schema[1].description === "Adds native Korean words to " +
+    function schemaEntry(key) {
+      return settingsView.schema.filter(function (e) { return e.key === key; })[0] || {};
+    }
+    // Settings v2: the schema default is on; the harness's stored record is
+    // an explicit off, and the control shows the stored choice.
+    check("the native word search row carries the SPEC's exact copy, default on, stored choice shown",
+      schemaEntry("nativeWords").label === "Native Korean word search" &&
+      schemaEntry("nativeWords").description === "Adds native Korean words to " +
         "the dictionary. Search shows all words, and highlighting a native " +
         "word on a page shows its meaning." &&
-      settingsView.schema[1].default === false &&
+      schemaEntry("nativeWords").default === true &&
       byId("okp-set-nativeWords").checked === false,
-      JSON.stringify(settingsView.schema[1].label));
+      JSON.stringify(schemaEntry("nativeWords").label));
     check("the readings rows carry the SPEC's exact copy, both default off",
-      settingsView.schema[2].label === "Japanese reading" &&
-      settingsView.schema[2].description ===
+      schemaEntry("jaReadings").label === "Japanese reading" &&
+      schemaEntry("jaReadings").description ===
         "Shows the character's on'yomi reading in katakana." &&
-      settingsView.schema[2].default === false &&
+      schemaEntry("jaReadings").default === false &&
       byId("okp-set-jaReadings").checked === false &&
-      settingsView.schema[3].label === "Chinese reading" &&
-      settingsView.schema[3].description ===
+      schemaEntry("zhReadings").label === "Chinese reading" &&
+      schemaEntry("zhReadings").description ===
         "Shows the character's Mandarin reading in pinyin." &&
-      settingsView.schema[3].default === false &&
+      schemaEntry("zhReadings").default === false &&
       byId("okp-set-zhReadings").checked === false,
-      JSON.stringify(settingsView.schema[2].label + " / " +
-        settingsView.schema[3].label));
+      JSON.stringify(schemaEntry("jaReadings").label + " / " +
+        schemaEntry("zhReadings").label));
     check("the renderer emits one heading per group, in schema order",
-      settingsGroups().length === 5 &&
+      settingsGroups().length === 6 &&
+      settingsGroups()[5].getAttribute("data-group") === "Sites" &&
       settingsGroups()[0].getAttribute("data-group") === "Language / 언어" &&
       settingsGroups()[0].querySelector("h2.settings-heading").textContent === "Language / 언어" &&
       settingsGroups()[1].getAttribute("data-group") === "Search" &&
@@ -2849,7 +2859,9 @@
     // made the settings column a heading and a described select row taller
     // again (1040 had replaced 880 for the Character cards group), and the
     // check is about the tall case.
-    sealFrame.style.height = "1200px";
+    // 1500 since 2026-10-26: the recent lookups row and the Sites group
+    // made the column taller again.
+    sealFrame.style.height = "1500px";
     await settingsView.render();
     await wait(250);
     check("a taller panel has room under the settings and the seal shows",
@@ -2940,16 +2952,16 @@
     });
     await settingsView.render();
     check("a new setting is ONE schema entry: new heading, new row, nothing else",
-      settingsGroups().length === 6 &&
-      settingsGroups()[5].getAttribute("data-group") === "Harness" &&
-      settingsGroups()[5].querySelector(".settings-heading").textContent === "Harness" &&
+      settingsGroups().length === 7 &&
+      settingsGroups()[6].getAttribute("data-group") === "Harness" &&
+      settingsGroups()[6].querySelector(".settings-heading").textContent === "Harness" &&
       !!settingsBody.querySelector('.settings-row[data-key="probeSetting"]') &&
       byId("okp-set-probeSetting").value === "a",
       "groups=" + settingsGroups().length + " rows=" + settingsRows().length);
     settingsView.schema.pop();
     await settingsView.render();
     check("removing the entry removes its row and its heading again",
-      settingsGroups().length === 5 && settingsRows().length === 9 &&
+      settingsGroups().length === 6 && settingsRows().length === 11 &&
       !settingsBody.querySelector('.settings-row[data-key="probeSetting"]'),
       "groups=" + settingsGroups().length);
 
@@ -2964,15 +2976,120 @@
     await settingsView.render();
     check("and the controls come straight back, on the values that were written",
       !settingsBody.querySelector(".settings-unavailable") &&
-      settingsRows().length === 9 &&
+      settingsRows().length === 11 &&
       byId("okp-set-anki-wordFront").value === "hangul" &&
       checkedIn("anki.charBack").join(",") === "char,eumhun,lvl",
       checkedIn("anki.charBack").join(","));
+
+    // Popup off per site and recent lookups (SPEC ADDENDUM 2026-10-26).
+    var recentSetRow = settingsBody.querySelector('.settings-row[data-key="recentLookups"]');
+    var recentAction = recentSetRow && recentSetRow.querySelector(".settings-action");
+    check("recent lookups: a Search row, on by default, with Clear now",
+      !!recentSetRow && recentSetRow.parentNode.getAttribute("data-group") === "Search" &&
+      byId("okp-set-recentLookups").checked === true &&
+      !!recentAction && recentAction.textContent === "Clear now",
+      recentSetRow ? recentSetRow.textContent : "no row");
+    store.setRecent([{ kind: "word", q: "國民", head: "國民", sub: "국민", gloss: "the people", at: 1 }]);
+    recentAction.click();
+    await wait(TAIL);
+    check("Clear now empties the list and then says so",
+      store.recent().length === 0 && recentAction.textContent === "Cleared" &&
+      recentAction.disabled === true,
+      recentAction.textContent + " " + JSON.stringify(store.recent()));
+    var lastGroup = settingsGroups()[settingsGroups().length - 1];
+    check("the Sites group comes last, with an empty list and an add box",
+      lastGroup.getAttribute("data-group") === "Sites" &&
+      !!lastGroup.querySelector('.settings-row[data-key="offSites"]') &&
+      lastGroup.querySelector(".settings-label").textContent === "Popup off on these sites" &&
+      lastGroup.querySelector(".settings-site-empty").textContent ===
+        "None yet. The line at the bottom of the popup turns it off on a site." &&
+      !!byId("okp-set-offSites"),
+      lastGroup.textContent);
+    byId("okp-set-offSites").value = "https://News.Example.co.kr/path";
+    lastGroup.querySelector(".settings-site-addbtn").click();
+    await wait(TAIL);
+    check("adding a site stores its bare host and lists it with Turn back on",
+      store.state().settings.offSites.join(",") === "news.example.co.kr" &&
+      !!settingsBody.querySelector('.settings-site[data-site="news.example.co.kr"] .settings-site-on') &&
+      !settingsBody.querySelector(".settings-site-empty"),
+      JSON.stringify(store.state().settings.offSites));
+    byId("okp-set-offSites").value = "not a site";
+    settingsBody.querySelector(".settings-site-addbtn").click();
+    await wait(TAIL);
+    check("an unusable entry shows the error line and stores nothing",
+      settingsBody.querySelector(".settings-site-error").hidden === false &&
+      settingsBody.querySelector(".settings-site-error").textContent === "That is not a site name." &&
+      store.state().settings.offSites.length === 1,
+      JSON.stringify(store.state().settings.offSites));
+    settingsBody.querySelector('.settings-site[data-site="news.example.co.kr"] .settings-site-on').click();
+    await wait(TAIL);
+    check("Turn back on removes it, and the empty line returns",
+      store.state().settings.offSites.length === 0 &&
+      !!settingsBody.querySelector(".settings-site-empty"),
+      JSON.stringify(store.state().settings.offSites));
 
     // Back to the search view with a clean store, so a second run starts
     // where the first one did.
     store.reset();
     sidebar.showView("search");
+
+    // Recent lookups (SPEC ADDENDUM 2026-10-26): the empty search state.
+    // The page's checks re-create the shell with their own options; this one
+    // gets the state hook sidepanel.js passes, which is what drives the list.
+    var recentShell = reinit({ onState: function (s) { sidebar.recent.onState(s); } });
+    store.setRecent([
+      { kind: "word", q: "國民", head: "國民", sub: "국민", gloss: "the people", at: 3 },
+      { kind: "char", q: "學", head: "學", sub: "배울 학", gloss: "to learn; study", at: 2 },
+      { kind: "native", q: "하늘", head: "하늘", sub: "", gloss: "sky", at: 1 }
+    ]);
+    byId("okp-input").value = "";
+    await recentShell.search("");
+    await sidebar.recent.refresh();
+    var recentBox = byId("okp-recent");
+    var recentRows = recentBox ? recentBox.querySelectorAll(".recent-row") : [];
+    check("the empty search lists recent lookups under the hint, newest first, in the Saved row style",
+      !!recentBox && recentBox.hidden === false && recentRows.length === 3 &&
+      recentBox.previousElementSibling === byId("okp-status") &&
+      recentBox.querySelector(".recent-heading").textContent === "Recent" &&
+      recentBox.querySelector(".recent-clear").textContent === "Clear" &&
+      recentRows[0].querySelector(".saved-primary").textContent === "國民" &&
+      recentRows[0].querySelector(".saved-secondary").textContent === "국민" &&
+      recentRows[0].querySelector(".saved-gloss").textContent === "the people" &&
+      !recentRows[2].querySelector(".saved-secondary"),
+      JSON.stringify({ hidden: recentBox && recentBox.hidden, rows: recentRows.length,
+        stored: store.recent().length, state: recentShell.state(),
+        showing: sidebar.recent.showing(),
+        text: recentBox ? recentBox.textContent : "no list" }));
+    var addsBeforeOpen = store.recentAddCalls().length;
+    recentRows[1].click();
+    await wait(250);
+    check("clicking a row searches it, and the list hides while results show",
+      byId("okp-input").value === "學" && recentShell.state() === "results" &&
+      recentBox.hidden === true,
+      byId("okp-input").value + " " + recentShell.state());
+    check("that search records itself, so it moves to the top",
+      store.recentAddCalls().length === addsBeforeOpen + 1 &&
+      store.recent().map(function (e) { return e.q; }).join(",") === "學,國民,하늘",
+      store.recent().map(function (e) { return e.q; }).join(","));
+    byId("okp-input").value = "";
+    await recentShell.search("");
+    await sidebar.recent.refresh();
+    check("back to empty, the list shows again in its new order",
+      recentBox.hidden === false &&
+      recentBox.querySelector(".recent-row .saved-primary").textContent === "學");
+    recentBox.querySelector(".recent-clear").click();
+    await wait(TAIL);
+    check("Clear empties the list and hides it",
+      store.recent().length === 0 && recentBox.hidden === true);
+    await fake.sendMessage({ type: "settingsSet", patch: { recentLookups: false } });
+    store.setRecent([{ kind: "word", q: "國民", head: "國民", sub: "국민", gloss: "the people", at: 3 }]);
+    await sidebar.recent.refresh();
+    check("with the setting off, nothing is listed",
+      recentBox.hidden === true);
+    store.reset();
+    // Back to the plain shell the checks below were written against.
+    shell = reinit();
+
 
 
     /* ==================================================================

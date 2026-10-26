@@ -45,12 +45,16 @@
    *   groupKey,       // message key of the heading it renders under; groups
    *                   //   appear in schema order
    *   type,           // "select" | "checkset" | "folder-select" | "toggle" | "segmented"
+   *                   //   | "site-list"
    *   labelKey,       // message key of the visible label
    *   descriptionKey, // optional: message key of the muted second line
    *   options,        // [{value, labelKey}] — omitted by folder-select, which
    *                   //   resolves its options from the worker's folders at
    *                   //   render time, and by toggle, which has none
-   *   default         // what a settings object without the key reads as
+   *   default,        // what a settings object without the key reads as
+   *   action          // optional: {labelKey, doneKey, message}, a one-shot
+   *                   //   button beside the control that sends `message` to
+   *                   //   the worker and then reads doneKey
    * }
    *
    * Copy is a KEY, never text (SPEC "Korean language mode"). withText()
@@ -98,7 +102,18 @@
       type: "toggle",
       labelKey: "nativeWords.label",
       descriptionKey: "nativeWords.sub",
-      default: false
+      // On by default since settings v2 (2026-10-25).
+      default: true
+    },
+    // Recent lookups ADDENDUM (2026-10-26): on by default, with Clear now.
+    {
+      key: "recentLookups",
+      groupKey: "group.search",
+      type: "toggle",
+      labelKey: "recentLookups.label",
+      descriptionKey: "recentLookups.sub",
+      default: true,
+      action: { labelKey: "recent.clearNow", doneKey: "recent.cleared", message: { type: "recentClear" } }
     },
     {
       key: "jaReadings",
@@ -175,6 +190,16 @@
         { value: "zh", labelKey: "anki.field.zh" }
       ],
       default: ["eumhun", "defs"]
+    },
+    // Popup off per site ADDENDUM (2026-10-26): the last group, since most
+    // readers never touch it.
+    {
+      key: "offSites",
+      groupKey: "group.sites",
+      type: "site-list",
+      labelKey: "sites.label",
+      descriptionKey: "sites.sub",
+      default: []
     }
   ].map(withText);
 
@@ -408,6 +433,114 @@
     return label;
   }
 
+  // Popup off per site ADDENDUM: the sites the page popup is off on, each
+  // with "Turn back on", and a box to add one by name. Both write through
+  // siteSet, the worker's one read-change-write of the list, and the page
+  // re-renders from its answer.
+  function setSite(entry, site, off) {
+    return sendToWorker({ type: "siteSet", site: site, off: off }).then(function (res) {
+      if (res && res.ok === true && res.settings) {
+        settings = res.settings;
+        renderSchema();
+        updateSealRoom();
+      }
+      return res;
+    });
+  }
+
+  function buildSiteList(entry) {
+    var box = document.createElement("div");
+    box.className = "settings-sites";
+    var value = currentValue(entry);
+    var sites = Array.isArray(value) ? value : [];
+    var list = document.createElement("div");
+    list.className = "settings-site-list";
+    if (!sites.length) {
+      var empty = document.createElement("p");
+      empty.className = "settings-site-empty";
+      empty.textContent = t("sites.empty");
+      list.appendChild(empty);
+    }
+    sites.forEach(function (site) {
+      var row = document.createElement("div");
+      row.className = "settings-site";
+      row.setAttribute("data-site", site);
+      var name = document.createElement("span");
+      name.className = "settings-site-name";
+      name.textContent = site;
+      var on = document.createElement("button");
+      on.type = "button";
+      on.className = "settings-site-on";
+      on.textContent = t("sites.on");
+      on.addEventListener("click", function () { setSite(entry, site, false); });
+      row.appendChild(name);
+      row.appendChild(on);
+      list.appendChild(row);
+    });
+    box.appendChild(list);
+
+    var add = document.createElement("div");
+    add.className = "settings-site-add";
+    var input = document.createElement("input");
+    input.type = "text";
+    input.id = controlId(entry.key);
+    input.className = "settings-site-input";
+    input.placeholder = t("sites.add.placeholder");
+    input.setAttribute("aria-label", t("sites.add.placeholder"));
+    input.setAttribute("autocomplete", "off");
+    input.setAttribute("spellcheck", "false");
+    var button = document.createElement("button");
+    button.type = "button";
+    button.className = "settings-site-addbtn";
+    button.textContent = t("sites.add");
+    var error = document.createElement("p");
+    error.className = "settings-site-error";
+    error.textContent = t("sites.invalid");
+    error.hidden = true;
+    function submit() {
+      var typed = input.value.trim();
+      if (!typed) return;
+      setSite(entry, typed, true).then(function (res) {
+        if (res && res.ok === true) {
+          var again = document.getElementById(controlId(entry.key));
+          if (again) again.focus();
+          return;
+        }
+        error.hidden = false;
+      });
+    }
+    button.addEventListener("click", submit);
+    input.addEventListener("keydown", function (e) {
+      if (e.key === "Enter" && !e.isComposing) submit();
+    });
+    input.addEventListener("input", function () { error.hidden = true; });
+    add.appendChild(input);
+    add.appendChild(button);
+    box.appendChild(add);
+    box.appendChild(error);
+    return box;
+  }
+
+  // A schema entry's optional one-shot action (Clear now): sends its
+  // message, then reads its done label until the next render.
+  function buildAction(action) {
+    var button = document.createElement("button");
+    button.type = "button";
+    button.className = "settings-action";
+    button.textContent = t(action.labelKey);
+    button.addEventListener("click", function () {
+      button.disabled = true;
+      sendToWorker(action.message).then(function (res) {
+        if (res && res.ok === true && action.doneKey) {
+          button.textContent = t(action.doneKey);
+        } else {
+          button.disabled = false;
+        }
+      });
+    });
+    return button;
+  }
+
   function buildControl(entry) {
     switch (entry.type) {
       case "select":
@@ -419,6 +552,8 @@
         return buildCheckset(entry);
       case "toggle":
         return buildToggle(entry);
+      case "site-list":
+        return buildSiteList(entry);
       default:
         // An unknown type is a schema mistake, not a user-facing state: say so
         // quietly rather than dropping the row and hiding the bug.
@@ -479,6 +614,9 @@
       var control = document.createElement("div");
       control.className = "settings-control";
       control.appendChild(buildControl(entry));
+      if (entry.action && typeof entry.action === "object") {
+        control.appendChild(buildAction(entry.action));
+      }
       row.appendChild(control);
       group.appendChild(row);
       rendered++;

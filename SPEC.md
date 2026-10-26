@@ -3951,6 +3951,112 @@ of the token mass, with answers such as 다음주에 (next week) showing 飮酒
 - Tests: node (다음주에, 마찬가지에요, 드라마같은, 택시기사, 누구보다도;
   대학에서 and 나무의자 hold; unflagged 다음주에 untouched).
 
+## Popup off per site, and recent lookups (ADDENDUM 2026-10-26, design settled by mockups)
+
+Two roadmap items, built together because both are settings plus one
+small surface each. Mockups of three options per feature, drawn into the
+real popup and sidebar; Jesse picked option A for both. A third item, a
+keyboard shortcut for the current selection with an "only with the
+shortcut" mode, was mocked and set aside: turning the popup off per site
+covers the same complaint. It is in ROADMAP.md.
+
+### Popup off per site
+
+- SETTING: `offSites`, a list of host names, in the settings record
+  (no version bump: an absent field reads as an empty list). The worker
+  normalizes it: each entry through normalizeSite (below), duplicates
+  dropped, first 500 kept. A listed site covers its subdomains: an entry
+  `example.com` turns the popup off on `example.com` and on
+  `news.example.com`.
+- normalizeSite(text): a typed site or URL to a bare host name, or ""
+  when it is not one. A scheme is optional (`https://www.Example.com/a`
+  and `www.example.com` both give `www.example.com`); the host is what the
+  URL parser makes of it, lowercased, so a Korean domain comes out in its
+  punycode form, the form `location.hostname` has. Ports, paths and a
+  trailing dot go. Accepted: dotted names, single labels (`localhost`),
+  IPv4, bracketed IPv6.
+- THE POPUP FOOTER (page popup only, never the sidebar, never on a page
+  without a host name such as a local file): one line at the bottom of
+  every popup view, sticky at the panel's bottom edge, the wordmark 玉篇
+  on the left and a button on the right, "Turn off on <host>"
+  (`<host>에서 끄기`), the host in bold. It is chrome, outside the view, so
+  it survives navigation inside the popup.
+- Clicking it sends {type: "siteSet", site, off: true}. On success the
+  popup shows a notice in place of the cards: "Okpyeon is off on <host>.",
+  a muted line ("Selecting text on this site no longer opens the popup.
+  The sidebar still works here. To turn it back on, use Settings."), and
+  an Undo button. Undo sends {type: "siteSet", site, off: false} and
+  brings the cards back. The notice closes like the popup does (Escape, a
+  click outside, scrolling).
+- THE GATE: on a page whose host an `offSites` entry covers, selecting
+  text does nothing: no lookup is sent and no popup opens. The content
+  script reads the stored record it already keeps (and takes the worker's
+  answer to siteSet at once, so the gate holds before the storage event
+  lands). The sidebar is never gated.
+- SETTINGS: a "Sites" group at the very bottom of the settings view,
+  after Anki export: one row, "Popup off on these sites", with a note
+  ("Selecting text on these sites does nothing. The sidebar still works
+  everywhere."), the list (each host with a "Turn back on" button), and a
+  box to add a site by name with an Add button. An unusable entry shows
+  "That is not a site name." under the box. An empty list says "None yet.
+  The line at the bottom of the popup turns it off on a site."
+- {type: "siteSet", site, off} → {ok: true, settings} with the stored,
+  normalized record, or {ok: false, error: "not a site"}. The worker
+  reads, changes and writes inside its storage chain, so two tabs cannot
+  lose each other's change.
+
+### Recent lookups
+
+- WHAT IS RECORDED: every new root view the popup or the sidebar search
+  shows, as ONE entry for its first card: a hanja word (the spelling, its
+  hangul, the first definition), a character (the glyph, its eumhun, the
+  first definition as character rows show it), or a native word (the
+  headword, the first definition). The definition is the one the card
+  shows, so under 한국어 it is the first Korean sense. A reading list (a
+  selected syllable) and a view with no cards record nothing; navigating
+  inside a view records nothing.
+- STORAGE: a third record, `okpRecent` = {v: 1, items: [{kind, q, head,
+  sub, gloss, at}]}, newest first. `kind` is word, char or native; `q`
+  is what clicking searches (the spelling, the glyph, the headword);
+  `at` is the time. A repeat (same kind and q) moves to the top instead
+  of appearing twice. The last 20 are kept. The worker is the only
+  writer, like the other two records.
+- SETTING: `recentLookups`, a boolean, on by default; an absent field
+  reads as on. Off records nothing, and turning it off clears the record.
+  The row sits in the Search group: "Recent lookups", with the note
+  "Keeps your last 20 lookups on this computer and lists them when the
+  search box is empty. Nothing is sent anywhere.", the toggle, and a
+  "Clear now" button.
+- THE LIST: in the sidebar's empty search state, under the hint line, a
+  "Recent" heading with a Clear button, then the first 8 entries as rows
+  in the Saved view's row style (head, sub, gloss). Clicking a row puts
+  its `q` in the search box and searches it. The list is hidden while
+  results show, when there are no entries, and when the setting is off.
+  It refreshes when the record changes (a lookup on a page while the
+  sidebar sits empty appears at once).
+- Messages: {type: "recentAdd", entry} (a no-op when the setting is off),
+  {type: "recentGet"} → {ok: true, items}, {type: "recentClear"}.
+- PRIVACY: the store's privacy policy said lookups are never recorded.
+  It now says the last 20 are kept on the computer for this list, can be
+  turned off and cleared, and are never sent anywhere; the per-site list
+  is described the same way. Neither leaves the device, so the store
+  disclosures ("no data collected") stand.
+
+### Shared
+
+- Both lists' rules are pure functions in saved.js (normalizeSite,
+  siteIsOff, withSite, normalizeRecent, addRecent), used by the worker and
+  by the test fixture. The content script is a classic script and cannot
+  import them; it carries its own two-line copy of siteIsOff.
+- The harness's fake worker answers the four new messages through those
+  functions, and counts them as storage traffic, not lookups.
+- Tests: node (normalizeSite, siteIsOff and the subdomain rule, withSite,
+  the settings defaults, normalizeRecent, addRecent's move-to-top and cap,
+  the routed message set); harness (the popup footer and its notice, Undo,
+  the gate, the recorded entry for a word, a character and a native word,
+  the Sites group last in settings with add and remove, the recent row and
+  Clear now, the empty-state list, its click, and its Clear).
+
 ## Verification expectations
 
 - A: after build, spot-check in the output: 國 has eumhun 나라/국 and compounds;

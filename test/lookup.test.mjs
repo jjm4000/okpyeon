@@ -59,13 +59,21 @@ import {
   deleteFolder,
   joinItems,
   moveItems,
+  addRecent,
+  normalizeRecent,
   normalizeSavedState,
   normalizeSettings,
+  normalizeSite,
+  normalizeSites,
   removeItems,
   renameFolder,
   resolveExportSelection,
+  siteIsOff,
   toggleItem,
+  withSite,
   CHAR_FIELDS,
+  RECENT_CAP,
+  SITES_CAP,
   CSV_COLUMNS,
   DEFAULT_SETTINGS,
 } from "../extension/saved.js";
@@ -1758,6 +1766,8 @@ test("normalizeSettings fills the SPEC defaults and drops unknown tokens", () =>
       nativeWords: true,
       jaReadings: false,
       zhReadings: false,
+      offSites: [],
+      recentLookups: true,
       anki: {
         wordFront: "hanja",
         wordBack: ["hangul", "defs"],
@@ -1791,6 +1801,122 @@ test("normalizeSettings fills the SPEC defaults and drops unknown tokens", () =>
   assert.equal(normalizeSettings({ v: 2, nativeWords: false }).nativeWords, false);
   assert.equal(normalizeSettings({ v: 2, nativeWords: true }).nativeWords, true);
   assert.equal(normalizeSettings({ v: 2, nativeWords: "no" }).nativeWords, true);
+});
+
+test("sites: normalizeSite gives a bare, lowercased host or nothing", () => {
+  // SPEC "Popup off per site": a scheme is optional; ports, paths and a
+  // trailing dot go; a Korean domain comes out as punycode.
+  assert.equal(normalizeSite("https://www.Example.com/a?b=1"), "www.example.com");
+  assert.equal(normalizeSite("www.example.com:8080"), "www.example.com");
+  assert.equal(normalizeSite("  news.example.co.kr  "), "news.example.co.kr");
+  assert.equal(normalizeSite("example.com."), "example.com");
+  assert.equal(normalizeSite("localhost"), "localhost");
+  assert.equal(normalizeSite("127.0.0.1"), "127.0.0.1");
+  assert.equal(normalizeSite("[::1]"), "[::1]");
+  assert.equal(normalizeSite("한국.kr"), "xn--3e0b707e.kr");
+  for (const junk of ["", "   ", "not a site", "http://", 7, null, undefined, "a_b.com"]) {
+    assert.equal(normalizeSite(junk), "", String(junk));
+  }
+});
+
+test("sites: a listed site covers itself and its subdomains, nothing else", () => {
+  assert.equal(siteIsOff(["example.com"], "example.com"), true);
+  assert.equal(siteIsOff(["example.com"], "news.example.com"), true);
+  assert.equal(siteIsOff(["example.com"], "NEWS.EXAMPLE.COM"), true);
+  assert.equal(siteIsOff(["example.com"], "badexample.com"), false);
+  assert.equal(siteIsOff(["news.example.com"], "example.com"), false);
+  assert.equal(siteIsOff([], "example.com"), false);
+  assert.equal(siteIsOff(["example.com"], ""), false);
+  assert.equal(siteIsOff(null, "example.com"), false);
+});
+
+test("sites: the list normalizes, dedupes and caps; withSite turns one off and back on", () => {
+  assert.deepEqual(normalizeSites(["Example.com", "example.com", "bad site", 3, "b.com"]),
+    ["example.com", "b.com"]);
+  const many = Array.from({ length: SITES_CAP + 20 }, (_, i) => `s${i}.example`);
+  assert.equal(normalizeSites(many).length, SITES_CAP);
+  assert.deepEqual(normalizeSettings({ offSites: ["https://A.com/x"] }).offSites, ["a.com"]);
+  const off = withSite(normalizeSettings({}), "https://News.Example.co.kr/p", true);
+  assert.equal(off.site, "news.example.co.kr");
+  assert.deepEqual(off.settings.offSites, ["news.example.co.kr"]);
+  // Turning it off twice keeps one entry; back on removes it.
+  assert.deepEqual(withSite(off.settings, "news.example.co.kr", true).settings.offSites,
+    ["news.example.co.kr"]);
+  assert.deepEqual(withSite(off.settings, "news.example.co.kr", false).settings.offSites, []);
+  // Not a site: nothing to write.
+  assert.deepEqual(withSite(off.settings, "not a site", true), { settings: null, site: "" });
+  // The other settings ride through untouched.
+  assert.equal(withSite({ v: 2, language: "ko", nativeWords: false }, "a.com", true).settings.language, "ko");
+});
+
+test("recent: on by default; a repeat moves to the top; the list keeps 20", () => {
+  // SPEC "Recent lookups".
+  assert.equal(normalizeSettings({}).recentLookups, true);
+  assert.equal(normalizeSettings({ recentLookups: false }).recentLookups, false);
+  assert.equal(normalizeSettings({ recentLookups: "no" }).recentLookups, true);
+  let state = normalizeRecent(null);
+  assert.deepEqual(state, { v: 1, items: [] });
+  state = addRecent(state, { kind: "word", q: "國民", head: "國民", sub: "국민", gloss: "the people" }, 10);
+  state = addRecent(state, { kind: "char", q: "學", sub: "배울 학", gloss: "learning" }, 20);
+  state = addRecent(state, { kind: "word", q: "國民", sub: "국민", gloss: "the people" }, 30);
+  assert.deepEqual(state.items.map((e) => `${e.kind}:${e.q}@${e.at}`), ["word:國民@30", "char:學@20"]);
+  assert.equal(state.items[1].head, "學", "head defaults to q");
+  // The same text as a different kind is a different entry.
+  state = addRecent(state, { kind: "native", q: "學" }, 40);
+  assert.equal(state.items.length, 3);
+  // Unusable entries change nothing.
+  for (const junk of [null, {}, { kind: "word" }, { kind: "reading", q: "국" }, { kind: "word", q: "  " }]) {
+    assert.deepEqual(addRecent(state, junk, 50), state);
+  }
+  for (let i = 0; i < RECENT_CAP + 5; i++) {
+    state = addRecent(state, { kind: "word", q: `w${i}` }, 100 + i);
+  }
+  assert.equal(state.items.length, RECENT_CAP);
+  assert.equal(state.items[0].q, `w${RECENT_CAP + 4}`);
+  // A stored record with junk and repeats reads clean.
+  assert.deepEqual(normalizeRecent({ items: [{ kind: "word", q: "a" }, { kind: "word", q: "a" }, 5, { q: "b" }] })
+    .items.map((e) => e.q), ["a"]);
+});
+
+await testAsync("worker: siteSet and the recent messages read, change and write the stored records", async () => {
+  const {
+    handleSiteSet, handleRecentAdd, handleRecentGet, handleRecentClear, handleSettingsSet,
+  } = await import("../extension/background.js");
+  const area = { store: {} };
+  area.get = async (key) => ({ [key]: area.store[key] });
+  area.set = async (obj) => { Object.assign(area.store, obj); };
+  globalThis.chrome = { storage: { local: area } };
+  try {
+    let res = await handleSiteSet("https://News.Example.co.kr/x", true);
+    assert.equal(res.ok, true);
+    assert.equal(res.site, "news.example.co.kr");
+    assert.deepEqual(area.store.okpSettings.offSites, ["news.example.co.kr"]);
+    assert.deepEqual(res.settings.offSites, ["news.example.co.kr"]);
+    res = await handleSiteSet("not a site", true);
+    assert.deepEqual(res, { ok: false, error: "not a site" });
+    res = await handleSiteSet("news.example.co.kr", false);
+    assert.deepEqual(area.store.okpSettings.offSites, []);
+
+    assert.deepEqual(await handleRecentGet(), { ok: true, items: [] });
+    assert.deepEqual(await handleRecentAdd({ kind: "word", q: "國民", sub: "국민", gloss: "the people" }),
+      { ok: true, added: true });
+    assert.deepEqual(await handleRecentAdd({ kind: "reading", q: "국" }), { ok: true, added: false });
+    res = await handleRecentGet();
+    assert.deepEqual(res.items.map((e) => e.q), ["國民"]);
+    assert.ok(res.items[0].at > 0, "stamped by the worker");
+    // Turning the setting off clears the list and stops new entries.
+    await handleSettingsSet({ recentLookups: false });
+    assert.deepEqual(area.store.okpRecent.items, []);
+    assert.deepEqual(await handleRecentAdd({ kind: "word", q: "學生" }), { ok: true, added: false });
+    assert.deepEqual(area.store.okpRecent.items, []);
+    await handleSettingsSet({ recentLookups: true });
+    await handleRecentAdd({ kind: "char", q: "學" });
+    assert.equal((await handleRecentGet()).items.length, 1);
+    assert.deepEqual(await handleRecentClear(), { ok: true });
+    assert.deepEqual((await handleRecentGet()).items, []);
+  } finally {
+    delete globalThis.chrome;
+  }
 });
 
 test("a settings patch merges over the current record, one level into anki", () => {
@@ -2423,13 +2549,17 @@ await testAsync("the router carries every SPEC message type", async () => {
     "folderDelete",
     "settingsGet",
     "settingsSet",
+    "siteSet",
+    "recentAdd",
+    "recentGet",
+    "recentClear",
     "savedExport",
     "messagesGet",
   ];
   assert.deepEqual(Object.keys(MESSAGE_HANDLERS).sort(), types.slice().sort());
   // Routed saved messages reach the storage guard, not a crash.
   for (const type of types.filter((t) => t.startsWith("saved") || t.startsWith("folder") ||
-    t.startsWith("settings"))) {
+    t.startsWith("settings") || t.startsWith("site") || t.startsWith("recent"))) {
     assert.deepEqual(await MESSAGE_HANDLERS[type]({ type }), {
       ok: false,
       error: "storage unavailable",

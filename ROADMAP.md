@@ -6,6 +6,15 @@ current review clears.
 
 ## Since 1.4: merged on main, not yet released
 
+- **Popup off per site, and recent lookups.** Settled by mockups (option A
+  for both). The popup ends in one quiet line, "Turn off on <site>"; one
+  click turns it off there, says so, and offers Undo, and a Sites group at
+  the bottom of Settings lists the sites to turn back on. The empty sidebar
+  lists the last 8 lookups (of 20 kept) in the Saved view's row style, and
+  a Search row in Settings turns the list off or clears it. The privacy
+  policy changes with it: it used to say lookups are never recorded, and
+  the updated text has to be published before the version that ships this.
+
 - **Native words on by default.** With native words off, 2.5% of the
   frequent subtitle token mass answered with a hanja fragment from
   inside a native word (이야기 showed 夜氣, 그대로 大路). Settings v2
@@ -583,11 +592,12 @@ correctness" bullet of 1.1, the same way 1.1.1 folded into 1.2.
   which names like 빌리가 make unsafe, names spelled with Sino syllables
   only (헤일리 finds 一理, 라이언 俚言), and a rare hanja word at the start
   beating a common native word (우리회사 shows 牛李 first).
-- **Keyboard shortcut for the current selection** (Chrome's commands
-  API) and **per-site disable**: one settings row each plus a little
-  glue, and both come up in extension reviews constantly.
-- **Recent lookups** in the sidebar's empty search state, where today
-  there is only a hint sentence. Every dictionary app has it.
+- **Keyboard shortcut for the current selection.** Mocked 2026-10-26:
+  A, a key that opens the popup for the selection, plus a choice to open
+  the popup only with that key; B, a key that searches the selection in
+  the sidebar; C, both. Set aside: turning the popup off per site covers
+  the readers who find it intrusive. If built, it goes at the bottom of
+  Settings, since the trigger choice is easy to misread.
 - **Hun synthesis from Korean glosses.** About 4,470 characters still
   have neither a hun nor a Korean gloss after the Korean Wiktionary
   fill, and many of the filled ones show a gloss ("눕다.") rather than a

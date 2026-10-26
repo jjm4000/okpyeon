@@ -20,6 +20,7 @@ import {
   DEFAULT_FOLDER_ID,
   DEFAULT_FOLDER_NAME,
   SETTINGS_VERSION,
+  addRecent,
   buildAnkiTsv,
   buildCsv,
   checkKeys,
@@ -27,12 +28,15 @@ import {
   deleteFolder,
   joinItems,
   moveItems,
+  normalizeRecent,
+  normalizeRecentEntry,
   normalizeSavedState,
   normalizeSettings,
   removeItems,
   renameFolder,
   resolveExportSelection,
   toggleItem,
+  withSite,
 } from "./saved.js";
 
 const DATA_FILES = {
@@ -917,6 +921,8 @@ export async function handleGetPendingQuery() {
 /** chrome.storage.local keys. Schema v1 for both; see saved.js. */
 const SAVED_KEY = "okpSaved";
 const SETTINGS_KEY = "okpSettings";
+/** Recent lookups ADDENDUM: the third record, the recent list. */
+const RECENT_KEY = "okpRecent";
 
 /**
  * The one answer every saved/settings message gets when there is no
@@ -953,7 +959,7 @@ function serialize(task) {
 }
 
 /**
- * Storage guard + serialization + error envelope, shared by all eleven
+ * Storage guard + serialization + error envelope, shared by all fifteen
  * handlers below.
  * @param {(area:object) => Promise<object>} task
  */
@@ -1256,7 +1262,68 @@ export async function handleSettingsSet(patch) {
     const current = await readSettings(area, state);
     const settings = normalizeSettings(mergeSettings(current, patch), state);
     await writeSettings(area, settings);
+    // Recent lookups ADDENDUM: turning the list off clears it.
+    if (settings.recentLookups === false && current.recentLookups !== false) {
+      await area.set({ [RECENT_KEY]: normalizeRecent(null) });
+    }
     return { ok: true, settings };
+  });
+}
+
+/**
+ * Popup off per site ADDENDUM: {type:"siteSet", site, off} → turn the page
+ * popup off on a site (add it to offSites) or back on (remove it), read,
+ * changed and written inside the storage chain.
+ * @returns {Promise<{ok:true, settings:object, site:string}|{ok:false, error:string}>}
+ */
+export async function handleSiteSet(site, off) {
+  return withStorage(async (area) => {
+    const state = await readSaved(area);
+    const current = await readSettings(area, state);
+    const changed = withSite(current, site, off === true);
+    if (changed.settings === null) return { ok: false, error: "not a site" };
+    const settings = normalizeSettings(changed.settings, state);
+    await writeSettings(area, settings);
+    return { ok: true, settings, site: changed.site };
+  });
+}
+
+/**
+ * Recent lookups ADDENDUM: {type:"recentAdd", entry} → put one lookup at the
+ * top of the recent list. Nothing is written while the setting is off.
+ * @returns {Promise<{ok:true, added:boolean}|{ok:false, error:string}>}
+ */
+export async function handleRecentAdd(entry) {
+  return withStorage(async (area) => {
+    const settings = await readSettings(area);
+    if (settings.recentLookups === false) return { ok: true, added: false };
+    if (normalizeRecentEntry(entry) === null) return { ok: true, added: false };
+    const next = addRecent(await readKey(area, RECENT_KEY), entry, Date.now());
+    await area.set({ [RECENT_KEY]: next });
+    return { ok: true, added: true };
+  });
+}
+
+/**
+ * Recent lookups ADDENDUM: {type:"recentGet"} → the list, newest first.
+ * @returns {Promise<{ok:true, items:object[]}|{ok:false, error:string}>}
+ */
+export async function handleRecentGet() {
+  return withStorage(async (area) => {
+    const settings = await readSettings(area);
+    if (settings.recentLookups === false) return { ok: true, items: [] };
+    return { ok: true, items: normalizeRecent(await readKey(area, RECENT_KEY)).items };
+  });
+}
+
+/**
+ * Recent lookups ADDENDUM: {type:"recentClear"} → an empty list.
+ * @returns {Promise<{ok:true}|{ok:false, error:string}>}
+ */
+export async function handleRecentClear() {
+  return withStorage(async (area) => {
+    await area.set({ [RECENT_KEY]: normalizeRecent(null) });
+    return { ok: true };
   });
 }
 
@@ -1428,6 +1495,10 @@ export const MESSAGE_HANDLERS = {
   folderDelete: (m) => handleFolderDelete(m.id),
   settingsGet: () => handleSettingsGet(),
   settingsSet: (m) => handleSettingsSet(m.patch),
+  siteSet: (m) => handleSiteSet(m.site, m.off === true),
+  recentAdd: (m) => handleRecentAdd(m.entry),
+  recentGet: () => handleRecentGet(),
+  recentClear: () => handleRecentClear(),
   savedExport: (m) =>
     handleSavedExport({ ids: m.ids, folderIds: m.folderIds, all: m.all }, m.format),
   messagesGet: (m) => handleMessagesGet(m.lang),

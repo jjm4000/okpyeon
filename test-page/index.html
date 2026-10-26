@@ -5513,6 +5513,128 @@
     }
     api.hide();
 
+    /* ==================================================================
+     * Popup off per site and recent lookups (SPEC ADDENDUM 2026-10-26).
+     * The fake worker answers siteSet and recentAdd through saved.js and
+     * keeps what the surfaces sent.
+     * ================================================================== */
+    var siteStore = fake.__savedStore;
+    var pageHostName = location.hostname;
+    siteStore.reset();
+    api.setSettings(null);
+    api.hide();
+    api.showAt(anchor, fake.__lookup("국민").matches, "국민");
+    await wait(60);
+    var siteBar = api.siteBar();
+    check("site: every popup view ends in the footer line, the wordmark and Turn off on this host",
+      !!siteBar && siteBar.querySelector(".sitebar-brand").textContent === "玉篇" &&
+      siteBar.querySelector(".sitebar-off").textContent === "Turn off on " + pageHostName &&
+      siteBar.querySelector(".sitebar-off b").textContent === pageHostName,
+      siteBar ? siteBar.textContent : "no footer");
+    check("site: the card text leaves the footer line out",
+      api.panelText().indexOf("Turn off on") < 0 && api.panelText().indexOf("國民") >= 0,
+      api.panelText());
+    siteBar.querySelector(".sitebar-off").click();
+    await wait(60);
+    var siteCalls = siteStore.siteSetCalls();
+    check("site: the button turns the site off through the worker and says so, with Undo",
+      siteCalls.length === 1 && siteCalls[0].site === pageHostName && siteCalls[0].off === true &&
+      siteStore.state().settings.offSites.join(",") === pageHostName &&
+      !!api.query(".siteoff") && api.isVisible() && api.cardCount() === 0 &&
+      api.query(".siteoff-main").textContent === "Okpyeon is off on " + pageHostName + "." &&
+      !!api.query(".siteoff-undo"),
+      JSON.stringify(siteCalls) + " " + api.panelText());
+    api.query(".siteoff-undo").click();
+    await wait(60);
+    check("site: Undo turns it back on and brings the cards back, footer and all",
+      siteStore.siteSetCalls().length === 2 && siteStore.siteSetCalls()[1].off === false &&
+      siteStore.state().settings.offSites.length === 0 &&
+      api.cardCount() > 0 && !!api.siteBar(),
+      api.panelText());
+    api.hide();
+    function selectReadingSyllable() {
+      var w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT), n;
+      while ((n = w.nextNode())) {
+        var i = n.data.indexOf("국 · 사 · 한");
+        if (i >= 0) {
+          var r = document.createRange();
+          r.setStart(n, i); r.setEnd(n, i + 1);
+          var s = getSelection(); s.removeAllRanges(); s.addRange(r);
+          window.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+          return true;
+        }
+      }
+      return false;
+    }
+    api.setSettings({ offSites: [pageHostName] });
+    var callsOff = fake.__calls;
+    var selectedOff = selectReadingSyllable();
+    await wait(60);
+    check("site: on a site that is off, selecting text sends no lookup and opens nothing",
+      selectedOff && fake.__calls === callsOff && !api.isVisible(),
+      "calls " + callsOff + " → " + fake.__calls);
+    api.setSettings({ offSites: ["other.example"] });
+    selectReadingSyllable();
+    await wait(60);
+    check("site: another site's entry leaves this one alone",
+      fake.__calls > callsOff && api.isVisible(),
+      "calls " + callsOff + " → " + fake.__calls);
+    api.hide();
+    getSelection().removeAllRanges();
+
+    api.setSettings(null);
+    function lastRecentAdd() {
+      var adds = siteStore.recentAddCalls();
+      return adds.length ? adds[adds.length - 1] : null;
+    }
+    var addsBefore = siteStore.recentAddCalls().length;
+    api.showAt(anchor, fake.__lookup("국민").matches, "국민");
+    await wait(30);
+    var wordAdd = lastRecentAdd();
+    check("recent: a word view records the spelling, its hangul and the first definition",
+      siteStore.recentAddCalls().length === addsBefore + 1 && !!wordAdd &&
+      wordAdd.kind === "word" && wordAdd.q === "國民" && wordAdd.head === "國民" &&
+      wordAdd.sub === "국민" && wordAdd.gloss === "the people; citizens of a nation" &&
+      siteStore.recent()[0].q === "國民",
+      JSON.stringify(wordAdd));
+    api.showAt(anchor, fake.__lookup("學").matches, "學");
+    await wait(30);
+    var charAdd = lastRecentAdd();
+    check("recent: a character view records the glyph, its eumhun and the first definition",
+      !!charAdd && charAdd.kind === "char" && charAdd.q === "學" &&
+      charAdd.sub === "배울 학" && charAdd.gloss === "to learn; study" &&
+      siteStore.recent().map(function (e) { return e.q; }).join(",") === "學,國民",
+      JSON.stringify(charAdd));
+    api.setSettings({ nativeWords: true });
+    var recentSky = fake.__lookup("하늘", { native: true });
+    api.showAt(anchor, recentSky.matches, "하늘", undefined, recentSky.nativeMatches);
+    await wait(30);
+    var nativeAdd = lastRecentAdd();
+    check("recent: a native view records the headword and its first definition",
+      !!nativeAdd && nativeAdd.kind === "native" && nativeAdd.q === "하늘" &&
+      nativeAdd.sub === "" && nativeAdd.gloss === "sky",
+      JSON.stringify(nativeAdd));
+    api.showAt(anchor, fake.__lookup("국민").matches, "국민");
+    await wait(30);
+    check("recent: a repeat moves to the top instead of appearing twice",
+      siteStore.recent().map(function (e) { return e.q; }).join(",") === "國民,하늘,學",
+      siteStore.recent().map(function (e) { return e.q; }).join(","));
+    var addsReading = siteStore.recentAddCalls().length;
+    api.showAt(anchor, fake.__lookup("국").matches, "국");
+    await wait(30);
+    check("recent: a reading list records nothing",
+      siteStore.recentAddCalls().length === addsReading,
+      JSON.stringify(lastRecentAdd()));
+    api.setSettings({ recentLookups: false });
+    var addsOff = siteStore.recentAddCalls().length;
+    api.showAt(anchor, fake.__lookup("국민").matches, "국민");
+    await wait(30);
+    check("recent: with the setting off, the popup sends nothing",
+      siteStore.recentAddCalls().length === addsOff);
+    api.setSettings(null);
+    siteStore.reset();
+    api.hide();
+
     api.hide();
     check("hide() clears visibility", !api.isVisible());
     } catch (e) {
