@@ -29,6 +29,12 @@ current review clears.
   changed, all from a fragment to nothing, and the fragment share fell
   to 0.41%.
 
+- **A native word at the start keeps its place.** 다음주에 (next week)
+  showed 飮酒 (drinking), 드라마같은 羅馬, 택시기사 猜忌: a hanja word
+  beginning inside the first native word won. The native word now keeps
+  its syllables, and particles after it go with it. 15 frequent subtitle
+  tokens changed, each now showing its first word.
+
 - **Particles and contractions.** With native words on, a one-syllable
   noun before a particle found nothing (집에, 돈을, 것을, 너도), nor did a
   contraction (그건, 거예요, 니가, 뭐야), and particles hid false matches
@@ -573,8 +579,9 @@ correctness" bullet of 1.1, the same way 1.1.1 folded into 1.2.
   verbs with a helper verb written without a space (살아있는, 들어봐요,
   보여주고 finds 驪州, 말해주지 海州; 왔다갔다), one-syllable hanja nouns
   before a particle (전에, 문을, 차를), the bound noun 리 (그럴리가),
-  which names like 빌리가 make unsafe, and names spelled with Sino
-  syllables only (헤일리 finds 一理, 라이언 俚言).
+  which names like 빌리가 make unsafe, names spelled with Sino syllables
+  only (헤일리 finds 一理, 라이언 俚言), and a rare hanja word at the start
+  beating a common native word (우리회사 shows 牛李 first).
 - **Keyboard shortcut for the current selection** (Chrome's commands
   API) and **per-site disable**: one settings row each plus a little
   glue, and both come up in extension reviews constantly.

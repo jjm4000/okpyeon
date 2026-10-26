@@ -5994,6 +5994,41 @@ await testAsync("unknown loanwords: a transliteration the dictionary lacks answe
   assert.ok(say("브라이언", false).hanja.includes("俚言"));
 });
 
+await testAsync("start word: a native word at the start keeps its syllables from a hanja match inside it (real data)", async () => {
+  let bundle;
+  try {
+    const rd = async (n) => JSON.parse(await readFile(join(dataDir, n), "utf8"));
+    bundle = { hanja: await rd("hanja.json"), words: await rd("words.json"),
+               variants: await rd("variants.json"), native: await rd("native.json") };
+  } catch (err) {
+    console.log(`      (skipped: data unreadable: ${err.code || err.name})`);
+    return;
+  }
+  const say = (t, native = true) => {
+    const r = lookup(t, bundle, { native });
+    return {
+      hanja: (r.matches || []).filter((m) => m.kind === "word").map((m) => m.canonical),
+      native: [...new Set((r.nativeMatches || []).map((m) => m.word))],
+    };
+  };
+  // SPEC "Start word": 다음주에 showed 飮酒 (drinking) from 음주.
+  assert.deepEqual(say("다음주에"), { hanja: [], native: ["다음"] });
+  assert.deepEqual(say("마찬가지에요"), { hanja: [], native: ["마찬가지"] });
+  assert.deepEqual(say("드라마같은").native[0], "드라마");
+  assert.ok(!say("드라마같은").hanja.includes("羅馬"));
+  assert.ok(say("택시기사").native.includes("택시"));
+  assert.ok(say("택시기사").hanja.includes("技士"));
+  assert.ok(!say("택시기사").hanja.includes("猜忌"));
+  // Particles after the start word go with it: 누구보다도 is 누구 alone.
+  assert.deepEqual(say("누구보다도"), { hanja: [], native: ["누구"] });
+  // A hanja word that starts the run still wins, and compounds hold.
+  assert.deepEqual(say("대학에서").hanja, ["大學"]);
+  assert.ok(say("나무의자").hanja.includes("椅子"));
+  assert.ok(say("나무의자").native.includes("나무"));
+  // Unflagged lookups are untouched.
+  assert.ok(say("다음주에", false).hanja.includes("飮酒"));
+});
+
 await testAsync("word parts: a tie goes to the word plus a suffix, except after a bound prefix (real data)", async () => {
   let words;
   try {

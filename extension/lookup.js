@@ -734,6 +734,8 @@ export function buildMatches(text, data, native) {
         if (second !== null) rest = second.keep || [];
         // Unknown loanwords ADDENDUM: a transliteration answers nothing.
         else if (unknownLoanword(run.chars, bundle)) rest = [];
+        // Start-word ADDENDUM: the native pass answers for a start word.
+        rest = rest.slice(startWordLength(rest, bundle));
       }
       // Rule 3b: hangul reverse lookup.
       for (const span of segmentHangulRun(rest, byHangul, maxHangulLen)) {
@@ -1244,6 +1246,44 @@ function unknownLoanword(chars, bundle) {
 }
 
 /**
+ * Start-word ADDENDUM (2026-10-25): how many syllables a native headword
+ * at the start of an unclaimed run keeps for itself, else 0. Rule 3b's
+ * spans used to be placed first and native words only filled the gaps,
+ * so a hanja word beginning inside the first native word won: 다음주에
+ * (next week) showed 飮酒 (drinking) from 음주, 마찬가지예요 讚歌. When the
+ * longest native headword at the start is shorter than the run and the
+ * first rule 3b span begins inside it, the headword keeps its syllables.
+ * A hanja word that itself starts the run still wins (대학에서 is 大學).
+ */
+function startWordLength(chars, bundle) {
+  const nativeWords = (bundle.native && bundle.native.words) || {};
+  const byHangul = (bundle.words && bundle.words.byHangul) || {};
+  const isNativeWord = (key) => usableNativeEntries(nativeWords, key).length > 0;
+  const k = anchoredLength(chars, isNativeWord, MIN_HANGUL_WORD_LEN, nativeMaxLenOf(bundle.native));
+  if (k === 0 || k >= chars.length) return 0;
+  const spans = segmentHangulRun(chars, byHangul, maxHangulLenOf(bundle.words));
+  if (!(spans.length > 0 && spans[0].start > 0 && spans[0].start < k)) return 0;
+  // What follows the start word, when it is particles only (누구보다도 is
+  // 누구 + 보다 + 도), is claimed with it, so nothing is found inside it.
+  return onlyParticles(chars.slice(k).join(""), 3) ? chars.length : k;
+}
+
+/** The start word's own length, for the native answer (startWordLength may add particles). */
+function startWordHead(chars, bundle) {
+  const nativeWords = (bundle.native && bundle.native.words) || {};
+  const isNativeWord = (key) => usableNativeEntries(nativeWords, key).length > 0;
+  return anchoredLength(chars, isNativeWord, MIN_HANGUL_WORD_LEN, nativeMaxLenOf(bundle.native));
+}
+
+/** True when `text` is up to `depth` second-pass particles and nothing else. */
+function onlyParticles(text, depth) {
+  if (text === "") return true;
+  if (depth === 0) return false;
+  return SECOND_PASS_PARTICLES.some((p) => text.endsWith(p) &&
+    onlyParticles(text.slice(0, text.length - p.length), depth - 1));
+}
+
+/**
  * The best (lowest) lemma frequency bucket among a lemma's conjugating
  * entries; absent compares as worst, the convention every f comparison here
  * follows.
@@ -1484,6 +1524,12 @@ export function buildNativeMatches(text, data) {
           // Unknown loanwords ADDENDUM: the same decision buildMatches made.
           rest = [];
         }
+        // Start-word ADDENDUM: the same decision buildMatches made.
+        const start = startWordLength(rest, bundle);
+        if (start > 0) {
+          joinNative(rest.slice(0, startWordHead(rest, bundle)).join(""));
+          rest = rest.slice(start);
+        }
       }
       // Hangul runs: rule 3b spans are authoritative where they exist; the
       // stretches between them get the native-only pass.
@@ -1620,6 +1666,8 @@ function coverageOf(hangul, data, native) {
   // Unknown loanwords ADDENDUM: a transliteration the lookup answers with
   // nothing covers nothing.
   if (native && claimed === 0 && unknownLoanword(chars, bundle)) return { covered: 0, anchored: 0 };
+  // Start-word ADDENDUM: a native start word keeps its syllables.
+  if (native && claimed === 0) claimed = startWordLength(chars, bundle);
   if (claimed > 0) intervals.push([0, claimed]);
   const spans = segmentHangulRun(chars.slice(claimed), byHangul, maxHangulLenOf(bundle.words));
 

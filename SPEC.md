@@ -3892,6 +3892,39 @@ longest-match passes find a word inside the transliteration.
   영국스타일, 컴퓨터게임, 스트레스, 테스트, 사랑스런, 유감스럽게도 and
   맹세컨대 keep their words; unflagged 브라이언 untouched).
 
+## Start word (ADDENDUM 2026-10-25, measured)
+
+Found while checking the loanword rule on compounds: 드라마같은 showed
+羅馬 (Rome, read 라마) and no 드라마; 택시기사 showed 猜忌 (시기) and no
+택시. For a run no claim covers, rule 3b's spans were placed first and
+native words only filled the gaps between them, so a hanja word
+beginning inside the run's first native word won. Over the 20,000 most
+frequent subtitle tokens this lost the start word for 19 tokens, 0.02%
+of the token mass, with answers such as 다음주에 (next week) showing 飮酒
+(drinking), 마찬가지예요 讚歌 and 혼자서는 字書.
+
+- THE RULE: on the flagged path, for a run no claim covers (after the
+  second pass and the loanword rule), when the longest native headword
+  at the start is shorter than the run and the first rule 3b span begins
+  inside it, the headword keeps its syllables. The native pass answers
+  with it, and rule 3b sees only what follows. coverageOf counts it the
+  same way.
+- When what follows is particles only, up to three from the second-pass
+  list (누구보다도 is 누구 plus 보다 plus 도), it goes with the start word
+  and nothing is found inside it.
+- A hanja word that starts the run still wins (대학에서 is 大學), and a
+  native word that ends before the first span was already found.
+- Measured: 15 of the frequent subtitle tokens change, every one now
+  showing its start word (다음주에 다음, 마찬가지에요 마찬가지, 걱정말아요
+  걱정, 장난치는 장난). Four keep a fragment from the verb ending after it
+  (혼자서도 書道, 장난치지 差池). Spot-checked compounds hold: 나무의자,
+  바다낚시, 아침식사, 엄마친구, 하루종일. A mid-word fragment alone now
+  answers 0.39% of the token mass, down from 0.41%.
+- Left: a rare hanja word at the start still beats a common native word
+  there (우리회사 shows 牛李 first, 이사람 shows 移徙).
+- Tests: node (다음주에, 마찬가지에요, 드라마같은, 택시기사, 누구보다도;
+  대학에서 and 나무의자 hold; unflagged 다음주에 untouched).
+
 ## Verification expectations
 
 - A: after build, spot-check in the output: 國 has eumhun 나라/국 and compounds;
