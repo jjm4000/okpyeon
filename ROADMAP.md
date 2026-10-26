@@ -685,6 +685,22 @@ short forms.
   provide by construction.
 - **Phonetic marker scope.** Phonetic only, never the semantic; see the
   entry above and the SPEC addendum for the rejected alternatives.
+- **The content script stays loaded on every page, measured
+  2026-10-25.** content.js is 248 KB and i18n.js 19 KB, injected into
+  every top frame at document_idle. Measured in headless Chrome on a
+  blank page with both scripts inlined (so no network time counts),
+  10 loads each: parse plus top-level run is about 2.5 ms for
+  content.js and 0.5 ms for i18n.js; at 6x CPU throttling, standing in
+  for a slow laptop, about 22 ms typical and 48 ms at worst. The
+  scripts keep about 100 KB of heap per tab after garbage collection.
+  At load they only register listeners and read the settings record
+  from local storage; no worker wakes. Lazy loading the renderer would
+  save most of that, at a price either way: a dynamic import needs
+  web_accessible_resources, which lets any page detect the extension,
+  and injection from the worker needs the scripting permission and
+  host permissions, plus a worker round trip before the first popup in
+  each tab. Kept as is. Revisit if content.js passes about 500 KB or
+  the throttled run passes 50 ms typical.
 
 ## Non-goals for now
 
