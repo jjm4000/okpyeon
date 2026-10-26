@@ -3791,6 +3791,16 @@ default.
   a v2 record, which is then respected. A user who had switched native
   words off before v2 gets them on once; that cannot be told apart from
   the default and is accepted.
+- MIGRATION (added the same day, found while measuring the content
+  script): the page popup reads the stored record itself, not through
+  the worker, and 1.4 wrote nativeWords:false into every record. Read
+  rule alone, an updated user would get native words in the sidebar but
+  not in the popup. So the worker rewrites a pre-v2 record as v2 when the
+  extension installs or updates (runtime.onInstalled), keeping every
+  other choice (language, readings toggles, default folder, Anki
+  fields). A v2 record and a missing one are left alone. The popup's
+  predicate is unchanged: it reads the stored nativeWords, and an absent
+  record reads as off until the worker writes the first one.
 - Everything native-off still exists and stays byte-identical when a
   user turns the setting off. The test harness keeps its own starting
   state (native off), which the checks are written against.

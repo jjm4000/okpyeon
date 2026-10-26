@@ -1445,8 +1445,10 @@
    * native data reaches the renderer, so no native DOM can exist.
    * -------------------------------------------------------------------- */
 
-  // The section predicate. Default OFF: an absent record, an old record and
-  // an explicit false all read the same way.
+  // The section predicate, read from the stored record itself. An absent
+  // record reads as off until the worker writes the first one. A record from
+  // before settings v2 never reaches here as such: the worker rewrites it as
+  // v2 (native words on) when the extension installs or updates.
   function nativeEnabled(settings) {
     return !!settings && settings.nativeWords === true;
   }

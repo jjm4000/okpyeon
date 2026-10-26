@@ -19,6 +19,7 @@ import {
 import {
   DEFAULT_FOLDER_ID,
   DEFAULT_FOLDER_NAME,
+  SETTINGS_VERSION,
   buildAnkiTsv,
   buildCsv,
   checkKeys,
@@ -1201,6 +1202,35 @@ export async function handleFolderDelete(id) {
       await writeSettings(area, settings);
     }
     return { ok: true, moved, settings };
+  });
+}
+
+/**
+ * Settings v2 migration (Native words on by default ADDENDUM): the record to
+ * write in place of a stored one from before v2, or null when none is
+ * needed. The page popup reads the stored record itself, not through the
+ * worker, and 1.4 wrote nativeWords:false into every record, so without the
+ * rewrite native words would stay off in the popup while the sidebar, which
+ * asks the worker, showed them on. Pure; exported for the tests.
+ */
+export function migratedSettings(raw, savedRaw) {
+  if (raw === undefined || raw === null || typeof raw !== "object") return null;
+  if (raw.v === SETTINGS_VERSION) return null;
+  return normalizeSettings(raw, savedRaw === undefined || savedRaw === null ? undefined : savedRaw);
+}
+
+/** Rewrites a pre-v2 settings record as v2, once, on install or update. */
+function migrateStoredSettings() {
+  return withStorage(async (area) => {
+    const next = migratedSettings(await readKey(area, SETTINGS_KEY), await readKey(area, SAVED_KEY));
+    if (next !== null) await writeSettings(area, next);
+    return { ok: true, migrated: next !== null };
+  });
+}
+
+if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.onInstalled) {
+  chrome.runtime.onInstalled.addListener(() => {
+    migrateStoredSettings();
   });
 }
 

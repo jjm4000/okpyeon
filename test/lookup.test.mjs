@@ -2084,6 +2084,29 @@ await testAsync("background.js imports cleanly in Node (guards hold)", async () 
   }
 });
 
+await testAsync("settings v2 migration: a pre-v2 record is rewritten once, keeping every other choice", async () => {
+  const { migratedSettings } = await import("../extension/background.js");
+  // What 1.4 stored: native words written out as false, a Korean user with
+  // Japanese readings on and a custom default folder.
+  const v1 = { v: 1, defaultFolderId: "f3", language: "ko", nativeWords: false,
+               jaReadings: true, zhReadings: false,
+               anki: { wordFront: "hangul", wordBack: ["defs"], charFront: "char", charBack: ["eumhun"] } };
+  const saved = { v: 1, folders: [{ id: "f0", name: "Saved" }, { id: "f3", name: "HSK" }], items: [] };
+  const next = migratedSettings(v1, saved);
+  assert.equal(next.v, 2);
+  assert.equal(next.nativeWords, true);
+  assert.equal(next.language, "ko");
+  assert.equal(next.jaReadings, true);
+  assert.equal(next.defaultFolderId, "f3");
+  assert.equal(next.anki.wordFront, "hangul");
+  // A v2 record, a missing record and junk need no write.
+  assert.equal(migratedSettings({ ...next, nativeWords: false }, saved), null);
+  assert.equal(migratedSettings(undefined, saved), null);
+  assert.equal(migratedSettings(null, undefined), null);
+  // Without a saved record the folder is not second-guessed.
+  assert.equal(migratedSettings(v1, undefined).defaultFolderId, "f3");
+});
+
 // --- decomposition: the worker's guard and its join ----------------------
 
 await testAsync("decomp: a missing or wrong-version file leaves an empty table", async () => {
