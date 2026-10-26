@@ -3756,6 +3756,27 @@ inside particles (엄마한테 showed 馬韓, 일이에요 showed 一二).
   keeps its card; unflagged byte-identical), and the subtitle measurement
   rerun with the before and after shares recorded in ROADMAP.md.
 
+## Native words on by default (ADDENDUM 2026-10-25, user-directed)
+
+Measured with the real lookup over the 20,000 most frequent subtitle
+tokens: with native words off (the old default), 2.5% of the token
+mass answered with only a mid-word hanja fragment, the wrong word
+outright: 이야기 showed 夜氣, 그대로 大路, 저기요 紀要, 아무도 武道,
+대해서 楷書, because the native word holding them was invisible to the
+lookup. With native words on the share is 1.3%. Jesse: turn it on by
+default.
+
+- saved.js settings v2: `nativeWords` defaults to true. A record from
+  before v2 (every record written while the default was off, first-run
+  records included, since the first run writes the defaults) reads as on
+  once; the first settings write after that stores the user's choice in
+  a v2 record, which is then respected. A user who had switched native
+  words off before v2 gets them on once; that cannot be told apart from
+  the default and is accepted.
+- Everything native-off still exists and stays byte-identical when a
+  user turns the setting off. The test harness keeps its own starting
+  state (native off), which the checks are written against.
+
 ## Verification expectations
 
 - A: after build, spot-check in the output: 國 has eumhun 나라/국 and compounds;

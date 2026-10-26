@@ -13,7 +13,9 @@
 /** Schema version of the `okpSaved` record. */
 export const SAVED_VERSION = 1;
 /** Schema version of the `okpSettings` record. */
-export const SETTINGS_VERSION = 1;
+// 2 (2026-10-25): native words default on. A record from before 2 reads
+// them as on once; the first write after that stores the user's choice.
+export const SETTINGS_VERSION = 2;
 
 /** The folder that always exists: it cannot be deleted or renamed to empty. */
 export const DEFAULT_FOLDER_ID = "f0";
@@ -43,8 +45,10 @@ export const DEFAULT_SETTINGS = Object.freeze({
   // from the browser language when no record exists yet; this is only what
   // an existing record without the field reads as.
   language: "en",
-  // Native words ADDENDUM: off is byte-identical to today on every surface.
-  nativeWords: false,
+  // Native words ADDENDUM: on by default since settings v2 (2026-10-25,
+  // Jesse's call after the default-off setup showed 夜氣 for 이야기). Off is
+  // still byte-identical to the pre-feature surfaces.
+  nativeWords: true,
   // Sibling Sino readings ADDENDUM: two independent toggles, both off is
   // byte-identical on every surface.
   jaReadings: false,
@@ -229,9 +233,12 @@ export function normalizeSettings(raw, savedState) {
     v: SETTINGS_VERSION,
     defaultFolderId,
     language: oneOf(src.language, LANGUAGES, DEFAULT_SETTINGS.language),
-    // Anything that is not literally `true` reads as off, so hand-edited junk
-    // can never switch the native surfaces on by accident.
-    nativeWords: src.nativeWords === true,
+    // A v2 record keeps its stored choice; anything older (every record
+    // written while the default was off) and anything that is not a boolean
+    // reads as the new default, on.
+    nativeWords: src.v === SETTINGS_VERSION && typeof src.nativeWords === "boolean"
+      ? src.nativeWords
+      : DEFAULT_SETTINGS.nativeWords,
     // The readings toggles read on the same rule, independently.
     jaReadings: src.jaReadings === true,
     zhReadings: src.zhReadings === true,
