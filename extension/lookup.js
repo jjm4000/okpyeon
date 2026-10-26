@@ -732,6 +732,8 @@ export function buildMatches(text, data, native) {
       if (native === true && claimed === 0) {
         const second = secondPass(run.chars, bundle);
         if (second !== null) rest = second.keep || [];
+        // Unknown loanwords ADDENDUM: a transliteration answers nothing.
+        else if (unknownLoanword(run.chars, bundle)) rest = [];
       }
       // Rule 3b: hangul reverse lookup.
       for (const span of segmentHangulRun(rest, byHangul, maxHangulLen)) {
@@ -1174,6 +1176,73 @@ function secondPass(chars, bundle) {
   return null;
 }
 
+/* ---------------------------------------------------------------------------
+ * Unknown loanwords ADDENDUM (2026-10-25): names and loanwords the
+ * dictionary lacks. 프랭크 (Frank) showed 랭크 (rank), 브라이언 (Brian)
+ * 俚言, 엘리자베스 (Elizabeth) 利子: the longest-match passes find a word
+ * inside a transliteration. These syllables are no hanja's reading and
+ * lean hard to loanwords in native.json (at least 10 loanwords, at least
+ * three times as many loanwords as native or hybrid words), so a run
+ * holding one is a transliteration unless the words found explain it.
+ * ------------------------------------------------------------------------- */
+const LOANWORD_SYLLABLES = new Set([..."스트크프카테티플페케브커션클퍼즈블콘링늄폰륨쿠텔츠펜쇼콜슈롤즘웨센램핑랜셔텐벨멘켓킹킬팅딘몬팬턴큐벤릴셀닝딩컨"]);
+
+/**
+ * Two native suffixes spell with these syllables: the 스 of -스럽다
+ * (사랑스런, 유감스럽게도) and the 컨 of -컨대 (맹세컨대). There the
+ * syllable is no loanword's.
+ */
+function isLoanwordSyllable(chars, i) {
+  const c = chars[i];
+  if (!LOANWORD_SYLLABLES.has(c)) return false;
+  const next = i + 1 < chars.length ? chars[i + 1] : "";
+  if (c === "스" && "럽러런레".includes(next) && next !== "") return false;
+  if (c === "컨" && "대데".includes(next) && next !== "") return false;
+  return true;
+}
+
+/**
+ * The covered intervals of a hangul run as the lookup answers it with no
+ * claim: rule 3b spans, and on a flagged request native words in the gaps.
+ */
+function runIntervals(chars, bundle, native) {
+  const byHangul = (bundle.words && bundle.words.byHangul) || {};
+  const intervals = [];
+  const fill = (base, end) => {
+    if (!native || end <= base) return;
+    const nativeWords = (bundle.native && bundle.native.words) || {};
+    const isNativeWord = (key) => usableNativeEntries(nativeWords, key).length > 0;
+    for (const seg of greedySegment(asItems(chars.slice(base, end)), isNativeWord, MIN_HANGUL_WORD_LEN, nativeMaxLenOf(bundle.native))) {
+      if (seg.kind === "word") intervals.push([base + seg.start, seg.length]);
+    }
+  };
+  let cursor = 0;
+  for (const span of segmentHangulRun(chars, byHangul, maxHangulLenOf(bundle.words))) {
+    fill(cursor, span.start);
+    intervals.push([span.start, span.length]);
+    cursor = span.start + span.length;
+  }
+  fill(cursor, chars.length);
+  return intervals.sort((a, b) => a[0] - b[0]);
+}
+
+/**
+ * True when a run no claim covers is an unknown loanword: it holds a
+ * loanword syllable, and the words found either leave one unexplained
+ * (프랭크: 랭크 leaves 프) or miss the run's first syllable (빈센트: 센트
+ * leaves 빈). Such a run answers nothing. 버스정류장 (버스 + 停留場) and
+ * 드라마같은 (드라마 first) keep their words.
+ */
+function unknownLoanword(chars, bundle) {
+  if (!chars.some((c, i) => isLoanwordSyllable(chars, i))) return false;
+  const covered = new Array(chars.length).fill(false);
+  for (const [start, length] of runIntervals(chars, bundle, true)) {
+    for (let i = start; i < start + length; i += 1) covered[i] = true;
+  }
+  if (!covered[0]) return true;
+  return chars.some((c, i) => isLoanwordSyllable(chars, i) && !covered[i]);
+}
+
 /**
  * The best (lowest) lemma frequency bucket among a lemma's conjugating
  * entries; absent compares as worst, the convention every f comparison here
@@ -1411,6 +1480,9 @@ export function buildNativeMatches(text, data) {
             ? entriesOf(second.word)
             : entriesWithPos(nativeWords, second.word, second.pos), undefined);
           rest = [];
+        } else if (unknownLoanword(run.chars, bundle)) {
+          // Unknown loanwords ADDENDUM: the same decision buildMatches made.
+          rest = [];
         }
       }
       // Hangul runs: rule 3b spans are authoritative where they exist; the
@@ -1545,6 +1617,9 @@ function coverageOf(hangul, data, native) {
   // Second-pass resolver ADDENDUM: a particle or contraction answer explains
   // the whole candidate, as the lookup answers it.
   if (native && claimed === 0 && secondPass(chars, bundle) !== null) claimed = chars.length;
+  // Unknown loanwords ADDENDUM: a transliteration the lookup answers with
+  // nothing covers nothing.
+  if (native && claimed === 0 && unknownLoanword(chars, bundle)) return { covered: 0, anchored: 0 };
   if (claimed > 0) intervals.push([0, claimed]);
   const spans = segmentHangulRun(chars.slice(claimed), byHangul, maxHangulLenOf(bundle.words));
 

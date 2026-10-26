@@ -5954,6 +5954,46 @@ await testAsync("bound nouns: a verb's modifier form plus 거, 것, 건, 걸 or 
   assert.ok(say("할거야", false).raw.nativeMatches === undefined);
 });
 
+await testAsync("unknown loanwords: a transliteration the dictionary lacks answers nothing (real data)", async () => {
+  let bundle;
+  try {
+    const rd = async (n) => JSON.parse(await readFile(join(dataDir, n), "utf8"));
+    bundle = { hanja: await rd("hanja.json"), words: await rd("words.json"),
+               variants: await rd("variants.json"), native: await rd("native.json") };
+  } catch (err) {
+    console.log(`      (skipped: data unreadable: ${err.code || err.name})`);
+    return;
+  }
+  const say = (t, native = true) => {
+    const r = lookup(t, bundle, { native });
+    return {
+      hanja: (r.matches || []).filter((m) => m.kind === "word").map((m) => m.canonical),
+      native: [...new Set((r.nativeMatches || []).map((m) => m.word))],
+    };
+  };
+  const nothing = { hanja: [], native: [] };
+  // SPEC "Unknown loanwords": 프랭크 showed 랭크, 브라이언 俚言, 엘리자베스 利子.
+  for (const name of ["프랭크", "프랭크가", "브라이언", "엘리자베스", "빈센트", "그레이스", "크리스토퍼", "오스카"]) {
+    assert.deepEqual(say(name), nothing, name);
+  }
+  // Words that explain every loanword syllable and the start keep their answer.
+  assert.deepEqual(say("버스정류장").hanja, ["停留場"]);
+  assert.deepEqual(say("버스정류장").native, ["버스"]);
+  assert.ok(say("스트레스해소").hanja.includes("解消"));
+  assert.ok(say("영국스타일").hanja.includes("英國"));
+  assert.deepEqual(say("영국스타일").native, ["스타일"]);
+  assert.deepEqual(say("컴퓨터게임").native, ["컴퓨터", "게임"]);
+  // Dictionary loanwords answer as before.
+  assert.deepEqual(say("스트레스").native, ["스트레스"]);
+  assert.deepEqual(say("테스트").native, ["테스트"]);
+  // The 스 of -스럽다 and the 컨 of -컨대 are suffixes, not transliteration.
+  assert.deepEqual(say("사랑스런").native, ["사랑"]);
+  assert.deepEqual(say("유감스럽게도").hanja, ["遺憾"]);
+  assert.deepEqual(say("맹세컨대").hanja, ["盟誓"]);
+  // Unflagged lookups are untouched.
+  assert.ok(say("브라이언", false).hanja.includes("俚言"));
+});
+
 await testAsync("word parts: a tie goes to the word plus a suffix, except after a bound prefix (real data)", async () => {
   let words;
   try {

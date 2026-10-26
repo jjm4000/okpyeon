@@ -20,6 +20,15 @@ current review clears.
   on the subtitle tokens: a mid-word fragment alone for 0.51% of the
   token mass, down from 0.91%.
 
+- **Names and loanwords the dictionary lacks answer nothing.** 프랭크
+  (Frank) showed 랭크 (rank), 브라이언 (Brian) 俚言, 엘리자베스 利子. A run
+  holding a syllable that only loanwords use (스, 트, 크, 프 and 51
+  more), where the words found leave that syllable or the run's start
+  unexplained, now shows no card instead of a wrong one. Compounds such
+  as 버스정류장 keep their words. Measured: 113 frequent subtitle tokens
+  changed, all from a fragment to nothing, and the fragment share fell
+  to 0.41%.
+
 - **Particles and contractions.** With native words on, a one-syllable
   noun before a particle found nothing (집에, 돈을, 것을, 너도), nor did a
   contraction (그건, 거예요, 니가, 뭐야), and particles hid false matches
@@ -563,8 +572,9 @@ correctness" bullet of 1.1, the same way 1.1.1 folded into 1.2.
   and the bound-noun claim shipped (see Since 1.4). Still unresolved:
   verbs with a helper verb written without a space (살아있는, 들어봐요,
   보여주고 finds 驪州, 말해주지 海州; 왔다갔다), one-syllable hanja nouns
-  before a particle (전에, 문을, 차를), and the bound noun 리 (그럴리가),
-  which names like 빌리가 make unsafe.
+  before a particle (전에, 문을, 차를), the bound noun 리 (그럴리가),
+  which names like 빌리가 make unsafe, and names spelled with Sino
+  syllables only (헤일리 finds 一理, 라이언 俚言).
 - **Keyboard shortcut for the current selection** (Chrome's commands
   API) and **per-site disable**: one settings row each plus a little
   glue, and both come up in extension reviews constantly.

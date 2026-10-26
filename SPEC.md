@@ -3849,6 +3849,49 @@ the verb in the form that modifies a noun (할 is 하다, 하는 is 하다).
   얘기해, 건가요, 뭐라고요, 사실이라면, 친구라면, 컵라면, 경과보고;
   unflagged untouched) and the generator's opt-in and new endings.
 
+## Unknown loanwords (ADDENDUM 2026-10-25, measured)
+
+After the bound-noun claim, the largest class of fragment answers in
+the subtitle measurement was names and loanwords the dictionary lacks:
+프랭크 (Frank) showed 랭크 (rank), 브라이언 (Brian) 俚言, 엘리자베스
+(Elizabeth) 利子, 크리스티나 크리, 빈센트 (Vincent) 센트. The
+longest-match passes find a word inside the transliteration.
+
+- LOANWORD SYLLABLES: 55 syllables that are no hanja's reading and lean
+  hard to loanwords in native.json, measured 2026-10-25: at least 10
+  loanword headwords hold the syllable, at least three times as many as
+  native and hybrid headwords together. The list, by loanword count:
+  스 트 크 프 카 테 티 플 페 케 브 커 션 클 퍼 즈 블 콘 링 늄 폰 륨 쿠
+  텔 츠 펜 쇼 콜 슈 롤 즘 웨 센 램 핑 랜 셔 텐 벨 멘 켓 킹 킬 팅 딘 몬
+  팬 턴 큐 벤 릴 셀 닝 딩 컨. Two native suffixes spell with them and do
+  not count: the 스 of -스럽다 before 럽 러 런 레 (사랑스런, 유감스럽게도)
+  and the 컨 of -컨대 before 대 데 (맹세컨대).
+- THE RULE: on the flagged path, for a hangul run that no claim covers
+  (no headword, conjugated form, bound noun or second-pass answer), the
+  words the lookup would find are worked out first: rule 3b spans, then
+  native words in the gaps, as coverageOf already does. If the run holds
+  a loanword syllable and those words either leave one unexplained
+  (프랭크: 랭크 leaves 프) or miss the run's first syllable (빈센트: 센트
+  leaves 빈), the run is a transliteration and answers nothing, hanja
+  and native alike. coverageOf counts it as covering nothing, so the
+  romanized search agrees.
+- Kept: a compound whose words explain every loanword syllable and the
+  start (버스정류장 is 버스 plus 停留場, 스트레스해소 is 스트레스 plus 解消,
+  영국스타일 is 英國 plus 스타일), and every dictionary loanword (스트레스,
+  테스트), since a claim covers those first.
+- Measured with the real lookup over the 20,000 most frequent subtitle
+  tokens: the answer changes for 113 tokens, 0.18% of the token mass,
+  all from a fragment to nothing. One lost a right answer: 번역싱크, a
+  subtitle credit, loses 飜譯 (번역) to its 싱크. A mid-word fragment alone
+  now answers 0.41% of the token mass, down from 0.51%.
+- Left: names whose syllables are all Sino readings or native-leaning
+  (헤일리 finds 一理, 라이언 俚言, 오말리 말리). A name list would be a
+  separate data source.
+- Tests: node (프랭크, 프랭크가, 브라이언, 엘리자베스, 빈센트, 그레이스,
+  크리스토퍼 and 오스카 answer nothing; 버스정류장, 스트레스해소,
+  영국스타일, 컴퓨터게임, 스트레스, 테스트, 사랑스런, 유감스럽게도 and
+  맹세컨대 keep their words; unflagged 브라이언 untouched).
+
 ## Verification expectations
 
 - A: after build, spot-check in the output: 國 has eumhun 나라/국 and compounds;
