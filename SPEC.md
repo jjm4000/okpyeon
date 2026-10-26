@@ -3142,8 +3142,10 @@ no tables of forms.
   and honorific infixes (었 았 였 겠 시 으시 셨 으셨 셔 으셔 세 으세),
   connectives (고 서 면 으면 면서 며 니 니까 려고 러 게 든 든지 거나 다가
   지만 는데 은데 ㄴ데 던데 더니 도 야 어서 아서 어야 아야 어도 아도 라고
-  다고 자고 냐고 다면 려면), adnominal and nominal endings (는 은 ㄴ 을 ㄹ
-  던 기 음 ㅁ 는지 은지 을지 ㄹ까 을까 ㄹ게 을게 ㄹ래 을래 ㄹ수록 을수록),
+  다고 자고 냐고 다면 려면, and since 2026-10-25 the colloquial 다구 냐구
+  자구 라구), adnominal and nominal endings (는 은 ㄴ 을 ㄹ 던 기 음 ㅁ 는지
+  은지 을지 ㄹ까 을까 ㄹ게 을게 ㄹ래 을래 ㄹ수록 을수록, and since
+  2026-10-25 the question endings 는가 은가 ㄴ가),
   and the imperatives 거라 너라 어라 아라 여라 으라. The jamo-initial
   endings (ㄴ다 ㄹ까 ㅂ니다 ㅁ) match as the coda of the preceding
   syllable. The kickoff's diagnosed misses (bare 요 서 야 도 after a
@@ -3776,6 +3778,76 @@ default.
 - Everything native-off still exists and stays byte-identical when a
   user turns the setting off. The test harness keeps its own starting
   state (native off), which the checks are written against.
+
+## Bound nouns after a verb form (ADDENDUM 2026-10-25, measured)
+
+Measured with the real lookup over the 20,000 most frequent subtitle
+tokens, native words on: after the second pass, 1.34% of the token mass
+answered with only a mid-word fragment. The largest class was a verb's
+modifier form plus a bound noun written without the space: 할거야,
+않을거야, 있을거야 and 하는거야 all showed 去夜 (last night), the hanja
+word inside 거야. 거 is short for 것 ("thing"), and the part in front is
+the verb in the form that modifies a noun (할 is 하다, 하는 is 하다).
+
+- BOUND-NOUN CLAIM: a hangul run that is a prefix plus a bound noun
+  plus a tail, where the prefix closes in ㄴ or ㄹ (the modifier endings)
+  and deconjugates to a verb or adjective headword, claims the whole run
+  as a form of that lemma. The card is the lemma's, with the usual note
+  ("할거야 → form of 하다"). The bound nouns and their tails:
+  - 거: 야 예요 에요 죠 지요 지 요 다 고 라고 니 냐 든 잖아, or none.
+  - 것: 이야 이다 입니다 이에요 이죠 이지 이고 이라고 은 을 이 도 만,
+    or none.
+  - 건 (것은, 것인): 가요 가 데 데요 지 지도, or none (하는건가요, 할건데).
+  - 걸 (것을): 요, or none (하는걸). 게 (것이): none (하는게).
+- Order: the whole run as a conjugated form first, then the bound-noun
+  claim, then the run minus its last syllable. The bound-noun claim
+  covers the whole run, so it goes before the shorter try (하는걸 is
+  하는걸, not 하는 plus a stray 걸).
+- A word wins: when a native headword or an attested hanja word
+  anchored at the first syllable reaches the bound noun, the claim
+  stands down. 선거야 is 選擧 (election) plus 야, never 서다's 선 plus
+  거야; 근거야 is 根據. Scanned over every words.json and native.json key
+  ending in 거 or 것 after an ㄴ or ㄹ syllable: one rare word (一擧 in
+  일거라고) yields to a verb form.
+- The generator gains a one-syllable opt-in (`minSyllables: 1`) for the
+  prefix only, since 할 and 될 are one syllable. Its default floor of two
+  syllables stays: a lone syllable selected on a page is still the
+  reading browse.
+- A run that is a bare 건 or 걸 plus one of its tails (건가요, 건데, 걸요)
+  is 것, answered by the second pass. The generator would read 건가요 as
+  걸다 ("to hang") plus ㄴ가요, which is far rarer.
+- Also found in the same measurement and fixed the same way:
+  - The question ending ㄴ가 (아닌가요, 그런가) and the colloquial 다구
+    (있다구요) join the generator's inventory, as listed in the
+    Deconjugation section. Recall over the Wiktionary tables is
+    unchanged at 99.90%; the share of hanja keys that deconjugate went
+    from 3.52% to 3.58%, inside the 4% ceiling.
+  - A contracted lemma head: 얘기해 deconjugates to 얘기하다, which the
+    dictionary holds as 이야기하다; the claim answers 이야기하다. Was 己亥.
+  - Second-pass tails after a contracted base: 라고요 라구요 냐고요 라구
+    냐고 래요 래 데요 고요 (뭐라고요 was 고요), and 뭔가 as a base and a
+    whole run (뭔가가 is 무엇, was 假家).
+  - Second-pass copula endings: 인지 인가요 인데요 이라면 이라고 이라서
+    이라도 이라는 이니까 이지만 이었다 이었어 이었고 이잖아 (사실이라면 is
+    事實, no 라면). The forms that drop the 이 (라면 라고 라서 라도 라는
+    니까 지만 였다 였어 였고 잖아) follow a vowel only, as the copula does:
+    친구라면 is 親舊, and 컵라면 keeps its 라면.
+  - Second-pass particles, contracted or stacked: 에겐 한텐 에선 으론
+    에게도 한테도 에서도 까지도 에게는 한테는 에서는 으로는 으로도
+    (나에겐 is 나). 보고 and 이서 come off a one-syllable word only (나보고
+    is 나, 둘이서 is 둘), so 경과보고 keeps 報告.
+- Measured after: a mid-word fragment alone for 0.51% of the token
+  mass, counting a contraction answer (거예요 is 것) as a whole answer;
+  the same count before this change was 0.91%. What remains is mostly
+  loanwords and names (프랭크 finds 랭크, 브라이언 俚言) and verbs with a
+  helper verb written without the space (보여주고 finds 驪州, 말해주지
+  海州), both separate items.
+- Left out: the bound noun 리 (그럴리가). Names such as 빌리가 and 찰리가
+  (Billy, Charlie plus 가) would read as 빌다 and 차다.
+- Tests: node (each bound-noun case answers its lemma with the whole run
+  as the form and no hanja; 선거야 and 근거야 keep their words; 아닌가요,
+  얘기해, 건가요, 뭐라고요, 사실이라면, 친구라면, 컵라면, 경과보고;
+  unflagged untouched) and the generator's opt-in and new endings.
 
 ## Verification expectations
 

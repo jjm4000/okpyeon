@@ -32,8 +32,9 @@
  * surface itself, ordered by restoration cost, then by how much of the
  * surface the reading explains as endings, then by generation order,
  * truncated to DECONJUGATE_CAP.
- * Empty for input under two syllables or containing anything that is not
- * a precomposed hangul syllable.
+ * Empty for input under two syllables (one, when the caller passes
+ * { minSyllables: 1 }) or containing anything that is not a precomposed
+ * hangul syllable.
  *
  * Exported surface: deconjugate, DECONJUGATE_CAP. No chrome.* usage, no
  * data files, no imports.
@@ -79,9 +80,9 @@ const ENDINGS_RAW = `
 고 고요 고서 면 으면 면서 으면서 며 으며 니 으니 니까 으니까 려고 으려고 러 으러 게 든
 든지 거나 다가 다 다고 는다 ㄴ다 는다고 ㄴ다고 는데 은데 ㄴ데 던데 는 은 ㄴ 을 ㄹ 던
 을까 ㄹ까 을까요 ㄹ까요 을게 ㄹ게 을게요 ㄹ게요 을래 ㄹ래 을래요 ㄹ래요 을수록 ㄹ수록
-는지 은지 ㄴ지 을지 ㄹ지 기 음 ㅁ 나 나요 냐 느냐 으냐 소 오 우 구려 십니다 십니까
+는지 은지 ㄴ지 을지 ㄹ지 는가 은가 ㄴ가 기 음 ㅁ 나 나요 냐 느냐 으냐 소 오 우 구려 십니다 십니까
 시 으시 셨 으셨 세 으세 셔 으셔 려 으려 려면 으려면 더라 더군 더니 던지 대 다면
-다면서 냐고 자고 라고 으라고 요 서 야 도
+다면서 냐고 자고 라고 으라고 다구 냐구 자구 라구 요 서 야 도
 `.split(/\s+/).filter(Boolean);
 
 // Longest first so 습니다 is tried before 다. Array.prototype.sort is stable,
@@ -324,8 +325,13 @@ export const DECONJUGATE_CAP = 64;
  * explains no ending, yet it must stay a candidate, because a vowel-final
  * stem is its own infinitive (나가 is 나가 + 아, and 나가다 is the lemma).
  */
-export function deconjugate(surface) {
-  if (typeof surface !== "string" || surface.length < 2) return [];
+export function deconjugate(surface, opts) {
+  // The two-syllable floor keeps a lone syllable in the reading-browse
+  // channel. One caller opts out (bound-noun ADDENDUM, 2026-10-25): the
+  // modifier form in front of 거 (할거야) is often one syllable, and there it
+  // is part of a longer run, never a selection on its own.
+  const floor = opts && opts.minSyllables === 1 ? 1 : 2;
+  if (typeof surface !== "string" || surface.length < floor) return [];
   for (const ch of surface) {
     if (!isSyllable(ch)) return [];
   }

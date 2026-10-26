@@ -43,9 +43,10 @@ typing `hj` in the address bar searches from anywhere.
 - **Native words.** Native Korean words show nothing rather than a forced
   match. A native word that shares its sound with an obscure hanja spelling
   (사랑 and 舍廊) is labelled a rare homograph, not the word's origin.
-- **Native Korean words (optional).** One setting adds native words as
-  their own cards and an All words search scope, making Okpyeon a
-  dictionary of all Korean.
+- **Native Korean words.** Native words get their own cards and an All
+  words search scope, making Okpyeon a dictionary of all Korean. A
+  conjugated form opens its dictionary form: 먹었어 is a form of 먹다,
+  and 할거야 of 하다. One setting turns native words off.
 - **Japanese and Chinese readings (optional).** Two settings add each
   character's on'yomi and pinyin beside its Korean reading: 學 is 학 in
   Korean, ガク in Japanese, xué in Mandarin.

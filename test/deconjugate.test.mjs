@@ -59,6 +59,10 @@ async function testAsync(name, fn) {
 
 const includes = (form, lemma) =>
   assert.ok(deconjugate(form).includes(lemma), `${form} must propose ${lemma}: ${deconjugate(form).join(" ")}`);
+const includes2 = (form, lemma) => {
+  const out = deconjugate(form, { minSyllables: 1 });
+  assert.ok(out.includes(lemma), `${form} (one-syllable opt-in) must propose ${lemma}: ${out.join(" ")}`);
+};
 const excludes = (form, lemma) =>
   assert.ok(!deconjugate(form).includes(lemma), `${form} must not propose ${lemma}`);
 
@@ -127,6 +131,23 @@ test("length floor and script: 가, 먹, abc return []", () => {
   assert.deepEqual(deconjugate("abc"), []);
   assert.deepEqual(deconjugate("먹었a"), []);
   assert.deepEqual(deconjugate(""), []);
+});
+
+test("one-syllable opt-in: 할 and 될 deconjugate only when the caller asks", () => {
+  // Bound-noun ADDENDUM (2026-10-25): the modifier form before 거 (할거야).
+  assert.deepEqual(deconjugate("할"), []);
+  includes2("할", "하다");
+  includes2("될", "되다");
+  includes2("하는", "하다");
+  assert.deepEqual(deconjugate("abc", { minSyllables: 1 }), []);
+  assert.deepEqual(deconjugate("", { minSyllables: 1 }), []);
+});
+
+test("the ㄴ가 question ending and the colloquial 다구: 아닌가요, 그런가, 있다구요", () => {
+  includes("아닌가요", "아니다");
+  includes("그런가", "그렇다");
+  includes("하는가", "하다");
+  includes("있다구요", "있다");
 });
 
 test("the surface itself is never returned", () => {

@@ -6,6 +6,20 @@ current review clears.
 
 ## Since 1.4: merged on main, not yet released
 
+- **Native words on by default.** With native words off, 2.5% of the
+  frequent subtitle token mass answered with a hanja fragment from
+  inside a native word (이야기 showed 夜氣, 그대로 大路). Settings v2
+  turns them on; one setting still turns them off.
+
+- **A verb form plus 거야 is that verb.** 할거야, 않을거야 and 하는거야
+  showed 去夜 (last night), the hanja word inside 거야. A verb's modifier
+  form plus the bound noun 거, 것, 건, 걸 or 게 now opens the verb, with
+  the note "할거야 → form of 하다". The same round added the ㄴ가 question
+  ending (아닌가요), 얘기해 as a form of 이야기하다, and more copula
+  endings and particles (사실이라면 is 事實 alone, 나에겐 is 나). Measured
+  on the subtitle tokens: a mid-word fragment alone for 0.51% of the
+  token mass, down from 0.91%.
+
 - **Particles and contractions.** With native words on, a one-syllable
   noun before a particle found nothing (집에, 돈을, 것을, 너도), nor did a
   contraction (그건, 거예요, 니가, 뭐야), and particles hid false matches
@@ -546,12 +560,11 @@ correctness" bullet of 1.1, the same way 1.1.1 folded into 1.2.
   and the note line already has the slot. A settings toggle was
   considered and rejected: it would not lower the cost of the table.
 - **What the second pass leaves.** The particle and contraction pass
-  shipped (see Since 1.4). Still unresolved: compound verb forms written
-  without a space (살아있는, 들어봐요, 왔다갔다; 0.07% of subtitle mass),
-  bound-noun constructions after a verb form (하는거야 finds 去夜),
-  one-syllable hanja nouns before a particle (전에, 문을, 차를), and the
-  longest-match passes finding fragments inside loanwords and verb endings
-  (크리스토퍼 finds 크리, 사실이라면 adds 라면).
+  and the bound-noun claim shipped (see Since 1.4). Still unresolved:
+  verbs with a helper verb written without a space (살아있는, 들어봐요,
+  보여주고 finds 驪州, 말해주지 海州; 왔다갔다), one-syllable hanja nouns
+  before a particle (전에, 문을, 차를), and the bound noun 리 (그럴리가),
+  which names like 빌리가 make unsafe.
 - **Keyboard shortcut for the current selection** (Chrome's commands
   API) and **per-site disable**: one settings row each plus a little
   glue, and both come up in extension reviews constantly.

@@ -5897,6 +5897,63 @@ await testAsync("second pass: particles and contractions resolve to the word und
   assert.ok(say("엄마한테", false).raw.nativeMatches === undefined);
 });
 
+await testAsync("bound nouns: a verb's modifier form plus 거, 것, 건, 걸 or 게 is that verb (real data)", async () => {
+  let bundle;
+  try {
+    const rd = async (n) => JSON.parse(await readFile(join(dataDir, n), "utf8"));
+    bundle = { hanja: await rd("hanja.json"), words: await rd("words.json"),
+               variants: await rd("variants.json"), native: await rd("native.json") };
+  } catch (err) {
+    console.log(`      (skipped: data unreadable: ${err.code || err.name})`);
+    return;
+  }
+  const say = (t, native = true) => {
+    const r = lookup(t, bundle, { native });
+    return {
+      hanja: (r.matches || []).filter((m) => m.kind === "word").map((m) => m.canonical),
+      native: [...new Set((r.nativeMatches || []).map((m) => m.word))],
+      forms: [...new Set((r.nativeMatches || []).filter((m) => m.form).map((m) => m.form))],
+      raw: r,
+    };
+  };
+  // SPEC "Bound nouns after a verb form": 할거야 was 去夜.
+  for (const [run, lemma] of [["할거야", "하다"], ["않을거야", "않다"], ["있을거야", "있다"],
+      ["될거야", "되다"], ["하는거야", "하다"], ["할거예요", "하다"], ["하는것이다", "하다"],
+      ["하는건가요", "하다"], ["할건데", "하다"], ["하는걸", "하다"], ["하는게", "하다"]]) {
+    const r = say(run);
+    assert.deepEqual(r.hanja, [], `${run}: ${r.hanja.join(" ")}`);
+    assert.ok(r.native.includes(lemma), `${run} must answer ${lemma}: ${r.native.join(" ")}`);
+    assert.deepEqual(r.forms, [run], `${run}: the note names the whole run`);
+  }
+  // A word that reaches the bound noun keeps its card: 선거야 is 選擧 plus 야.
+  assert.ok(say("선거야").hanja.includes("選擧"));
+  assert.deepEqual(say("선거야").forms, []);
+  assert.ok(say("근거야").hanja.includes("根據"));
+  // The ㄴ가 question ending (generator) and a contracted lemma head.
+  assert.ok(say("아닌가요").native.includes("아니다"));
+  assert.deepEqual(say("아닌가요").hanja, []);
+  assert.deepEqual(say("얘기해").native, ["이야기하다"]);
+  assert.deepEqual(say("얘기해").hanja, []);
+  // Bare 건 and 걸 plus an ending are 것, not 걸다.
+  assert.deepEqual(say("건가요").native, ["것"]);
+  assert.deepEqual(say("건데").native, ["것"]);
+  // More contractions and copula endings.
+  assert.deepEqual(say("뭐라고요").native, ["무엇"]);
+  assert.deepEqual(say("뭔가가").native, ["무엇"]);
+  assert.deepEqual(say("사실이라면").hanja, ["事實"]);
+  assert.deepEqual(say("사실이라면").native, []);
+  assert.deepEqual(say("말인지").native, ["말"]);
+  assert.deepEqual(say("친구라면").hanja, ["親舊"]);
+  assert.deepEqual(say("나에겐").native, ["나"]);
+  assert.deepEqual(say("둘이서").native, ["둘"]);
+  // The 이-less copula forms follow a vowel only: 컵라면 keeps its 라면.
+  assert.ok(say("컵라면").native.includes("라면"));
+  // 보고 comes off a one-syllable word only: 경과보고 keeps 報告.
+  assert.ok(say("경과보고").hanja.includes("報告"));
+  // Unflagged lookups never run it.
+  assert.ok(say("할거야", false).raw.nativeMatches === undefined);
+});
+
 await testAsync("word parts: a tie goes to the word plus a suffix, except after a bound prefix (real data)", async () => {
   let words;
   try {

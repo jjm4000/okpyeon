@@ -958,17 +958,90 @@ function deconjugatedClaim(chars, bundle) {
   const sinoLen = anchoredLength(chars, isAttestedSinoWord, MIN_HANGUL_WORD_LEN, maxHangulLenOf(bundle.words));
   const blocked = Math.max(nativeLen, sinoLen);
 
-  const lengths = [chars.length];
-  if (chars.length - 1 >= MIN_HANGUL_WORD_LEN) lengths.push(chars.length - 1);
-  for (const length of lengths) {
-    if (length <= blocked) return none;
+  // Bound-noun ADDENDUM: a run that is 건 or 걸 plus an ending is 것 (건가요
+  // is 것인가요), which the second pass answers; 걸다's 건가요 is far rarer.
+  if (hasOwn(TAIL_ONLY_CONTRACTIONS, chars[0]) &&
+      BOUND_NOUN_TAILS[chars[0]].includes(chars.slice(1).join(""))) {
+    return none;
+  }
+
+  // The whole run, then the whole run as a modifier form plus a bound noun
+  // (할거야), then the run minus its last syllable.
+  const tryForm = (length) => {
     const form = chars.slice(0, length).join("");
-    const lemmas = deconjugateMemoized(form).filter(
-      (lemma) => conjugatingEntries(nativeWords, lemma).length > 0
-    );
-    if (lemmas.length > 0) return { length, lemmas };
+    const lemmas = dictionaryLemmas(deconjugateMemoized(form), nativeWords);
+    return lemmas.length > 0 ? { length, lemmas } : null;
+  };
+  if (chars.length > blocked) {
+    const whole = tryForm(chars.length);
+    if (whole !== null) return whole;
+  }
+  const bound = boundNounClaim(chars, nativeWords, blocked);
+  if (bound !== null) return bound;
+  if (chars.length - 1 >= MIN_HANGUL_WORD_LEN && chars.length - 1 > blocked) {
+    const shorter = tryForm(chars.length - 1);
+    if (shorter !== null) return shorter;
   }
   return none;
+}
+
+/**
+ * Bound-noun ADDENDUM (2026-10-25): 할거야 is 하다 in its modifier form (할)
+ * plus the bound noun 거, short for 것, plus the copula 야. Written without
+ * the space (할 거야), the run found 去夜 inside 거야. When a run ends in 거 or
+ * 것 plus one of these tails, and the part in front closes in ㄴ or ㄹ (the
+ * modifier endings: 할, 될, 하는, 같은, 있을) and deconjugates to a lemma,
+ * the run claims that lemma, so the card reads "할거야 → form of 하다".
+ * A word anchored at the first syllable that reaches the bound noun wins:
+ * 선거야 is 選擧 plus 야, never 서다's 선 plus 거야.
+ */
+const BOUND_NOUN_TAILS = {
+  거: ["잖아", "라고", "예요", "에요", "지요", "야", "죠", "지", "요", "다", "고", "니", "냐", "든", ""],
+  것: ["입니다", "이에요", "이라고", "이야", "이다", "이죠", "이지", "이고", "은", "을", "이", "도", "만", ""],
+  // 건 is 것은 or 것인 (하는건가요, 할건데), 걸 is 것을 (하는걸), 게 is 것이 (하는게).
+  건: ["가요", "데요", "지도", "가", "데", "지", ""],
+  걸: ["요", ""],
+  게: [""],
+};
+
+function boundNounClaim(chars, nativeWords, blocked) {
+  const run = chars.join("");
+  for (const noun of Object.keys(BOUND_NOUN_TAILS)) {
+    for (const tail of BOUND_NOUN_TAILS[noun]) {
+      const end = noun + tail;
+      if (!run.endsWith(end) || run.length <= end.length) continue;
+      const prefix = run.slice(0, run.length - end.length);
+      if (blocked > prefix.length) continue;
+      const last = prefix.codePointAt(prefix.length - 1) - 0xac00;
+      const coda = last >= 0 && last < 11172 ? last % 28 : -1;
+      if (coda !== 4 && coda !== 8) continue;   // ㄴ and ㄹ
+      const lemmas = dictionaryLemmas(deconjugate(prefix, { minSyllables: 1 }), nativeWords);
+      if (lemmas.length > 0) return { length: chars.length, lemmas };
+    }
+  }
+  return null;
+}
+
+/**
+ * Contracted lemma heads (bound-noun ADDENDUM): 얘기해 deconjugates to
+ * 얘기하다, which the dictionary holds as 이야기하다.
+ */
+const LEMMA_CONTRACTIONS = { 얘기: "이야기" };
+
+/** The candidates the dictionary holds as verbs or adjectives, contractions expanded. */
+function dictionaryLemmas(candidates, nativeWords) {
+  const out = [];
+  for (const candidate of candidates) {
+    let lemma = candidate;
+    if (conjugatingEntries(nativeWords, lemma).length === 0) {
+      const head = Object.keys(LEMMA_CONTRACTIONS).find((h) => lemma.startsWith(h) && lemma.length > h.length + 1);
+      if (head === undefined) continue;
+      lemma = LEMMA_CONTRACTIONS[head] + lemma.slice(head.length);
+      if (conjugatingEntries(nativeWords, lemma).length === 0) continue;
+    }
+    if (!out.includes(lemma)) out.push(lemma);
+  }
+  return out;
 }
 
 /** How many syllables of a hangul run a conjugated form claims, else 0. */
@@ -995,21 +1068,47 @@ const SECOND_PASS_PARTICLES = [
   "이야", "이에요", "예요", "이죠", "이지", "이고", "이란", "이며", "이면", "께서",
   "에는", "에도", "에만", "들이", "들은", "들을", "들의", "들도", "들과", "들로",
   "들에", "들만", "입니다", "인가", "인데", "이네", "이다",
+  // Bound-noun ADDENDUM (2026-10-25): more copula endings (사실이라면, 말인지).
+  "인지", "인가요", "인데요", "이라면", "이라고", "이라서", "이라도", "이라는",
+  "이니까", "이지만", "이었다", "이었어", "이었고", "이잖아",
+  "라면", "라고", "라서", "라도", "라는", "니까", "지만", "였다", "였어", "였고", "잖아",
+  "보고", "이서",
+  // Contracted and stacked particles (나에겐, 아무한테도, 학교에선).
+  "에겐", "한텐", "에선", "으론", "에게도", "한테도", "에서도", "까지도", "에게는", "한테는",
+  "에서는", "으로는", "으로도",
   "이", "가", "은", "는", "을", "를", "에", "의", "도", "와", "과", "로", "만", "야",
   "랑", "나", "들",
 ].sort((a, b) => b.length - a.length);
 
+/** Copula endings that drop the 이 and so follow a vowel only (친구라면, never 컵라면). */
+const AFTER_VOWEL_ONLY = new Set(["라면", "라고", "라서", "라도", "라는", "니까", "지만", "였다", "였어", "였고", "잖아"]);
+
+/** Particles taken off a one-syllable word only (나보고, 둘이서), never a longer one. */
+const AFTER_ONE_SYLLABLE_ONLY = new Set(["보고", "이서"]);
+
+/** True when the last syllable of `text` closes in a consonant. */
+function endsInCoda(text) {
+  const cp = text.codePointAt(text.length - 1) - 0xac00;
+  return cp >= 0 && cp < 11172 && cp % 28 !== 0;
+}
+
 /** Whole-run contractions: the run is the full form plus a fused particle. */
 const WHOLE_CONTRACTIONS = {
   그건: "그것", 그걸: "그것", 이건: "이것", 이걸: "이것", 저건: "저것", 저걸: "저것",
-  얘기: "이야기",
+  얘기: "이야기", 뭔가: "무엇",
 };
 
 /** Contracted remainders before a particle: 거예요 is 것 + 이에요. */
-const BASE_CONTRACTIONS = { 거: "것", 뭐: "무엇", 뭔: "무엇", 얘기: "이야기", 제: "저", 내: "나", 네: "너", 니: "너" };
+const BASE_CONTRACTIONS = { 거: "것", 뭐: "무엇", 뭔: "무엇", 뭔가: "무엇", 얘기: "이야기", 제: "저", 내: "나", 네: "너", 니: "너" };
+
+/** Bases that take only the endings below, never a particle: 건가요, 건데, 걸요. */
+const TAIL_ONLY_CONTRACTIONS = { 건: "것", 걸: "것" };
 
 /** Endings a contracted base takes besides the particles: 거죠, 뭐지, 뭔데. */
-const BASE_CONTRACTION_TAILS = ["라고", "가요", "에요", "예요", "죠", "요", "다", "고", "지", "든", "게", "데", "가"];
+const BASE_CONTRACTION_TAILS = [
+  "라고요", "라구요", "냐고요", "라고", "라구", "냐고", "래요", "가요", "데요", "에요", "예요",
+  "고요", "래", "죠", "요", "다", "고", "지", "든", "게", "데", "가",
+];
 
 /** POS a one-syllable remainder may answer with. */
 const SECOND_PASS_SINGLE_POS = new Set(["noun", "pron", "num"]);
@@ -1046,14 +1145,17 @@ function secondPass(chars, bundle) {
   for (const tail of BASE_CONTRACTION_TAILS) {
     if (!run.endsWith(tail) || run.length <= tail.length) continue;
     const base = run.slice(0, run.length - tail.length);
-    if (hasOwn(BASE_CONTRACTIONS, base) &&
-        usableNativeEntries(nativeWords, BASE_CONTRACTIONS[base]).length > 0) {
-      return { word: BASE_CONTRACTIONS[base], pos: SECOND_PASS_SINGLE_POS };
+    const full = hasOwn(BASE_CONTRACTIONS, base) ? BASE_CONTRACTIONS[base]
+      : hasOwn(TAIL_ONLY_CONTRACTIONS, base) ? TAIL_ONLY_CONTRACTIONS[base] : null;
+    if (full !== null && usableNativeEntries(nativeWords, full).length > 0) {
+      return { word: full, pos: SECOND_PASS_SINGLE_POS };
     }
   }
   for (const particle of SECOND_PASS_PARTICLES) {
     if (!run.endsWith(particle) || run.length <= particle.length) continue;
     const rest = run.slice(0, run.length - particle.length);
+    if (AFTER_VOWEL_ONLY.has(particle) && endsInCoda(rest)) continue;
+    if (AFTER_ONE_SYLLABLE_ONLY.has(particle) && [...rest].length !== 1) continue;
     if (hasOwn(BASE_CONTRACTIONS, rest) &&
         usableNativeEntries(nativeWords, BASE_CONTRACTIONS[rest]).length > 0) {
       return { word: BASE_CONTRACTIONS[rest], pos: SECOND_PASS_SINGLE_POS };
