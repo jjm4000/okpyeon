@@ -54,7 +54,8 @@ current review clears.
   re-implement every lookup rule by hand, so each feature was written
   twice. The fixture is now one shared file that answers through the
   shipped lookup.js and background.js (860 lines of copies gone), which
-  is how the component-word bug surfaced.
+  is how the component-word bug surfaced. The saved-words store and the
+  Anki and CSV exports answer through the shipped saved.js too.
 
 - **Readings follow the card; school characters get their 훈음.**
   Selecting 데 listed 大 待 臺 袋, because characters' reading lists

@@ -1060,8 +1060,9 @@ function writeSettings(area, settings) {
 /**
  * Shallow patch merge, one level deep through `anki` so a settings control can
  * send `{anki:{wordFront:"hangul"}}` without resetting its sibling fields.
+ * Pure; exported for the test fixture, which answers through it.
  */
-function mergeSettings(settings, patch) {
+export function mergeSettings(settings, patch) {
   const src = patch !== null && typeof patch === "object" ? patch : {};
   const anki = src.anki !== null && typeof src.anki === "object" ? src.anki : {};
   return { ...settings, ...src, anki: { ...settings.anki, ...anki } };
@@ -1069,9 +1070,10 @@ function mergeSettings(settings, patch) {
 
 /**
  * Export filename, dated by the worker: okpyeon-anki-YYYYMMDD.txt for the Anki
- * file, okpyeon-saved-YYYYMMDD.csv for the spreadsheet.
+ * file, okpyeon-saved-YYYYMMDD.csv for the spreadsheet. Pure; exported for
+ * the test fixture, which passes a fixed date.
  */
-function exportFilename(format, date = new Date()) {
+export function exportFilename(format, date = new Date()) {
   const pad = (n) => String(n).padStart(2, "0");
   const stamp = `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}`;
   return format === "csv" ? `okpyeon-saved-${stamp}.csv` : `okpyeon-anki-${stamp}.txt`;

@@ -560,8 +560,9 @@
   var real = null;
   var ready = Promise.all([
     import("../extension/lookup.js"),
-    import("../extension/background.js")
-  ]).then(function (mods) { real = { L: mods[0], B: mods[1] }; });
+    import("../extension/background.js"),
+    import("../extension/saved.js")
+  ]).then(function (mods) { real = { L: mods[0], B: mods[1], S: mods[2] }; });
 
   function needReal() {
     if (!real) {
@@ -630,8 +631,10 @@
    * Reachable from the checks as __hanjaHoverTestRuntime.__savedStore.
    * ------------------------------------------------------------------ */
 
-  // Fixed stamp, so an export body is byte-stable across runs.
+  // Fixed stamps, so an export body and its filename are byte-stable
+  // across runs (the worker stamps Date.now() and dates the file today).
   var SAVED_ADDED_AT = Date.UTC(2026, 7, 17);
+  var SAVED_EXPORT_DATE = new Date(2026, 7, 17);
 
   var SAVED_TYPES = {
     savedGet: 1, savedToggle: 1, savedCheck: 1, savedRemove: 1, savedMove: 1,
@@ -639,21 +642,24 @@
     settingsGet: 1, settingsSet: 1, savedExport: 1
   };
 
-  var SAVED_CSV_COLUMNS = [
-    "kind", "key", "hangul", "eumhun", "readings", "definitions",
-    "level", "japanese", "chinese", "folder", "added"
-  ];
-
-  var saved, settings, savedCheckCalls, savedLastCheckKeys, savedFail;
+  // Test harness ADDENDUM (2026-10-25): every answer below goes through
+  // extension/saved.js, the module the worker's handlers are glue around:
+  // normalize on read, the state change, the join, the export body. What
+  // stays here is that glue, with two in-memory records standing in for
+  // chrome.storage.local. Until 2026-10-25 this block re-implemented the
+  // store, the join and both exporters by hand.
+  var savedRecord, settingsRecord, savedCheckCalls, savedLastCheckKeys, savedFail;
   var savedLastGetKo = null;   // whether the last savedGet carried ko:true
 
   function resetSaved() {
-    saved = {
+    savedRecord = {
       v: 1, folders: [{ id: "f0", name: "Saved" }], items: [],
       nextFolder: 1, nextItem: 0
     };
-    settings = {
-      v: 1, defaultFolderId: "f0",
+    // A v2 record with native words off: the starting state every check was
+    // written against (the product default is on since settings v2).
+    settingsRecord = {
+      v: 2, defaultFolderId: "f0", nativeWords: false,
       anki: {
         wordFront: "hanja", wordBack: ["hangul", "defs"],
         charFront: "char", charBack: ["eumhun", "defs"]
@@ -665,183 +671,29 @@
   }
   resetSaved();
 
-  // SPEC's map key for one identity: "c:<glyph>" / "w:<spelling>".
-  function savedKey(kind, key) { return (kind === "char" ? "c" : "w") + ":" + key; }
+  function savedLib() { return needReal().S; }
 
-  function folderById(id) {
-    for (var fi = 0; fi < saved.folders.length; fi++) {
-      if (saved.folders[fi].id === id) return saved.folders[fi];
-    }
-    return null;
-  }
+  // The worker's readSaved and readSettings: normalized on every read.
+  function readSaved() { return savedLib().normalizeSavedState(savedRecord); }
+  function readSettings(state) { return savedLib().normalizeSettings(settingsRecord, state); }
 
-  function foldersCopy() {
-    return saved.folders.map(function (f) { return { id: f.id, name: f.name }; });
-  }
-
-  function itemCopy(item) {
-    return {
-      id: item.id, kind: item.kind, key: item.key,
-      folderId: item.folderId, addedAt: item.addedAt
-    };
-  }
-
-  function settingsCopy() {
-    return {
-      v: settings.v, defaultFolderId: settings.defaultFolderId,
-      language: settings.language,
-      anki: {
-        wordFront: settings.anki.wordFront,
-        wordBack: settings.anki.wordBack.slice(),
-        charFront: settings.anki.charFront,
-        charBack: settings.anki.charBack.slice()
-      }
-    };
-  }
-
-  // The read-time join. An item whose entry has left the dictionary becomes a
-  // {missing:true} row rather than vanishing — the saved view says so and the
-  // exporter skips and counts it.
-  function joinSaved(items, withSino, withKo) {
-    // The export's Korean join reads the table once per export, and ONLY
-    // when the caller opened the gate (savedExport under 한국어 with a
-    // definitions field in play).
-    if (withKo) koReads++;
-    return items.map(function (item) {
-      var row = itemCopy(item);
-      if (item.kind === "char") {
-        var c = CHARS[item.key];
-        if (!c) { row.missing = true; return row; }
-        row.eumhun = c.eumhun || [];
-        row.readings = c.readings || [];
-        row.glosses = c.glosses || [];
-        if (c.lvl) row.lvl = c.lvl;
-        // The export's sino join: the entry rides whole, and ONLY when the
-        // caller opened the gate (savedExport with a ja/zh charBack field).
-        if (withSino && SINO[item.key]) row.sino = SINO[item.key];
-        if (withKo && KO.chars[item.key]) row.ko = KO.chars[item.key];
-        return row;
-      }
-      var senses = WORDS[item.key];
-      if (!senses || !senses.length) { row.missing = true; return row; }
-      row.hangul = senses[0].hangul || "";
-      var glosses = [];
-      senses.forEach(function (s) {
-        (s.glosses || []).forEach(function (g) {
-          if (g && glosses.indexOf(g) < 0) glosses.push(g);
-        });
-      });
-      row.glosses = glosses;
-      if (senses.every(function (s) { return s.rare === true; })) row.rare = true;
-      if (senses.every(function (s) { return s.lessCommon === true; })) row.lessCommon = true;
-      if (withKo && KO.words[item.key]) row.ko = KO.words[item.key];
-      return row;
-    });
-  }
-
-  function numberedDefs(glosses) {
-    return (glosses || []).filter(Boolean).map(function (g, i) {
-      return (i + 1) + ". " + g;
-    }).join("; ");
-  }
-
-  // The definitions field is what the card shows: the Korean senses joined
-  // with " / " when the row carries an entry, the English definitions
-  // otherwise (saved.js's definitionsText).
-  function definitionsText(row) {
-    var senses = row.ko && row.ko.d ? row.ko.d.filter(Boolean) : [];
-    return senses.length ? senses.join(" / ") : numberedDefs(row.glosses);
-  }
-
-  function savedField(row, token) {
-    if (token === "hanja" || token === "char" || token === "key") return row.key || "";
-    if (token === "hangul") return row.hangul || "";
-    if (token === "eumhun") {
-      return (row.eumhun || []).map(function (e) {
-        return ((e.hun || "") + " " + (e.eum || "")).trim();
-      }).filter(Boolean).join(", ");
-    }
-    if (token === "readings") return (row.readings || []).filter(Boolean).join(", ");
-    if (token === "defs") return definitionsText(row);
-    if (token === "lvl") return row.lvl || "";
-    // Sino readings text: the pairs' readings in baked order, the katakana
-    // middle dot for on'yomi and a spaced middle dot for pinyin, no markers,
-    // no eum tags. Empty when the row carries no entry for the language.
-    if (token === "ja" || token === "zh") {
-      return ((row.sino && row.sino[token]) || []).map(function (p) {
-        return p[0];
-      }).join(token === "ja" ? "・" : " · ");
-    }
-    return "";
-  }
-
-  function quoteField(value, needsQuoting) {
-    return needsQuoting.test(value) ? '"' + value.split('"').join('""') + '"' : value;
-  }
-
-  // The folder rides along as an Anki TAG in a third column, so folders
-  // survive the trip into Anki. Anki separates tags with whitespace, so a
-  // name's whitespace runs collapse to "_" — saved.js's ankiTag rule.
-  function savedAnkiTag(row) {
-    var folder = folderById(row.folderId);
-    return String(folder ? folder.name : row.folderId).trim().replace(/\s+/g, "_");
-  }
-
-  function buildSavedAnki(rows) {
-    var lines = ["#separator:tab", "#html:false", "#tags column:3"];
-    rows.forEach(function (row) {
-      if (row.missing === true) return;
-      var isChar = row.kind === "char";
-      var front = savedField(row, isChar ? settings.anki.charFront : settings.anki.wordFront);
-      var back = (isChar ? settings.anki.charBack : settings.anki.wordBack)
-        .map(function (t) { return savedField(row, t); })
-        .filter(function (v) { return v !== ""; })
-        .join(" · ");
-      lines.push(quoteField(front, /[\t\n\r"]/) + "\t" +
-                 quoteField(back, /[\t\n\r"]/) + "\t" +
-                 quoteField(savedAnkiTag(row), /[\t\n\r"]/));
-    });
-    return lines.join("\n") + "\n";
-  }
-
-  function buildSavedCsv(rows) {
-    var lines = [SAVED_CSV_COLUMNS.join(",")];
-    rows.forEach(function (row) {
-      if (row.missing === true) return;
-      var folder = folderById(row.folderId);
-      var cells = [
-        row.kind === "char" ? "char" : "word",
-        savedField(row, "key"), savedField(row, "hangul"),
-        savedField(row, "eumhun"), savedField(row, "readings"),
-        savedField(row, "defs"), savedField(row, "lvl"),
-        savedField(row, "ja"), savedField(row, "zh"),
-        folder ? folder.name : row.folderId,
-        row.addedAt > 0 ? new Date(row.addedAt).toISOString().slice(0, 10) : ""
-      ];
-      lines.push(cells.map(function (c) {
-        return quoteField(c, /[",\n\r]/);
-      }).join(","));
-    });
-    return lines.join("\n") + "\n";
-  }
-
-  function exportSelection(msg) {
-    if (Array.isArray(msg.ids) && msg.ids.length) {
-      return saved.items.filter(function (it) { return msg.ids.indexOf(it.id) >= 0; });
-    }
-    if (Array.isArray(msg.folderIds) && msg.folderIds.length) {
-      return saved.items.filter(function (it) {
-        return msg.folderIds.indexOf(it.folderId) >= 0;
-      });
-    }
-    return msg.all === true ? saved.items.slice() : [];
+  // What the worker hands joinItems: its tables, plus sino.json and ko.json
+  // only when the caller opened their gates. The Korean read is counted,
+  // like every other ko.json read.
+  function savedJoinData(withSino, withKo) {
+    var r = needReal();
+    var data = dataBundle(false);
+    if (withSino) data.sino = r.B.guardSino({ version: 1, chars: SINO, words: SINO_WORDS });
+    if (withKo) { koReads++; data.ko = koTable(); }
+    return data;
   }
 
   function savedMessage(msg) {
+    var S = savedLib();
     if (msg.type === "savedCheck") {
       savedCheckCalls++;
       savedLastCheckKeys = (Array.isArray(msg.keys) ? msg.keys : []).map(function (k) {
-        return savedKey(k && k.kind, k && k.key);
+        return S.savedMapKey(k && k.kind, k && k.key);
       });
     }
     // A worker without chrome.storage answers {ok:false} to every one of these,
@@ -853,144 +705,88 @@
       return { ok: false, error: "storage unavailable" };
     }
 
+    var state = readSaved();
+
     if (msg.type === "savedGet") {
       // The same client-set flag as lookups: a flagged request's rows carry
       // their Korean entry (handleSavedGet's join).
       savedLastGetKo = msg.ko === true;
-      return { ok: true, folders: foldersCopy(),
-               items: joinSaved(saved.items, false, msg.ko === true) };
+      return { ok: true, folders: state.folders,
+               items: S.joinItems(state.items, savedJoinData(false, msg.ko === true)) };
     }
 
     if (msg.type === "savedToggle") {
-      var kind = msg.kind === "char" ? "char" : msg.kind === "word" ? "word" : null;
-      var key = typeof msg.key === "string" ? msg.key.normalize("NFC") : "";
-      if (!kind || !key) return { ok: false, error: "bad identity" };
-      for (var ti = 0; ti < saved.items.length; ti++) {
-        if (saved.items[ti].kind === kind && saved.items[ti].key === key) {
-          saved.items.splice(ti, 1);            // identity toggles OFF
-          return { ok: true, saved: false, folders: foldersCopy() };
-        }
+      var toggled = S.toggleItem(state, msg.kind, msg.key,
+        readSettings(state).defaultFolderId, SAVED_ADDED_AT);
+      savedRecord = toggled.state;
+      var response = { ok: true, saved: toggled.saved, folders: toggled.state.folders };
+      if (toggled.item) {
+        response.item = toggled.item;
+        response.folderId = toggled.item.folderId;
       }
-      var target = folderById(settings.defaultFolderId) ? settings.defaultFolderId : "f0";
-      var item = {
-        id: "i" + saved.nextItem, kind: kind, key: key,
-        folderId: target, addedAt: SAVED_ADDED_AT
-      };
-      saved.nextItem++;
-      saved.items.push(item);
-      return {
-        ok: true, saved: true, item: itemCopy(item),
-        folderId: target, folders: foldersCopy()
-      };
+      return response;
     }
 
-    if (msg.type === "savedCheck") {
-      var map = {};
-      (Array.isArray(msg.keys) ? msg.keys : []).forEach(function (entry) {
-        if (!entry || typeof entry !== "object") return;
-        var k = entry.kind === "char" ? "char" : "word";
-        if (typeof entry.key !== "string" || entry.key === "") return;
-        map[savedKey(k, entry.key)] = saved.items.some(function (it) {
-          return it.kind === k && it.key === entry.key;
-        });
-      });
-      return { ok: true, saved: map };
-    }
+    if (msg.type === "savedCheck") return { ok: true, saved: S.checkKeys(state, msg.keys) };
 
     if (msg.type === "savedRemove") {
-      var dropIds = Array.isArray(msg.ids) ? msg.ids : [];
-      var before = saved.items.length;
-      saved.items = saved.items.filter(function (it) {
-        return dropIds.indexOf(it.id) < 0;
-      });
-      return { ok: true, removed: before - saved.items.length };
+      var removed = S.removeItems(state, msg.ids);
+      savedRecord = removed.state;
+      return { ok: true, removed: removed.removed };
     }
 
     if (msg.type === "savedMove") {
-      if (!folderById(msg.folderId)) return { ok: false, error: "no such folder" };
-      var wanted = Array.isArray(msg.ids) ? msg.ids : [];
-      var moved = 0;
-      saved.items.forEach(function (it) {
-        if (wanted.indexOf(it.id) < 0 || it.folderId === msg.folderId) return;
-        it.folderId = msg.folderId;
-        moved++;
-      });
-      return { ok: true, moved: moved };
+      var moved = S.moveItems(state, msg.ids, msg.folderId);
+      if (moved.error !== null) return { ok: false, error: moved.error };
+      savedRecord = moved.state;
+      return { ok: true, moved: moved.moved };
     }
 
-    if (msg.type === "folderCreate") {
-      var name = typeof msg.name === "string" ? msg.name.trim() : "";
-      if (!name) return { ok: false, error: "folder name required" };
-      var folder = { id: "f" + saved.nextFolder, name: name };
-      saved.nextFolder++;
-      saved.folders.push(folder);
-      return { ok: true, folder: { id: folder.id, name: folder.name } };
-    }
-
-    if (msg.type === "folderRename") {
-      var renamed = folderById(msg.id);
-      var newName = typeof msg.name === "string" ? msg.name.trim() : "";
-      if (!renamed) return { ok: false, error: "no such folder" };
-      if (!newName) return { ok: false, error: "folder name required" };
-      renamed.name = newName;
-      return { ok: true, folder: { id: renamed.id, name: renamed.name } };
+    if (msg.type === "folderCreate" || msg.type === "folderRename") {
+      var changed = msg.type === "folderCreate"
+        ? S.createFolder(state, msg.name)
+        : S.renameFolder(state, msg.id, msg.name);
+      if (changed.error !== null) return { ok: false, error: changed.error };
+      savedRecord = changed.state;
+      return { ok: true, folder: changed.folder };
     }
 
     if (msg.type === "folderDelete") {
-      if (msg.id === "f0") {
-        return { ok: false, error: "the default folder cannot be deleted" };
-      }
-      if (!folderById(msg.id)) return { ok: false, error: "no such folder" };
-      var rehomed = 0;
-      saved.items.forEach(function (it) {
-        if (it.folderId !== msg.id) return;
-        it.folderId = "f0";
-        rehomed++;
-      });
-      saved.folders = saved.folders.filter(function (f) { return f.id !== msg.id; });
-      // Deleting the "save new items to" folder resets the setting, so no
-      // surface can observe a dangling default.
-      if (settings.defaultFolderId === msg.id) settings.defaultFolderId = "f0";
-      return { ok: true, moved: rehomed, settings: settingsCopy() };
+      var deleted = S.deleteFolder(state, msg.id);
+      if (deleted.error !== null) return { ok: false, error: deleted.error };
+      savedRecord = deleted.state;
+      // Deleting the "save new items to" folder resets the setting in the
+      // same step, so no surface can observe a dangling default.
+      var previous = readSettings(state);
+      var after = S.normalizeSettings(previous, deleted.state);
+      if (after.defaultFolderId !== previous.defaultFolderId) settingsRecord = after;
+      return { ok: true, moved: deleted.moved, settings: after };
     }
 
-    if (msg.type === "settingsGet") return { ok: true, settings: settingsCopy() };
+    if (msg.type === "settingsGet") return { ok: true, settings: readSettings(state) };
 
     if (msg.type === "settingsSet") {
-      var patch = msg.patch && typeof msg.patch === "object" ? msg.patch : {};
-      Object.keys(patch).forEach(function (field) {
-        if (field === "anki" && patch.anki && typeof patch.anki === "object") {
-          Object.keys(patch.anki).forEach(function (sub) {
-            settings.anki[sub] = patch.anki[sub];
-          });
-          return;
-        }
-        settings[field] = patch[field];
-      });
-      if (!folderById(settings.defaultFolderId)) settings.defaultFolderId = "f0";
-      return { ok: true, settings: settingsCopy() };
+      var merged = needReal().B.mergeSettings(readSettings(state), msg.patch);
+      settingsRecord = S.normalizeSettings(merged, state);
+      return { ok: true, settings: settingsRecord };
     }
 
     if (msg.type === "savedExport") {
-      // The worker's sino fetch gate, mirrored: sino entries join the export
-      // rows only when a charBack field asks for a reading language.
-      var wantsSino = settings.anki.charBack.indexOf("ja") >= 0 ||
-                      settings.anki.charBack.indexOf("zh") >= 0;
-      var isCsv = msg.format === "csv";
-      // The worker's Korean fetch gate, mirrored (exportWantsKo): the table
-      // joins only under 한국어 with a definitions field in play, which is
-      // every CSV and any Anki file whose fronts or backs carry defs.
-      var wantsKo = settings.language === "ko" && (isCsv ||
-        [settings.anki.wordFront, settings.anki.charFront]
-          .concat(settings.anki.wordBack, settings.anki.charBack).indexOf("defs") >= 0);
-      var rows = joinSaved(exportSelection(msg), wantsSino, wantsKo);
+      var B = needReal().B;
+      var current = readSettings(state);
+      var csv = msg.format === "csv";
+      // The worker's two fetch gates: sino.json only for a ja/zh charBack
+      // field, ko.json only under 한국어 with a definitions field in play.
+      var rows = S.joinItems(
+        S.resolveExportSelection(state, { ids: msg.ids, folderIds: msg.folderIds, all: msg.all }),
+        savedJoinData(B.exportWantsSino(current), B.exportWantsKo(current, csv ? "csv" : "anki")));
       var skipped = rows.filter(function (r) { return r.missing === true; }).length;
       return {
         ok: true,
-        tsv: isCsv ? buildSavedCsv(rows) : buildSavedAnki(rows),
+        tsv: csv ? S.buildCsv(rows, state.folders) : S.buildAnkiTsv(rows, current, state.folders),
         count: rows.length - skipped,
         skipped: skipped,
-        filename: isCsv ? "okpyeon-saved-20260817.csv" : "okpyeon-anki-20260817.txt"
+        filename: B.exportFilename(csv ? "csv" : "anki", SAVED_EXPORT_DATE)
       };
     }
 
@@ -1000,11 +796,8 @@
   var savedStore = {
     reset: function () { resetSaved(); },
     state: function () {
-      return {
-        folders: foldersCopy(),
-        items: saved.items.map(itemCopy),
-        settings: settingsCopy()
-      };
+      var st = readSaved();
+      return { folders: st.folders, items: st.items, settings: readSettings(st) };
     },
     // savedCheck is batched one-per-render-pass, so its call count is a
     // meaningful assertion and not just bookkeeping.
@@ -1097,9 +890,9 @@
     // the packaged files; see messagesTable.
     __messagesCalls: 0,
     sendMessage: function (msg, cb) {
-      // Before the real modules load, every dictionary request waits for
-      // them (the messages table and the saved store need no modules).
-      if (!real && msg && msg.type !== "messagesGet" && SAVED_TYPES[msg.type] !== 1) {
+      // Before the real modules load, every request but the messages table
+      // waits for them (the saved store answers through saved.js too).
+      if (!real && msg && msg.type !== "messagesGet") {
         var self = this;
         var later = ready.then(function () { return self.sendMessage(msg); });
         if (typeof cb === "function") { later.then(function (r) { cb(r); }); return undefined; }

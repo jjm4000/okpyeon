@@ -3708,6 +3708,22 @@ byte-identical blocks as this file. It must load before content.js.
   http (ES modules); run_selfchecks serves them. The switch surfaced a
   real bug, the word-parts tie-break above. The saved-words store and
   its export remain an in-memory fake.
+- 2026-10-25, third step: the saved-words store answers through
+  extension/saved.js too. Each of the eleven saved and settings messages
+  reads two in-memory records the way the worker reads
+  chrome.storage.local (normalized on every read), calls the same
+  saved.js function the worker's handler calls (toggleItem, checkKeys,
+  moveItems, deleteFolder, normalizeSettings and the rest), and for the
+  saved view and the export joins through joinItems and builds the file
+  with buildAnkiTsv or buildCsv, behind background.js's own exportWantsSino
+  and exportWantsKo gates. background.js exports two more pure helpers
+  for this, mergeSettings and exportFilename (given a fixed date). What
+  stays fake is the storage itself and the fixed stamps: every save is
+  dated 2026-08-17 and so is the file. The starting settings are an
+  explicit v2 record with native words off, the state the checks were
+  written against. 207 lines of look-alike store, join and exporter code
+  went, no check changed, and a deliberately broken separator in
+  saved.js now fails an export check.
 
 ## Second-pass resolver: particles and contractions (ADDENDUM 2026-10-24, measured)
 
