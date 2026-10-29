@@ -15,7 +15,11 @@ screenshot sets retaken: every popup shot now ends in the per-site
 footer line, the staged pages served as saebyeok.example and
 choyo.example so the line names a plausible site. The privacy policy
 update went live with the push. The store's storage justification
-mentions recent lookups and the site list.
+mentions recent lookups and the site list. Firefox: submitted to
+addons.mozilla.org on 2026-10-29 with the source archive (validation
+passed, the same four guarded sidePanel warnings as 1.4). The store
+listings keep the 1.4 screenshots for now; the retaken sets are in
+screenshots/ for a later upload.
 
 - **Popup off per site, and recent lookups.** Settled by mockups (option A
   for both). The popup ends in one quiet line, "Turn off on <site>"; one
