@@ -869,6 +869,14 @@ installs. The viewport is always set **before** navigation: `content.js` hides
 the popup on resize, so a viewport that changes afterwards captures an empty
 page.
 
+Since 1.5 every page popup ends in a footer line, "Turn off on <host>". So
+the page staging is served under made-up names on the reserved `.example`
+domain, one per masthead: `saebyeok.example` for the Korean paper and
+`choyo.example` for the Japanese one (scene 5). Chrome starts with a
+`--host-resolver-rules` mapping both names to 127.0.0.1, through the
+`extra_args` parameter of `cdp.Chrome`. The side-panel shots carry no footer
+and keep the plain address.
+
 ### What is asserted
 
 Per shot, before the pixels are kept:

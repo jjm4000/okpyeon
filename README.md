@@ -52,9 +52,10 @@ typing `hj` in the address bar searches from anywhere.
   words search scope, making Okpyeon a dictionary of all Korean. A
   conjugated form opens its dictionary form: 먹었어 is a form of 먹다,
   and 할거야 of 하다. One setting turns native words off.
-- **Japanese and Chinese readings (optional).** Two settings add each
-  character's on'yomi and pinyin beside its Korean reading: 學 is 학 in
-  Korean, ガク in Japanese, xué in Mandarin.
+- **Japanese and Chinese readings (optional).** Two settings add the
+  on'yomi and pinyin beside the Korean reading, on character cards and on
+  word cards: 學 is 학 in Korean, ガク in Japanese, xué in Mandarin, and
+  學校 (school) is がっこう and xuéxiào.
 - **Korean language mode.** One setting switches the whole extension
   into Korean: menus, labels, and definitions. The definitions come from
   우리말샘, the open dictionary of the National Institute of Korean

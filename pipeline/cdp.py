@@ -165,7 +165,7 @@ class WebSocket:
 class Chrome:
     """One headless Chrome for the whole run, in a throwaway profile."""
 
-    def __init__(self, window=(1280, 800)):
+    def __init__(self, window=(1280, 800), extra_args=()):
         if not Path(CHROME).exists():
             raise SystemExit(f"Chrome not found at {CHROME}")
         with socket.socket() as probe:
@@ -183,6 +183,7 @@ class Chrome:
             f"--window-size={window[0]},{window[1]}",
             f"--remote-debugging-port={self.port}",
             f"--user-data-dir={self.profile}",
+            *extra_args,
             "about:blank",
         ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         try:

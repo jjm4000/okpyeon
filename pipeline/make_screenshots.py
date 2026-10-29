@@ -322,7 +322,11 @@ SHOTS = [
         # 752px solo viewport (254px of room; a sixth row leaves 202 where the
         # rule wants 230), so the expanded folder is the five-row exam one and
         # the other two are collapsed, which is also the honest picture of a
-        # library with three folders in it.
+        # library with three folders in it. 1.5: native words are on by
+        # default, so the scope pills sit under the search box in every view
+        # and take 24px of that room; the mount is the tallest the canvas
+        # holds at 1:1 (SOLO_TALL_H), which gives it back.
+        "solo_h": SOLO_TALL_H,
         "panel": {"view": "saved", "collapse": "Saved,교과서"},
         "checks": [
             panel_has("saved view mounted", ".view--saved"),
@@ -347,7 +351,11 @@ SHOTS = [
         # control) then pushed the about footer to 839px under English and
         # 823px under 한국어, past any 1:1 mount the 800px frame can hold, so
         # this shot alone captures an 880px CSS viewport rasterized to fit
-        # (see SOLO_TALL_H). The footer bound proves the whole view is in it.
+        # (see SOLO_TALL_H). 1.5 added the recent lookups row, the Sites group
+        # and (native words on by default) the scope pills, so the footer now
+        # sits near 1,060px; fitting it would rasterize the text at 73%. The
+        # frame stays at 880 and the view runs past it, Sites below the fold,
+        # the way the sidebar scrolls; the bound now proves Anki export is in.
         "solo_h": 880,
         "checks": [
             panel_has("settings view mounted", ".view--settings"),
@@ -360,8 +368,8 @@ SHOTS = [
             panel_has("search group present", ".settings-group", GROUP_SEARCH),
             panel_has("character cards group present", ".settings-group",
                       GROUP_CHAR_CARDS),
-            ("about footer fully in frame",
-             'document.querySelector(".settings-about")'
+            ("the Anki export group's last row is in frame",
+             'document.querySelector(".settings-row[data-key=\\"anki.charBack\\"]")'
              ".getBoundingClientRect().bottom < 880"),
         ],
     },
@@ -436,13 +444,27 @@ SHOTS = [
 ]
 
 
+# Popup off per site ADDENDUM (2026-10-26): every page popup ends in "Turn
+# off on <host>", so the staged pages are served under made-up names on the
+# reserved .example domain, mapped to the local server, one per masthead
+# (scene 5 is the Japanese paper). The sidebar shots carry no footer and keep
+# the plain address.
+PAGE_HOST = "saebyeok.example"
+SCENE_HOSTS = {"5": "choyo.example"}
+HOST_RULES = "--host-resolver-rules=" + ", ".join(
+    f"MAP {host} 127.0.0.1" for host in sorted({PAGE_HOST, *SCENE_HOSTS.values()}))
+
+
 def stage_url(port, page, params, lang):
     # The staging pages take lang=ko and default to English; the English
     # run's URL is exactly what it always was.
     if lang == "ko":
         params = {**params, "lang": "ko"}
     query = urllib.parse.urlencode(params)
-    return f"http://127.0.0.1:{port}/{STAGE_DIR}/{page}?{query}"
+    host = "127.0.0.1"
+    if page == "shots-page.html":
+        host = SCENE_HOSTS.get(str(params.get("scene")), PAGE_HOST)
+    return f"http://{host}:{port}/{STAGE_DIR}/{page}?{query}"
 
 
 def run_checks(tab, checks, shot_name, lang):
@@ -586,7 +608,7 @@ def main():
 
     server, port = serve_root()
     work_dir = Path(tempfile.mkdtemp(prefix="okp-screenshots-"))
-    chrome = Chrome()
+    chrome = Chrome(extra_args=[HOST_RULES])
     written = []
     try:
         for lang in langs:

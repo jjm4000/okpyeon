@@ -4,7 +4,18 @@ Working list of planned changes. Ordering within a release is not priority
 order. The next store upload ships whatever is merged and verified when the
 current review clears.
 
-## Since 1.4: merged on main, not yet released
+## 1.5: packaged, not yet uploaded
+
+The manifest reads 1.5.0; the packages are okpyeon-1.5.0.zip (Chrome)
+and okpyeon-firefox-1.5.0.zip (Firefox), with the source archive
+okpyeon-source-1.5.0.zip for Mozilla, built 2026-10-28 from the commit
+tagged v1.5.0. Both listings drafted for Jesse's edit (counts
+re-verified, all unchanged, plus the word-level readings), both
+screenshot sets retaken: every popup shot now ends in the per-site
+footer line, the staged pages served as saebyeok.example and
+choyo.example so the line names a plausible site. The privacy policy
+update went live with the push. The store's storage justification
+mentions recent lookups and the site list.
 
 - **Popup off per site, and recent lookups.** Settled by mockups (option A
   for both). The popup ends in one quiet line, "Turn off on <site>"; one
@@ -101,7 +112,7 @@ current review clears.
   toggles and markers as the character line; nested word cards (a
   hybrid's 加工) carry it too.
 
-## 1.4: packaged, not yet uploaded
+## 1.4: submitted to both stores
 
 The manifest reads 1.4.0; the packages are okpyeon-1.4.0.zip (Chrome)
 and okpyeon-firefox-1.4.0.zip (Firefox, its first release), built
